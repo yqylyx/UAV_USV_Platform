@@ -1,0 +1,47 @@
+﻿server:
+  port: 8081
+  servlet:
+    session:
+      timeout: 8h
+      cookie:
+        http-only: true
+        same-site: lax
+
+spring:
+  application:
+    name: uav-usv-platform
+  profiles:
+    active: local
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+app:
+  runtime:
+    ros-websocket-url: ${ROS_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv}
+    heartbeat-timeout-seconds: 5
+    telemetry-retention-days: 7
+  integration:
+    token: ${PLATFORM_INTEGRATION_TOKEN}
+  control:
+    wsl-distribution: ${WSL_DISTRIBUTION:Ubuntu22}
+    ros-script: ${ROS_RUNTIME_SCRIPT:F:/UAV_USV_Platform/scripts/uav-usv-runtime.sh}
+    unity-editor: ${UNITY_EDITOR_PATH:F:/Unity/Editors/2022.3.57f1/Editor/Unity.exe}
+    unity-project: ${UNITY_PROJECT_PATH:F:/Unity/Projects/unity_ws}
+

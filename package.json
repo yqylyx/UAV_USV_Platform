@@ -1,0 +1,14 @@
+{
+  "name": "uav-usv-platform",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-dev.ps1",
+    "dev:backend": "backend\\mvnw.cmd -f backend\\pom.xml spring-boot:run",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "node scripts/build.mjs"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
