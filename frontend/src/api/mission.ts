@@ -37,3 +37,13 @@ export async function deleteMission(id: number): Promise<void> {
     headers: { [csrf.headerName]: csrf.token },
   })
 }
+
+export type MissionAction = 'ready' | 'start' | 'pause' | 'resume' | 'complete' | 'fail' | 'cancel'
+
+export async function executeMissionAction(id: number, action: MissionAction): Promise<MissionDetail> {
+  const csrf = await fetchCsrfToken()
+  const response = await http.post<ApiResponse<MissionDetail>>(`/missions/${id}/${action}`, undefined, {
+    headers: { [csrf.headerName]: csrf.token },
+  })
+  return response.data.data
+}

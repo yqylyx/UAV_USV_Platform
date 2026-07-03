@@ -49,6 +49,9 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true
       try {
         await requestLogout()
+      } catch {
+        // Local logout should still complete if the session already expired
+        // or CSRF renewal fails during navigation.
       } finally {
         this.user = null
         this.initialized = true

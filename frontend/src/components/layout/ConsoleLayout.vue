@@ -3,6 +3,7 @@ import { Activity, Boxes, LogOut, Plane, Radar, Ship, UserRound } from '@lucide/
 import { useRouter } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
+import { useMonitoringStore } from '@/stores/monitoring'
 
 defineProps<{
   title: string
@@ -11,10 +12,12 @@ defineProps<{
 
 const router = useRouter()
 const authStore = useAuthStore()
+const monitoringStore = useMonitoringStore()
 
 async function logout() {
+  monitoringStore.disconnectEvents()
   await authStore.logout()
-  await router.replace('/login')
+  await router.replace({ name: 'login' })
 }
 </script>
 

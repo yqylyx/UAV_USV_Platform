@@ -40,9 +40,17 @@ public class RuntimeEventPublisher {
     private void send(SseEmitter emitter, String eventName, String data) {
         try {
             emitter.send(SseEmitter.event().name(eventName).data(data));
-        } catch (IOException | IllegalStateException exception) {
-            emitter.complete();
+        } catch (IOException | RuntimeException exception) {
             emitters.remove(emitter);
+            completeQuietly(emitter);
+        }
+    }
+
+    private void completeQuietly(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (RuntimeException ignored) {
+            // The browser may already have closed the SSE response.
         }
     }
 }

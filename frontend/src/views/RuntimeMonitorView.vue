@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Activity, Plane, Play, Radar, RefreshCw, RotateCcw, Search, Ship, Square } from '@lucide/vue'
-import { computed, onBeforeUnmount, onMounted, reactive } from 'vue'
+import { ElMessage } from 'element-plus'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import { useMonitoringStore } from '@/stores/monitoring'
@@ -12,6 +13,7 @@ import type { SimulationStatus } from '@/types/runtimeControl'
 const monitoringStore = useMonitoringStore()
 const controlStore = useRuntimeControlStore()
 let controlTimer: number | null = null
+const actionPhase = ref<'idle' | 'starting' | 'stopping'>('idle')
 
 const filters = reactive({
   type: '' as DeviceType | '',
@@ -49,9 +51,68 @@ const onlineRate = computed(() => {
 
 const canStart = computed(() => {
   const status = controlStore.runtime?.status
-  return !controlStore.loading && (!status || status === 'STOPPED' || status === 'FAILED')
+  return actionPhase.value === 'idle' && !controlStore.loading && (!status || status === 'STOPPED' || status === 'FAILED')
 })
 
+const isOperating = computed(() => actionPhase.value !== 'idle' || controlStore.loading)
+const canStop = computed(() => {
+  const status = controlStore.runtime?.status
+  return actionPhase.value === 'idle' && !controlStore.loading && !!status && !['STOPPED', 'FAILED'].includes(status)
+})
+const operationText = computed(() => {
+  if (actionPhase.value === 'starting') return '正在启动 ROS/Gazebo、WebSocket Bridge 和 Unity 联动，请等待真实心跳确认。'
+  if (actionPhase.value === 'stopping') return '正在停止平台托管的 ROS/Gazebo 与 Unity 联动，请等待节点下线。'
+  if (controlStore.runtime?.status === 'RUNNING') return '检测到仿真已经在运行，页面只是接入监控，不是自动重复启动。'
+  return ''
+})
+
+
+const rosNode = computed(() => monitoringStore.nodes.find((node) => node.type === 'ROS_NODE'))
+const unityNode = computed(() => monitoringStore.nodes.find((node) => node.type === 'UNITY_NODE'))
+const liveVehicleNodes = computed(() =>
+  monitoringStore.nodes.filter(
+    (node) =>
+      ['UAV', 'USV'].includes(node.type) &&
+      node.status === 'ONLINE' &&
+      node.positionX !== null &&
+      node.positionY !== null &&
+      node.positionZ !== null,
+  ),
+)
+
+const diagnosticSteps = computed(() => [
+  {
+    key: 'ros',
+    title: 'ROS / Gazebo',
+    status: rosNode.value?.status === 'ONLINE' ? 'ONLINE' : 'OFFLINE',
+    metric: rosNode.value?.status === 'ONLINE' ? 'WebSocket 已连接' : '等待 8765 位姿桥',
+    detail: rosNode.value?.detail || '检查 WSL 中 Gazebo 与 uav_usv_unity_websocket_bridge.launch.py',
+  },
+  {
+    key: 'backend',
+    title: 'Spring Boot 接收',
+    status: liveVehicleNodes.value.length > 0 ? 'ONLINE' : 'OFFLINE',
+    metric: `${liveVehicleNodes.value.length} 个载体位姿`,
+    detail:
+      liveVehicleNodes.value.length > 0
+        ? `已接收 ${liveVehicleNodes.value.map((node) => node.code).join(' / ')}`
+        : '后端尚未收到 UAV / USV 的有效 Gazebo 坐标',
+  },
+  {
+    key: 'vue',
+    title: 'Vue 实时刷新',
+    status: monitoringStore.error ? 'OFFLINE' : monitoringStore.summary ? 'ONLINE' : 'UNKNOWN',
+    metric: monitoringStore.summary ? formatTime(monitoringStore.summary.refreshedAt) : '--',
+    detail: monitoringStore.error || '监控接口与 SSE 刷新通道可用',
+  },
+  {
+    key: 'unity',
+    title: 'Unity WebGL 心跳',
+    status: unityNode.value?.status === 'ONLINE' ? 'ONLINE' : 'OFFLINE',
+    metric: unityNode.value?.status === 'ONLINE' ? 'WebGL 已上报' : '等待系统总览 WebGL',
+    detail: unityNode.value?.detail || '进入系统总览并等待 UNITY WEBGL ONLINE',
+  },
+])
 function typeLabel(type: DeviceType) {
   return typeOptions.find((item) => item.value === type)?.label ?? type
 }
@@ -148,13 +209,62 @@ async function resetFilters() {
 }
 
 async function startSimulation() {
-  await controlStore.start()
-  await monitoringStore.refresh()
+  actionPhase.value = 'starting'
+  try {
+    await controlStore.start()
+    if (controlStore.error) {
+      ElMessage.error(controlStore.error)
+      return
+    }
+    await waitForRuntimeStatus(['RUNNING', 'PARTIAL', 'FAILED'], 45000)
+    await monitoringStore.refresh()
+    if (controlStore.runtime?.status === 'RUNNING') {
+      ElMessage.success('仿真已运行，ROS / Unity 心跳已确认')
+    } else if (controlStore.runtime?.status === 'PARTIAL') {
+      ElMessage.warning(controlStore.runtime.message || '仿真部分启动，请查看联调诊断')
+    } else {
+      ElMessage.error(controlStore.runtime?.message || '启动失败')
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '启动状态确认失败')
+  } finally {
+    actionPhase.value = 'idle'
+  }
 }
 
 async function stopSimulation() {
-  await controlStore.stop()
-  await monitoringStore.refresh()
+  actionPhase.value = 'stopping'
+  try {
+    await controlStore.stop()
+    if (controlStore.error) {
+      ElMessage.error(controlStore.error)
+      return
+    }
+    await waitForRuntimeStatus(['STOPPED', 'FAILED'], 30000)
+    await monitoringStore.refresh()
+    if (controlStore.runtime?.status === 'STOPPED') {
+      ElMessage.success('仿真已停止，运行节点已下线')
+    } else {
+      ElMessage.error(controlStore.runtime?.message || '停止失败')
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '停止状态确认失败')
+  } finally {
+    actionPhase.value = 'idle'
+  }
+}
+
+async function waitForRuntimeStatus(targetStatuses: SimulationStatus[], timeoutMs: number) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    await controlStore.refresh()
+    await monitoringStore.refresh()
+    if (controlStore.runtime && targetStatuses.includes(controlStore.runtime.status)) {
+      return
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1500))
+  }
+  throw new Error('运行状态确认超时，请查看 WSL 终端和联调诊断')
 }
 
 onMounted(async () => {
@@ -175,18 +285,19 @@ onBeforeUnmount(() => {
       <el-tag :type="controlTag(controlStore.runtime?.status)" effect="plain">
         {{ controlStore.runtime ? controlLabels[controlStore.runtime.status] : '状态未知' }}
       </el-tag>
-      <el-button type="primary" :icon="Play" :loading="controlStore.loading" :disabled="!canStart" @click="startSimulation">
-        运行
+      <el-button type="primary" :icon="Play" :loading="actionPhase === 'starting'" :disabled="!canStart" @click="startSimulation">
+        {{ actionPhase === 'starting' ? '启动中...' : '运行' }}
       </el-button>
       <el-button
-        v-if="controlStore.runtime?.controllable"
+        v-if="canStop || actionPhase === 'stopping'"
         type="danger"
         plain
         :icon="Square"
-        :loading="controlStore.loading"
+        :loading="actionPhase === 'stopping'"
+        :disabled="isOperating && actionPhase !== 'stopping'"
         @click="stopSimulation"
       >
-        停止
+        {{ actionPhase === 'stopping' ? '停止中...' : '停止' }}
       </el-button>
       <el-button :loading="monitoringStore.loading" :icon="RefreshCw" @click="load">刷新</el-button>
     </template>
@@ -196,6 +307,14 @@ onBeforeUnmount(() => {
       title="运行状态读取失败"
       :description="monitoringStore.error || controlStore.error"
       type="error"
+      show-icon
+      :closable="false"
+      class="section-alert"
+    />
+    <el-alert
+      v-if="operationText"
+      :title="operationText"
+      type="info"
       show-icon
       :closable="false"
       class="section-alert"
@@ -277,6 +396,30 @@ onBeforeUnmount(() => {
       </article>
     </section>
 
+    <section class="runtime-diagnostic-panel" aria-label="联调链路诊断">
+      <div class="section-heading compact">
+        <div>
+          <h2>联调诊断</h2>
+          <p>按数据流检查 Gazebo、后端、前端刷新与 Unity WebGL 心跳。</p>
+        </div>
+        <el-tag effect="plain">{{ onlineRate }}% ONLINE</el-tag>
+      </div>
+      <div class="runtime-diagnostic-flow">
+        <article
+          v-for="step in diagnosticSteps"
+          :key="step.key"
+          class="runtime-diagnostic-card"
+          :class="step.status.toLowerCase()"
+        >
+          <div class="diagnostic-card-head">
+            <span>{{ step.title }}</span>
+            <i></i>
+          </div>
+          <strong>{{ step.metric }}</strong>
+          <p>{{ step.detail }}</p>
+        </article>
+      </div>
+    </section>
     <section class="device-filter-panel runtime-filter" aria-label="运行节点筛选">
       <div class="runtime-filter-fields">
         <el-select v-model="filters.type" clearable placeholder="节点类型">

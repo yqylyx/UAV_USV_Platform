@@ -6,6 +6,7 @@ import com.uavusv.platform.module.auth.dto.response.CsrfTokenResponse;
 import com.uavusv.platform.module.auth.dto.response.CurrentUserResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -78,6 +79,11 @@ public class AuthController {
             HttpServletResponse response
     ) {
         new SecurityContextLogoutHandler().logout(request, response, authentication);
+        SecurityContextHolder.clearContext();
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
         return ApiResponse.<Void>success(null);
     }
 }

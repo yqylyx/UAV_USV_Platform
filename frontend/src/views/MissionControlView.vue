@@ -15,7 +15,8 @@ import {
 } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 
-import { createMission, deleteMission, fetchMission, updateMission } from '@/api/mission'
+import { createMission, deleteMission, executeMissionAction, fetchMission, updateMission } from '@/api/mission'
+import type { MissionAction } from '@/api/mission'
 import { fetchDevices } from '@/api/device'
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -40,6 +41,7 @@ const deleteDialogVisible = ref(false)
 const saving = ref(false)
 const detailLoading = ref(false)
 const deletingId = ref<number | null>(null)
+const actionLoadingId = ref<number | null>(null)
 const editingId = ref<number | null>(null)
 const detail = ref<MissionDetail | null>(null)
 const deleteTarget = ref<Mission | null>(null)
@@ -148,6 +150,31 @@ function statusTag(status: MissionStatus) {
   if (status === 'READY' || status === 'PAUSED') return 'warning'
   if (status === 'FAILED' || status === 'CANCELLED') return 'danger'
   return 'info'
+}
+
+function missionActions(status: MissionStatus): Array<{ action: MissionAction; label: string; type: 'primary' | 'warning' | 'success' | 'danger' }> {
+  if (status === 'DRAFT') return [{ action: 'ready', label: '准备', type: 'primary' }]
+  if (status === 'READY') {
+    return [
+      { action: 'start', label: '启动', type: 'success' },
+      { action: 'cancel', label: '取消', type: 'danger' },
+    ]
+  }
+  if (status === 'RUNNING') {
+    return [
+      { action: 'pause', label: '暂停', type: 'warning' },
+      { action: 'complete', label: '完成', type: 'success' },
+      { action: 'fail', label: '异常', type: 'danger' },
+    ]
+  }
+  if (status === 'PAUSED') {
+    return [
+      { action: 'resume', label: '恢复', type: 'success' },
+      { action: 'complete', label: '完成', type: 'primary' },
+      { action: 'cancel', label: '取消', type: 'danger' },
+    ]
+  }
+  return []
 }
 
 function formatTime(value: string | null) {
@@ -306,6 +333,20 @@ async function confirmDelete() {
   }
 }
 
+async function runMissionAction(mission: Mission, action: MissionAction) {
+  actionLoadingId.value = mission.id
+  try {
+    const result = await executeMissionAction(mission.id, action)
+    detail.value = detail.value?.mission.id === mission.id ? result : detail.value
+    ElMessage.success(`${result.mission.name}：${statusLabel(result.mission.status)}`)
+    await load(missionStore.page)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '任务状态变更失败')
+  } finally {
+    actionLoadingId.value = null
+  }
+}
+
 async function submit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -454,6 +495,18 @@ onMounted(async () => {
             </div>
             <div class="mission-card-actions">
               <el-button link type="primary" :icon="Eye" @click="openDetail(mission)">详情</el-button>
+              <template v-if="canManage">
+                <el-button
+                  v-for="item in missionActions(mission.status)"
+                  :key="item.action"
+                  link
+                  :type="item.type"
+                  :loading="actionLoadingId === mission.id"
+                  @click="runMissionAction(mission, item.action)"
+                >
+                  {{ item.label }}
+                </el-button>
+              </template>
               <el-button v-if="canManage" link type="primary" :icon="Pencil" @click="openEdit(mission)">编辑</el-button>
               <el-button
                 v-if="canManage"

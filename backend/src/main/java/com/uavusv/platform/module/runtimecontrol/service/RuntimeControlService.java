@@ -1,7 +1,10 @@
 package com.uavusv.platform.module.runtimecontrol.service;
 
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
+import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
+import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeControlResponse;
+import com.uavusv.platform.module.runtimecontrol.entity.CommandStatus;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.ControlCommand;
 import com.uavusv.platform.module.runtimecontrol.entity.SimulationSession;
@@ -18,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -131,22 +135,45 @@ public class RuntimeControlService {
     public RuntimeControlResponse stop(String username) {
         var active = sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(ACTIVE_STATUSES);
         if (active.isEmpty()) {
-            return getStatus();
+            try {
+                runRosScript("stop");
+                requestUnityStop();
+                runtimeStateService.markRuntimeStopped("平台停止指令已执行，运行节点已下线");
+                return new RuntimeControlResponse(
+                        null,
+                        SimulationStatus.STOPPED,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        null,
+                        "未找到活动会话，已执行停止清理并下线运行节点"
+                );
+            } catch (Exception exception) {
+                return new RuntimeControlResponse(
+                        null,
+                        SimulationStatus.FAILED,
+                        runtimeStateService.isOnline(RuntimeStateService.ROS_CODE),
+                        runtimeStateService.isOnline(RuntimeStateService.UNITY_CODE),
+                        false,
+                        false,
+                        true,
+                        null,
+                        exception.getMessage()
+                );
+            }
         }
 
         SimulationSession session = active.get();
         ControlCommand command = commandRepository.save(new ControlCommand(session.getId(), CommandType.STOP, username));
         session.updateStatus(SimulationStatus.STOPPING);
         try {
-            if (session.isUnityManaged()) {
-                requestUnityStop();
-            }
-            if (session.isRosManaged()) {
-                runRosScript("stop");
-            }
+            requestUnityStop();
+            runRosScript("stop");
+            runtimeStateService.markRuntimeStopped("平台停止指令已执行，运行节点已下线");
             session.updateStatus(SimulationStatus.STOPPED);
-            command.succeed(session.isRosManaged() || session.isUnityManaged()
-                    ? "已停止由平台启动的组件" : "外部启动组件未被终止");
+            command.succeed("已执行平台停止指令，ROS/Gazebo 与 Unity 联动节点已下线");
         } catch (Exception exception) {
             session.fail(exception.getMessage());
             command.fail(exception.getMessage());
@@ -157,6 +184,18 @@ public class RuntimeControlService {
                 runtimeStateService.isOnline(RuntimeStateService.ROS_CODE),
                 runtimeStateService.isOnline(RuntimeStateService.UNITY_CODE),
                 session.getErrorMessage() == null ? "停止指令已完成" : session.getErrorMessage());
+    }
+
+    @Transactional
+    public RuntimeCommandResponse issueCommand(RuntimeCommandRequest request, String username) {
+        Long sessionId = sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(ACTIVE_STATUSES)
+                .map(SimulationSession::getId)
+                .orElse(null);
+        ControlCommand command = commandRepository.save(new ControlCommand(sessionId, request.commandType(), username));
+        String detail = buildCommandDetail(request);
+        command.succeed(detail);
+        commandRepository.save(command);
+        return new RuntimeCommandResponse(request.commandType(), CommandStatus.SUCCEEDED, detail, LocalDateTime.now());
     }
 
     @Scheduled(fixedDelay = 2000)
@@ -228,6 +267,20 @@ public class RuntimeControlService {
         Path controlDirectory = unityProject.resolve("Library").resolve("PlatformControl");
         Files.createDirectories(controlDirectory);
         Files.writeString(controlDirectory.resolve("stop.request"), "stop", StandardCharsets.UTF_8);
+    }
+
+    private String buildCommandDetail(RuntimeCommandRequest request) {
+        StringBuilder detail = new StringBuilder("Web 控制台指令已记录");
+        if (request.deviceCode() != null && !request.deviceCode().isBlank()) {
+            detail.append("，目标设备=").append(request.deviceCode());
+        }
+        if (request.detail() != null && !request.detail().isBlank()) {
+            detail.append("，说明=").append(request.detail());
+        }
+        if (request.payload() != null && !request.payload().isBlank()) {
+            detail.append("，载荷=").append(request.payload());
+        }
+        return detail.toString();
     }
 
     private boolean isUnityProjectOpen() {

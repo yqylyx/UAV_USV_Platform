@@ -9,6 +9,7 @@ import com.uavusv.platform.module.mission.entity.MissionStatus;
 import com.uavusv.platform.module.mission.entity.MissionType;
 import com.uavusv.platform.module.mission.service.MissionService;
 import jakarta.validation.Valid;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -66,5 +67,47 @@ public class MissionController {
     public ApiResponse<Void> deleteMission(@PathVariable Long id) {
         missionService.deleteMission(id);
         return ApiResponse.<Void>success(null);
+    }
+
+    @PostMapping("/{id}/ready")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<MissionDetailResponse> markReady(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.success(missionService.markReady(id, authentication.getName()));
+    }
+
+    @PostMapping("/{id}/start")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<MissionDetailResponse> startMission(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.success(missionService.startMission(id, authentication.getName()));
+    }
+
+    @PostMapping("/{id}/pause")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<MissionDetailResponse> pauseMission(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.success(missionService.pauseMission(id, authentication.getName()));
+    }
+
+    @PostMapping("/{id}/resume")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<MissionDetailResponse> resumeMission(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.success(missionService.resumeMission(id, authentication.getName()));
+    }
+
+    @PostMapping("/{id}/complete")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<MissionDetailResponse> completeMission(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.success(missionService.completeMission(id, authentication.getName()));
+    }
+
+    @PostMapping("/{id}/fail")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<MissionDetailResponse> failMission(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.success(missionService.failMission(id, authentication.getName()));
+    }
+
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<MissionDetailResponse> cancelMission(@PathVariable Long id, Authentication authentication) {
+        return ApiResponse.success(missionService.cancelMission(id, authentication.getName()));
     }
 }

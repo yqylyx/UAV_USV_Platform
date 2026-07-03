@@ -26,13 +26,13 @@ export const useMonitoringStore = defineStore('monitoring', {
     error: '',
   }),
   actions: {
-    async refresh(overrides: RuntimeNodeQuery = {}) {
+    async refresh(overrides: RuntimeNodeQuery = {}, silent = false) {
       const query: RuntimeNodeQuery = {
         type: overrides.type ?? this.type,
         status: overrides.status ?? this.status,
       }
 
-      this.loading = true
+      if (!silent) this.loading = true
       this.error = ''
       try {
         const [summary, nodes] = await Promise.all([fetchRuntimeSummary(), fetchRuntimeNodes(query)])
@@ -42,7 +42,7 @@ export const useMonitoringStore = defineStore('monitoring', {
         this.nodes = []
         this.error = error instanceof Error ? error.message : '运行监控数据加载失败'
       } finally {
-        this.loading = false
+        if (!silent) this.loading = false
       }
     },
     connectEvents() {
@@ -50,7 +50,7 @@ export const useMonitoringStore = defineStore('monitoring', {
       runtimeEvents = new EventSource('/api/monitoring/events')
       runtimeEvents.addEventListener('runtime-change', () => {
         if (refreshTimer !== null) window.clearTimeout(refreshTimer)
-        refreshTimer = window.setTimeout(() => this.refresh(), 150)
+        refreshTimer = window.setTimeout(() => this.refresh({}, true), 1000)
       })
       runtimeEvents.onerror = () => {
         this.error = '实时状态连接中断，正在自动重连'

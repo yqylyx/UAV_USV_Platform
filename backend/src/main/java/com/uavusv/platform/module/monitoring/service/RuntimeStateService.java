@@ -103,6 +103,32 @@ public class RuntimeStateService {
                 && Duration.between(observation.observedAt(), LocalDateTime.now()).getSeconds() <= heartbeatTimeoutSeconds;
     }
 
+    @Transactional
+    public void markRuntimeStopped(String detail) {
+        LocalDateTime now = LocalDateTime.now();
+        observations.clear();
+        for (Device device : deviceRepository.findAllByDeletedFalse(Sort.by(Sort.Direction.ASC, "id"))) {
+            if (!RUNTIME_TYPES.contains(device.getType())) {
+                continue;
+            }
+
+            RuntimeDeviceStatus runtime = runtimeStatusRepository.findByDeviceId(device.getId())
+                    .orElseGet(() -> new RuntimeDeviceStatus(device.getId()));
+            DeviceStatus previous = runtime.getStatus();
+            runtime.markOffline(detail);
+            runtimeStatusRepository.save(runtime);
+
+            if (device.getStatus() != DeviceStatus.OFFLINE) {
+                device.updateRuntimeStatus(DeviceStatus.OFFLINE);
+            }
+            if (previous != DeviceStatus.OFFLINE) {
+                statusEventRepository.save(new DeviceStatusEvent(device.getId(), previous, DeviceStatus.OFFLINE,
+                        runtime.getSource(), detail, now));
+            }
+        }
+        eventPublisher.publishRuntimeChange();
+    }
+
     @Scheduled(fixedDelay = 1000)
     @Transactional
     public void reconcileRuntimeState() {

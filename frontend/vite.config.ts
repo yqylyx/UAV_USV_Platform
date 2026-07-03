@@ -1,14 +1,48 @@
 import { fileURLToPath, URL } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
+function unityWebglHeaders(): Plugin {
+  const unityAssetPattern = /^\/unity\/.*\.(?:wasm|data|js|symbols\.json)$/i
+  return {
+    name: 'unity-webgl-headers',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0] ?? ''
+        if (unityAssetPattern.test(url)) {
+          res.setHeader('Cache-Control', 'no-store')
+          res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+          if (url.endsWith('.wasm')) res.setHeader('Content-Type', 'application/wasm')
+          if (url.endsWith('.data')) res.setHeader('Content-Type', 'application/octet-stream')
+          if (url.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+        }
+        next()
+      })
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0] ?? ''
+        if (unityAssetPattern.test(url)) {
+          res.setHeader('Cache-Control', 'no-store')
+          res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+          if (url.endsWith('.wasm')) res.setHeader('Content-Type', 'application/wasm')
+          if (url.endsWith('.data')) res.setHeader('Content-Type', 'application/octet-stream')
+          if (url.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+        }
+        next()
+      })
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     vue(),
+    unityWebglHeaders(),
     AutoImport({
       resolvers: [ElementPlusResolver()],
       dts: 'src/auto-imports.d.ts',

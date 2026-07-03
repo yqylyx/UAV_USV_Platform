@@ -104,6 +104,17 @@ public class MissionTask extends BaseEntity {
         this.deletedAt = LocalDateTime.now();
     }
 
+    public void updateStatus(MissionStatus status, MissionStage stage) {
+        this.status = status;
+        this.stage = stage;
+        if (status == MissionStatus.RUNNING && this.startedAt == null) {
+            this.startedAt = LocalDateTime.now();
+        }
+        if (status == MissionStatus.COMPLETED || status == MissionStatus.CANCELLED || status == MissionStatus.FAILED) {
+            this.completedAt = LocalDateTime.now();
+        }
+    }
+
     public String getCode() {
         return code;
     }

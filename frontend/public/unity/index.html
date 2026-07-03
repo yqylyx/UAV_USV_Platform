@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity WebGL Player | UAV_USV_WebGL</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #061113;
+      }
+
+      body.embedded #unity-container,
+      body.embedded #unity-canvas {
+        position: absolute;
+        inset: 0;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        transform: none !important;
+      }
+
+      body.embedded #unity-footer {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="unity-container" class="unity-desktop">
+      <canvas id="unity-canvas" width="960" height="600" tabindex="-1"></canvas>
+      <div id="unity-loading-bar">
+        <div id="unity-logo"></div>
+        <div id="unity-progress-bar-empty">
+          <div id="unity-progress-bar-full"></div>
+        </div>
+      </div>
+      <div id="unity-warning"> </div>
+      <div id="unity-footer">
+        <div id="unity-webgl-logo"></div>
+        <div id="unity-fullscreen-button"></div>
+        <div id="unity-build-title">UAV_USV_WebGL</div>
+      </div>
+    </div>
+    <script>
+      var container = document.querySelector('#unity-container');
+      var canvas = document.querySelector('#unity-canvas');
+      var loadingBar = document.querySelector('#unity-loading-bar');
+      var progressBarFull = document.querySelector('#unity-progress-bar-full');
+      var fullscreenButton = document.querySelector('#unity-fullscreen-button');
+      var warningBanner = document.querySelector('#unity-warning');
+      var embedded = new URLSearchParams(window.location.search).has('embedded');
+
+      if (embedded) document.body.classList.add('embedded');
+
+      function postUnityMessage(type, payload) {
+        if (!window.parent) return;
+        window.parent.postMessage(
+          {
+            source: 'unity-webgl',
+            message: {
+              type: type,
+              payload: payload || {},
+            },
+          },
+          window.location.origin,
+        );
+      }
+
+      function unityShowBanner(msg, type) {
+        function updateBannerVisibility() {
+          warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+        }
+        var div = document.createElement('div');
+        div.innerHTML = msg;
+        warningBanner.appendChild(div);
+        if (type === 'error') div.style = 'background: #7f1d1d; color: #fee2e2; padding: 10px;';
+        else {
+          if (type === 'warning') div.style = 'background: #facc15; color: #1f2937; padding: 10px;';
+          setTimeout(function () {
+            if (div.parentNode === warningBanner) warningBanner.removeChild(div);
+            updateBannerVisibility();
+          }, 5000);
+        }
+        updateBannerVisibility();
+      }
+
+      function reportFatal(message) {
+        loadingBar.style.display = 'none';
+        unityShowBanner(message, 'error');
+        postUnityMessage('unityError', { message: message });
+      }
+
+      function hasWebGL() {
+        try {
+          var probe = document.createElement('canvas');
+          return !!(
+            window.WebGLRenderingContext &&
+            (probe.getContext('webgl2') || probe.getContext('webgl') || probe.getContext('experimental-webgl'))
+          );
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function resizeEmbeddedCanvas() {
+        if (!embedded) return;
+        var width = Math.max(1, window.innerWidth);
+        var height = Math.max(1, window.innerHeight);
+        var pixelRatio = Math.min(window.devicePixelRatio || 1, 1.25);
+        canvas.style.width = width + 'px';
+        canvas.style.height = height + 'px';
+        canvas.width = Math.floor(width * pixelRatio);
+        canvas.height = Math.floor(height * pixelRatio);
+      }
+
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        var meta = document.createElement('meta');
+        meta.name = 'viewport';
+        meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+        document.getElementsByTagName('head')[0].appendChild(meta);
+        container.className = 'unity-mobile';
+        canvas.className = 'unity-mobile';
+      } else {
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+      }
+
+      loadingBar.style.display = 'block';
+      resizeEmbeddedCanvas();
+      window.addEventListener('resize', resizeEmbeddedCanvas);
+
+      if (!hasWebGL()) {
+        reportFatal('Your browser does not support WebGL or hardware acceleration is disabled. Enable hardware acceleration in Chrome/Edge and verify WebGL/WebGL2 in chrome://gpu or edge://gpu.');
+      } else {
+        var buildUrl = 'Build';
+        var loaderUrl = buildUrl + '/UAV_USV_WebGL.loader.js';
+        var config = {
+          dataUrl: buildUrl + '/UAV_USV_WebGL.data',
+          frameworkUrl: buildUrl + '/UAV_USV_WebGL.framework.js',
+          codeUrl: buildUrl + '/UAV_USV_WebGL.wasm',
+          streamingAssetsUrl: 'StreamingAssets',
+          companyName: 'UAV-USV',
+          productName: 'UAV_USV_WebGL',
+          productVersion: '0.1',
+          showBanner: unityShowBanner,
+          devicePixelRatio: embedded ? Math.min(window.devicePixelRatio || 1, 1.25) : window.devicePixelRatio || 1,
+          cacheControl: function () {
+            return 'no-store';
+          },
+        };
+
+        var script = document.createElement('script');
+        script.src = loaderUrl;
+        script.onerror = function () {
+          reportFatal('Unity WebGL loader 加载失败，请确认 /unity/Build/UAV_USV_WebGL.loader.js 可以访问。');
+        };
+        script.onload = function () {
+          if (typeof createUnityInstance !== 'function') {
+            reportFatal('Unity WebGL loader 已加载，但 createUnityInstance 不存在。请重新构建 WebGL 包。');
+            return;
+          }
+          createUnityInstance(canvas, config, function (progress) {
+            progressBarFull.style.width = 100 * progress + '%';
+            postUnityMessage('unityProgress', { progress: progress });
+          })
+            .then(function (unityInstance) {
+              window.uavUsvUnityInstance = unityInstance;
+              resizeEmbeddedCanvas();
+              loadingBar.style.display = 'none';
+              postUnityMessage('sceneLoaded', {
+                mode: 'webgl',
+                productName: 'UAV_USV_WebGL',
+              });
+              fullscreenButton.onclick = function () {
+                unityInstance.SetFullscreen(1);
+              };
+            })
+            .catch(function (message) {
+              reportFatal(String(message));
+            });
+        };
+        document.body.appendChild(script);
+      }
+
+      window.addEventListener('message', function (event) {
+        if (event.origin !== window.location.origin) return;
+        var data = event.data || {};
+        if (data.source !== 'vue-console' || !data.message) return;
+        if (!window.uavUsvUnityInstance || !window.uavUsvUnityInstance.SendMessage) return;
+        window.uavUsvUnityInstance.SendMessage('WebBridge', 'ReceiveFromVue', JSON.stringify(data.message));
+      });
+    </script>
+  </body>
+</html>

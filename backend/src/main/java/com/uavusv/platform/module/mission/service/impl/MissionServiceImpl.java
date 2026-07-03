@@ -15,6 +15,7 @@ import com.uavusv.platform.module.mission.dto.response.MissionParameterResponse;
 import com.uavusv.platform.module.mission.dto.response.MissionResponse;
 import com.uavusv.platform.module.mission.entity.MissionEvent;
 import com.uavusv.platform.module.mission.entity.MissionEventType;
+import com.uavusv.platform.module.mission.entity.MissionStage;
 import com.uavusv.platform.module.mission.entity.MissionStatus;
 import com.uavusv.platform.module.mission.entity.MissionTask;
 import com.uavusv.platform.module.mission.entity.MissionTaskDevice;
@@ -149,6 +150,76 @@ public class MissionServiceImpl implements MissionService {
         ));
     }
 
+    @Override
+    @Transactional
+    public MissionDetailResponse markReady(Long id, String operator) {
+        MissionTask mission = findMission(id);
+        ensureStatus(mission, "进入待执行", MissionStatus.DRAFT, MissionStatus.PAUSED);
+        mission.updateStatus(MissionStatus.READY, MissionStage.PREPARE);
+        recordStatusEvent(mission, "任务进入待执行", "任务配置已确认，可以进入协同围捕启动链路。", operator);
+        return buildDetail(mission);
+    }
+
+    @Override
+    @Transactional
+    public MissionDetailResponse startMission(Long id, String operator) {
+        MissionTask mission = findMission(id);
+        ensureStatus(mission, "启动任务", MissionStatus.READY, MissionStatus.PAUSED);
+        mission.updateStatus(MissionStatus.RUNNING, nextRunningStage(mission.getStage()));
+        recordStatusEvent(mission, "任务已启动", "平台已进入任务运行态，后续可接入 ROS 控制指令与 Unity 态势联动。", operator);
+        return buildDetail(mission);
+    }
+
+    @Override
+    @Transactional
+    public MissionDetailResponse pauseMission(Long id, String operator) {
+        MissionTask mission = findMission(id);
+        ensureStatus(mission, "暂停任务", MissionStatus.RUNNING);
+        mission.updateStatus(MissionStatus.PAUSED, mission.getStage());
+        recordStatusEvent(mission, "任务已暂停", "平台保留当前阶段与设备编组，等待恢复运行。", operator);
+        return buildDetail(mission);
+    }
+
+    @Override
+    @Transactional
+    public MissionDetailResponse resumeMission(Long id, String operator) {
+        MissionTask mission = findMission(id);
+        ensureStatus(mission, "恢复任务", MissionStatus.PAUSED);
+        mission.updateStatus(MissionStatus.RUNNING, nextRunningStage(mission.getStage()));
+        recordStatusEvent(mission, "任务已恢复", "协同围捕流程继续运行。", operator);
+        return buildDetail(mission);
+    }
+
+    @Override
+    @Transactional
+    public MissionDetailResponse completeMission(Long id, String operator) {
+        MissionTask mission = findMission(id);
+        ensureStatus(mission, "完成任务", MissionStatus.RUNNING, MissionStatus.PAUSED);
+        mission.updateStatus(MissionStatus.COMPLETED, MissionStage.EVALUATION);
+        recordStatusEvent(mission, "任务已完成", "任务进入评估回放阶段，保留设备编组、参数和事件记录。", operator);
+        return buildDetail(mission);
+    }
+
+    @Override
+    @Transactional
+    public MissionDetailResponse failMission(Long id, String operator) {
+        MissionTask mission = findMission(id);
+        ensureNotTerminal(mission, "标记异常");
+        mission.updateStatus(MissionStatus.FAILED, mission.getStage());
+        recordStatusEvent(mission, "任务异常", "平台已标记任务异常，请在运行监控中排查 ROS、Unity 或设备心跳。", operator);
+        return buildDetail(mission);
+    }
+
+    @Override
+    @Transactional
+    public MissionDetailResponse cancelMission(Long id, String operator) {
+        MissionTask mission = findMission(id);
+        ensureNotTerminal(mission, "取消任务");
+        mission.updateStatus(MissionStatus.CANCELLED, MissionStage.EVALUATION);
+        recordStatusEvent(mission, "任务已取消", "任务已被人工取消，历史事件和设备编组保留。", operator);
+        return buildDetail(mission);
+    }
+
     private void applyMissionFields(MissionTask mission, MissionSaveRequest request) {
         mission.update(
                 request.code(),
@@ -205,6 +276,49 @@ public class MissionServiceImpl implements MissionService {
     private MissionTask findMission(Long id) {
         return missionTaskRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "任务不存在"));
+    }
+
+    private void ensureStatus(MissionTask mission, String action, MissionStatus... allowedStatuses) {
+        for (MissionStatus allowedStatus : allowedStatuses) {
+            if (mission.getStatus() == allowedStatus) {
+                return;
+            }
+        }
+        throw new BusinessException(
+                ErrorCode.BAD_REQUEST,
+                action + "失败：当前任务状态为 " + mission.getStatus()
+        );
+    }
+
+    private void ensureNotTerminal(MissionTask mission, String action) {
+        if (mission.getStatus() == MissionStatus.COMPLETED
+                || mission.getStatus() == MissionStatus.CANCELLED
+                || mission.getStatus() == MissionStatus.FAILED) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    action + "失败：任务已结束，不能继续变更状态"
+            );
+        }
+    }
+
+    private MissionStage nextRunningStage(MissionStage currentStage) {
+        if (currentStage == MissionStage.PREPARE) {
+            return MissionStage.TARGET_DETECTED;
+        }
+        if (currentStage == MissionStage.EVALUATION) {
+            return MissionStage.TRACKING;
+        }
+        return currentStage;
+    }
+
+    private void recordStatusEvent(MissionTask mission, String title, String message, String operator) {
+        missionEventRepository.save(new MissionEvent(
+                mission.getId(),
+                MissionEventType.STATUS,
+                title,
+                message,
+                StringUtils.hasText(operator) ? operator : "platform"
+        ));
     }
 
     private MissionDetailResponse buildDetail(MissionTask mission) {
