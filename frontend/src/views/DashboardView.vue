@@ -233,27 +233,31 @@ async function recordRuntimeCommand(
 
 async function selectDevice(deviceCode: string) {
   selectedDeviceCode.value = deviceCode
-  await recordRuntimeCommand('SELECT_DEVICE', '系统总览选择协同设备', deviceCode)
   unityPanel.value?.selectDevice(deviceCode)
+  lastUnityEvent.value = `selectDevice:${deviceCode}`
+  void recordRuntimeCommand('SELECT_DEVICE', '系统总览选择协同设备', deviceCode).catch(() => undefined)
 }
 
 async function focusSelectedDevice() {
-  await recordRuntimeCommand('FOCUS_DEVICE', 'Unity 视角聚焦当前设备')
   unityPanel.value?.focusDevice(selectedDeviceCode.value)
+  lastUnityEvent.value = `focusDevice:${selectedDeviceCode.value}`
+  void recordRuntimeCommand('FOCUS_DEVICE', 'Unity 视角聚焦当前设备').catch(() => undefined)
 }
 
 async function switchCamera(mode: string) {
   selectedCameraMode.value = mode
-  await recordRuntimeCommand('SWITCH_CAMERA', 'Unity 切换态势观察视角', selectedDeviceCode.value, { mode })
   unityPanel.value?.switchCamera(mode)
+  lastUnityEvent.value = `switchCamera:${mode}`
+  void recordRuntimeCommand('SWITCH_CAMERA', 'Unity 切换态势观察视角', selectedDeviceCode.value, { mode }).catch(() => undefined)
 }
 
 async function toggleTrajectory() {
   trajectoryVisible.value = !trajectoryVisible.value
-  await recordRuntimeCommand('TOGGLE_TRAJECTORY', 'Unity 切换轨迹显示状态', selectedDeviceCode.value, {
-    visible: trajectoryVisible.value,
-  })
   unityPanel.value?.toggleTrajectory(trajectoryVisible.value)
+  lastUnityEvent.value = `toggleTrajectory:${trajectoryVisible.value ? 'show' : 'hide'}`
+  void recordRuntimeCommand('TOGGLE_TRAJECTORY', 'Unity 切换轨迹显示状态', selectedDeviceCode.value, {
+    visible: trajectoryVisible.value,
+  }).catch(() => undefined)
 }
 
 async function sendCommand(command: string) {
@@ -268,9 +272,14 @@ async function sendCommand(command: string) {
     ElMessage.error(`未知控制指令：${command}`)
     return
   }
-  await recordRuntimeCommand(commandType, '系统总览快捷控制指令', selectedDeviceCode.value, { command })
   unityPanel.value?.sendControlCommand(command, selectedDeviceCode.value)
-  ElMessage.success(`指令已下发：${commandType}`)
+  lastUnityEvent.value = `command:${command}`
+  ElMessage.success(`已发送到 Unity：${commandType}`)
+  void recordRuntimeCommand(commandType, '系统总览快捷控制指令', selectedDeviceCode.value, { command }).catch(() => undefined)
+}
+
+function handleUnityCommand(message: UnityMessage) {
+  lastUnityEvent.value = `vue->unity:${message.type}`
 }
 
 function handleUnityReady() {
@@ -434,6 +443,7 @@ watch(
             @unity-ready="handleUnityReady"
             @unity-message="handleUnityMessage"
             @unity-error="handleUnityError"
+            @unity-command="handleUnityCommand"
           />
 
           <div class="mission-readouts">

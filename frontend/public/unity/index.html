@@ -97,6 +97,72 @@
         postUnityMessage('unityError', { message: message });
       }
 
+      function normalizeCommand(value) {
+        return String(value || '').trim().toLowerCase();
+      }
+
+      function dispatchUnityKey(key, code, keyCode) {
+        canvas.focus();
+        var eventInit = {
+          key: key,
+          code: code,
+          keyCode: keyCode,
+          which: keyCode,
+          bubbles: true,
+          cancelable: true,
+        };
+        ['keydown', 'keyup'].forEach(function (type) {
+          var event = new KeyboardEvent(type, eventInit);
+          canvas.dispatchEvent(event);
+          document.dispatchEvent(event);
+          window.dispatchEvent(event);
+        });
+      }
+
+      function applyUnityFallback(message) {
+        var type = normalizeCommand(message.type);
+        var payload = message.payload || {};
+        var command = normalizeCommand(payload.command);
+        var mode = normalizeCommand(payload.mode);
+
+        if (type === 'sendcontrolcommand') {
+          if (command === 'takeoff' || command === 'startmission') {
+            dispatchUnityKey(' ', 'Space', 32);
+            return 'space';
+          }
+          if (command === 'stopmission' || command === 'reset') {
+            dispatchUnityKey('r', 'KeyR', 82);
+            return 'reset';
+          }
+        }
+
+        if (type === 'switchcamera') {
+          var cameraKeys = {
+            overview: ['1', 'Digit1', 49],
+            'follow-usv': ['2', 'Digit2', 50],
+            'follow-uav': ['3', 'Digit3', 51],
+            lighthouse: ['4', 'Digit4', 52],
+          };
+          var cameraKey = cameraKeys[mode];
+          if (cameraKey) {
+            dispatchUnityKey(cameraKey[0], cameraKey[1], cameraKey[2]);
+            return cameraKey[1];
+          }
+        }
+
+        if (type === 'focusdevice') {
+          dispatchUnityKey('f', 'KeyF', 70);
+          return 'focus';
+        }
+
+        if (type === 'toggletrajectory') {
+          dispatchUnityKey('t', 'KeyT', 84);
+          return 'trajectory';
+        }
+
+        return '';
+      }
+
       function hasWebGL() {
         try {
           var probe = document.createElement('canvas');
@@ -193,8 +259,23 @@
         if (event.origin !== window.location.origin) return;
         var data = event.data || {};
         if (data.source !== 'vue-console' || !data.message) return;
-        if (!window.uavUsvUnityInstance || !window.uavUsvUnityInstance.SendMessage) return;
-        window.uavUsvUnityInstance.SendMessage('WebBridge', 'ReceiveFromVue', JSON.stringify(data.message));
+        var message = data.message;
+        var bridgeSent = false;
+        if (window.uavUsvUnityInstance && window.uavUsvUnityInstance.SendMessage) {
+          try {
+            window.uavUsvUnityInstance.SendMessage('WebBridge', 'ReceiveFromVue', JSON.stringify(message));
+            bridgeSent = true;
+          } catch (error) {
+            console.warn('Unity WebBridge command failed, fallback will be used.', error);
+          }
+        }
+        var fallback = applyUnityFallback(message);
+        postUnityMessage('vueCommandReceived', {
+          type: message.type,
+          payload: message.payload || {},
+          bridgeSent: bridgeSent,
+          fallback: fallback,
+        });
       });
     </script>
   </body>
