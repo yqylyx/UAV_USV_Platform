@@ -267,13 +267,39 @@ async function waitForRuntimeStatus(targetStatuses: SimulationStatus[], timeoutM
   throw new Error('运行状态确认超时，请查看 WSL 终端和联调诊断')
 }
 
+function handleRuntimeAction(action: 'start' | 'stop' | 'refresh', event: MouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+
+  if (action === 'start') {
+    void startSimulation()
+  } else if (action === 'stop') {
+    void stopSimulation()
+  } else if (action === 'refresh') {
+    void load()
+  }
+}
+
+function handleRuntimeActionCapture(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  const button = target?.closest<HTMLButtonElement>('button[data-runtime-action]')
+  if (!button || button.disabled) return
+
+  const action = button.dataset.runtimeAction
+  if (action === 'start' || action === 'stop' || action === 'refresh') {
+    handleRuntimeAction(action, event)
+  }
+}
+
 onMounted(async () => {
+  document.addEventListener('click', handleRuntimeActionCapture, true)
   await Promise.all([load(), controlStore.refresh()])
   monitoringStore.connectEvents()
   controlTimer = window.setInterval(() => controlStore.refresh(), 2000)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', handleRuntimeActionCapture, true)
   monitoringStore.disconnectEvents()
   if (controlTimer !== null) window.clearInterval(controlTimer)
 })
@@ -285,21 +311,37 @@ onBeforeUnmount(() => {
       <el-tag :type="controlTag(controlStore.runtime?.status)" effect="plain">
         {{ controlStore.runtime ? controlLabels[controlStore.runtime.status] : '状态未知' }}
       </el-tag>
-      <el-button type="primary" :icon="Play" :loading="actionPhase === 'starting'" :disabled="!canStart" @click="startSimulation">
-        {{ actionPhase === 'starting' ? '启动中...' : '运行' }}
-      </el-button>
-      <el-button
-        v-if="canStop || actionPhase === 'stopping'"
-        type="danger"
-        plain
-        :icon="Square"
-        :loading="actionPhase === 'stopping'"
-        :disabled="isOperating && actionPhase !== 'stopping'"
-        @click="stopSimulation"
+      <button
+        data-runtime-action="start"
+        type="button"
+        class="runtime-topbar-button primary"
+        :disabled="!canStart"
+        @click="handleRuntimeAction('start', $event)"
       >
+        <Play :size="16" />
+        {{ actionPhase === 'starting' ? '启动中...' : '运行' }}
+      </button>
+      <button
+        v-if="canStop || actionPhase === 'stopping'"
+        data-runtime-action="stop"
+        type="button"
+        class="runtime-topbar-button danger"
+        :disabled="isOperating && actionPhase !== 'stopping'"
+        @click="handleRuntimeAction('stop', $event)"
+      >
+        <Square :size="15" />
         {{ actionPhase === 'stopping' ? '停止中...' : '停止' }}
-      </el-button>
-      <el-button :loading="monitoringStore.loading" :icon="RefreshCw" @click="load">刷新</el-button>
+      </button>
+      <button
+        data-runtime-action="refresh"
+        type="button"
+        class="runtime-topbar-button"
+        :disabled="monitoringStore.loading"
+        @click="handleRuntimeAction('refresh', $event)"
+      >
+        <RefreshCw :size="16" />
+        刷新
+      </button>
     </template>
 
     <el-alert

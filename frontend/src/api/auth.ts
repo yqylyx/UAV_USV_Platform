@@ -2,9 +2,17 @@ import { http } from './http'
 import type { ApiResponse } from '@/types/api'
 import type { CsrfToken, CurrentUser, LoginPayload } from '@/types/auth'
 
+function readCookie(name: string): string {
+  if (typeof document === 'undefined') return ''
+  const cookieText = document.cookie || ''
+  const cookie = cookieText.split('; ').find((item) => item.startsWith(`${name}=`))
+  return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : ''
+}
+
 export async function fetchCsrfToken(): Promise<CsrfToken> {
   const response = await http.get<ApiResponse<CsrfToken>>('/auth/csrf')
-  return response.data.data
+  const token = readCookie('XSRF-TOKEN') || response.data.data.token
+  return { ...response.data.data, token }
 }
 
 export async function login(payload: LoginPayload): Promise<CurrentUser> {

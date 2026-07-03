@@ -15,3 +15,7 @@
 - 后端模块保持企业级 MVC 分层结构。
 - ROS/Unity 接入先做只读监控和状态回传，再逐步做控制命令。
 - 危险的启动/停止/进程控制必须有明确状态判断和人工确认。
+
+## 本地联调环境
+
+- [local-runtime-environment.md](local-runtime-environment.md)：记录当前开发机的 Windows、WSL2、ROS2、Unity、Java、Node、MySQL 等环境信息，并说明其他电脑拉取代码后需要配置的本地路径和运行参数。

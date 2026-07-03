@@ -24,8 +24,8 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (state) => state.user !== null,
   },
   actions: {
-    async initialize() {
-      if (this.initialized) return
+    async initialize(force = false) {
+      if (this.initialized && !force) return
 
       try {
         await fetchCsrfToken()

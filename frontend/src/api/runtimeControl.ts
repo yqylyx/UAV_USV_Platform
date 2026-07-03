@@ -33,27 +33,23 @@ export async function fetchRuntimeControlStatus(): Promise<RuntimeControlState> 
 }
 
 export async function startRuntime(): Promise<RuntimeControlState> {
-  const csrf = await fetchCsrfToken()
+  await fetchCsrfToken()
   const response = await http.post<ApiResponse<RuntimeControlState>>('/runtime-control/start', undefined, {
-    headers: { [csrf.headerName]: csrf.token },
     timeout: 30000,
   })
   return response.data.data
 }
 
 export async function stopRuntime(): Promise<RuntimeControlState> {
-  const csrf = await fetchCsrfToken()
+  await fetchCsrfToken()
   const response = await http.post<ApiResponse<RuntimeControlState>>('/runtime-control/stop', undefined, {
-    headers: { [csrf.headerName]: csrf.token },
     timeout: 30000,
   })
   return response.data.data
 }
 
 export async function issueRuntimeCommand(payload: RuntimeCommandPayload): Promise<RuntimeCommandResult> {
-  const csrf = await fetchCsrfToken()
-  const response = await http.post<ApiResponse<RuntimeCommandResult>>('/runtime-control/commands', payload, {
-    headers: { [csrf.headerName]: csrf.token },
-  })
+  await fetchCsrfToken()
+  const response = await http.post<ApiResponse<RuntimeCommandResult>>('/runtime-control/commands', payload)
   return response.data.data
 }
