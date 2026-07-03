@@ -73,6 +73,19 @@
         );
       }
 
+      window.receiveUnityMessage = function (message) {
+        try {
+          var parsed = typeof message === 'string' ? JSON.parse(message) : message;
+          if (parsed && parsed.type) {
+            postUnityMessage(parsed.type, parsed.payload || {});
+            return;
+          }
+        } catch (error) {
+          console.warn('Unable to parse Unity message.', error);
+        }
+        postUnityMessage('unityMessage', { value: String(message || '') });
+      };
+
       function unityShowBanner(msg, type) {
         function updateBannerVisibility() {
           warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
