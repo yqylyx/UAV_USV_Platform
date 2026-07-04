@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 type UnityMessage = {
   type: string
+  requestId?: string
+  timestamp?: number
   payload?: Record<string, unknown>
 }
 
@@ -164,16 +166,26 @@ function handleIframeLoad() {
   startIframeProbe()
 }
 
+function createRequestId(type: string) {
+  return `${type}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+}
+
 function postToUnity(type: string, payload: Record<string, unknown> = {}) {
-  const message: UnityMessage = { type, payload }
+  const message: UnityMessage = {
+    type,
+    requestId: createRequestId(type),
+    timestamp: Date.now(),
+    payload,
+  }
   emit('unityCommand', message)
   iframeRef.value?.contentWindow?.postMessage(
     {
       source: 'vue-console',
-      message: { ...message, timestamp: Date.now() },
+      message,
     },
     window.location.origin,
   )
+  return message.requestId
 }
 
 function selectDevice(deviceCode: string) {

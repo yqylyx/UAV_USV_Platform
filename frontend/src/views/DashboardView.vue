@@ -12,6 +12,8 @@ import type { RuntimeNode } from '@/types/monitoring'
 
 type UnityMessage = {
   type: string
+  requestId?: string
+  timestamp?: number
   payload?: Record<string, unknown>
 }
 
@@ -68,6 +70,7 @@ const selectedCameraMode = ref('overview')
 const trajectoryVisible = ref(true)
 const unityConnection = ref('等待 WebGL 构建')
 const lastUnityEvent = ref('暂无 Unity 回传事件')
+const unityCommandState = ref('等待控制指令')
 let poseFrameSequence = 0
 let heartbeatTimer: number | null = null
 const unityInstanceId = `vue-webgl:${window.location.host}:${Math.random().toString(36).slice(2, 10)}`
@@ -169,6 +172,7 @@ function unityHeartbeatDetail() {
     `camera=${selectedCameraMode.value}`,
     `selected=${selectedDeviceCode.value}`,
     `lastEvent=${lastUnityEvent.value}`,
+    `commandState=${unityCommandState.value}`,
     `poseFrames=${poseFrameSequence}`,
   ].join(' | ')
 }
@@ -280,6 +284,7 @@ async function sendCommand(command: string) {
 
 function handleUnityCommand(message: UnityMessage) {
   lastUnityEvent.value = `vue->unity:${message.type}`
+  unityCommandState.value = `已发送：${message.type}`
 }
 
 function handleUnityReady() {
@@ -293,6 +298,19 @@ function handleUnityMessage(message: UnityMessage) {
   const payload = message.payload ?? {}
   unityConnection.value = payload.source === 'mock' ? 'Unity Mock 已接入' : 'Unity WebGL 已连接'
   lastUnityEvent.value = message.type
+
+  if (message.type === 'vueCommandReceived') {
+    const commandType = String(payload.type ?? 'unknown')
+    const bridgeSent = payload.bridgeSent === true ? '已送达 Unity' : '等待 Unity 实例'
+    unityCommandState.value = `已接收：${commandType} / ${bridgeSent}`
+  }
+
+  if (message.type === 'commandAck') {
+    const commandType = String(payload.commandType ?? 'unknown')
+    const status = String(payload.status ?? 'unknown')
+    const success = payload.success === true
+    unityCommandState.value = `${success ? '已执行' : '执行失败'}：${commandType} / ${status}`
+  }
 
   if (typeof payload.deviceCode === 'string' && payload.deviceCode.trim()) selectedDeviceCode.value = payload.deviceCode
   if (typeof payload.mode === 'string') selectedCameraMode.value = payload.mode
@@ -480,6 +498,7 @@ watch(
               <span>Unity 通信</span>
               <strong>{{ unityConnection }}</strong>
               <small>最近事件：{{ lastUnityEvent }}</small>
+              <small>命令状态：{{ unityCommandState }}</small>
             </div>
           </div>
 

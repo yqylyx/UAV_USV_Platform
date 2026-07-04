@@ -66,6 +66,8 @@
             source: 'unity-webgl',
             message: {
               type: type,
+              requestId: payload && payload.requestId ? payload.requestId : '',
+              timestamp: Date.now(),
               payload: payload || {},
             },
           },
@@ -77,7 +79,18 @@
         try {
           var parsed = typeof message === 'string' ? JSON.parse(message) : message;
           if (parsed && parsed.type) {
-            postUnityMessage(parsed.type, parsed.payload || {});
+            window.parent.postMessage(
+              {
+                source: 'unity-webgl',
+                message: {
+                  type: parsed.type,
+                  requestId: parsed.requestId || '',
+                  timestamp: parsed.timestamp || Date.now(),
+                  payload: parsed.payload || {},
+                },
+              },
+              window.location.origin,
+            );
             return;
           }
         } catch (error) {
@@ -276,7 +289,7 @@
         var bridgeSent = false;
         if (window.uavUsvUnityInstance && window.uavUsvUnityInstance.SendMessage) {
           try {
-            window.uavUsvUnityInstance.SendMessage('WebBridge', 'ReceiveFromVue', JSON.stringify(message));
+            window.uavUsvUnityInstance.SendMessage('WebCommandBridge', 'ReceiveFromVue', JSON.stringify(message));
             bridgeSent = true;
           } catch (error) {
             console.warn('Unity WebBridge command failed, fallback will be used.', error);
@@ -284,6 +297,7 @@
         }
         var fallback = applyUnityFallback(message);
         postUnityMessage('vueCommandReceived', {
+          requestId: message.requestId || '',
           type: message.type,
           payload: message.payload || {},
           bridgeSent: bridgeSent,
