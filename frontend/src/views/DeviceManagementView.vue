@@ -40,7 +40,7 @@ const form = reactive<DeviceSavePayload>({
 })
 
 const rules: FormRules<DeviceSavePayload> = {
-  code: [{ required: true, message: '请输入设备编码', trigger: 'blur' }],
+  code: [{ required: true, message: '请输入设备编号', trigger: 'blur' }],
   name: [{ required: true, message: '请输入设备名称', trigger: 'blur' }],
   type: [{ required: true, message: '请选择设备类型', trigger: 'change' }],
   status: [{ required: true, message: '请选择运行状态', trigger: 'change' }],
@@ -59,6 +59,7 @@ const rules: FormRules<DeviceSavePayload> = {
 const typeOptions: Array<{ label: string; value: DeviceType }> = [
   { label: '无人机 UAV', value: 'UAV' },
   { label: '无人艇 USV', value: 'USV' },
+  { label: '灯塔目标', value: 'LIGHTHOUSE' },
   { label: 'ROS 节点', value: 'ROS_NODE' },
   { label: 'Unity 节点', value: 'UNITY_NODE' },
 ]
@@ -76,6 +77,8 @@ const deleteTitle = computed(() => (deleteTarget.value ? `删除 ${deleteTarget.
 const onlineCount = computed(() => deviceStore.records.filter((device) => device.status === 'ONLINE').length)
 const missionUnitCount = computed(() => deviceStore.records.filter((device) => ['UAV', 'USV'].includes(device.type)).length)
 const bridgeNodeCount = computed(() => deviceStore.records.filter((device) => ['ROS_NODE', 'UNITY_NODE'].includes(device.type)).length)
+const attentionCount = computed(() => deviceStore.records.filter((device) => device.status !== 'ONLINE').length)
+const highlightedDevices = computed(() => deviceStore.records.slice(0, 3))
 
 function typeLabel(type: DeviceType) {
   return typeOptions.find((item) => item.value === type)?.label ?? type
@@ -103,6 +106,7 @@ function typeClass(type: DeviceType) {
 function deviceInitial(type: DeviceType) {
   if (type === 'UAV') return 'UAV'
   if (type === 'USV') return 'USV'
+  if (type === 'LIGHTHOUSE') return '灯塔'
   if (type === 'ROS_NODE') return 'ROS'
   if (type === 'UNITY_NODE') return '3D'
   return 'OBJ'
@@ -198,8 +202,7 @@ async function submit() {
 }
 
 function openDelete(row: Device | Record<string, unknown>) {
-  const device = row as Device
-  deleteTarget.value = device
+  deleteTarget.value = row as Device
   deleteAcknowledged.value = false
   deleteError.value = ''
   deleteDialogVisible.value = true
@@ -254,38 +257,52 @@ onMounted(() => load(0))
       class="section-alert"
     />
 
-    <section class="device-command" aria-label="设备资产指挥台">
-      <div class="device-command-hero">
-        <p>ASSET REGISTRY</p>
-        <h2>海空协同任务资产注册台</h2>
-        <span>统一登记 UAV、USV、ROS 桥接节点与 Unity 仿真端，为任务控制、运行监控和后续启动编排提供资产底座。</span>
-      </div>
-      <div class="device-command-metrics">
-        <div>
-          <span>登记资产</span>
-          <strong>{{ deviceStore.total }}</strong>
-          <small>当前可管理设备</small>
-        </div>
-        <div>
-          <span>在线节点</span>
-          <strong>{{ onlineCount }}</strong>
-          <small>当前页在线状态</small>
-        </div>
-        <div>
-          <span>任务单元</span>
-          <strong>{{ missionUnitCount }}</strong>
-          <small>UAV / USV</small>
-        </div>
-        <div>
-          <span>桥接链路</span>
-          <strong>{{ bridgeNodeCount }}</strong>
-          <small>ROS / Unity</small>
-        </div>
-      </div>
+    <section class="page-metric-grid">
+      <article class="console-stat-card">
+        <span>设备总数</span>
+        <strong>{{ deviceStore.total }}</strong>
+        <small>平台登记设备</small>
+      </article>
+      <article class="console-stat-card">
+        <span>在线设备</span>
+        <strong>{{ onlineCount }}</strong>
+        <small>当前页在线</small>
+      </article>
+      <article class="console-stat-card warning">
+        <span>待检查</span>
+        <strong>{{ attentionCount }}</strong>
+        <small>离线、维护或未知</small>
+      </article>
+      <article class="console-stat-card">
+        <span>桥接节点</span>
+        <strong>{{ bridgeNodeCount }}</strong>
+        <small>ROS / Unity</small>
+      </article>
     </section>
 
-    <section class="device-filter-panel" aria-label="设备筛选">
-      <el-input v-model="filters.keyword" clearable placeholder="搜索编码、名称、地址" class="filter-keyword" @keyup.enter="load(0)" />
+    <section class="asset-highlight-grid">
+      <article
+        v-for="device in highlightedDevices"
+        :key="device.id"
+        class="asset-highlight-card"
+        :class="[typeClass(device.type), statusClass(device.status)]"
+      >
+        <el-tag class="asset-highlight-status" :type="statusTag(device.status)" effect="dark">
+          {{ statusLabel(device.status) }}
+        </el-tag>
+        <span>{{ typeLabel(device.type) }}</span>
+        <strong>{{ device.code }}</strong>
+        <small>{{ device.name }} · {{ endpoint(device) }}</small>
+      </article>
+      <article v-if="highlightedDevices.length === 0" class="asset-highlight-card empty">
+        <span>暂无设备</span>
+        <strong>等待登记</strong>
+        <small>新增 UAV、USV、ROS 或 Unity 节点后将在这里展示。</small>
+      </article>
+    </section>
+
+    <section class="console-panel filter-panel" aria-label="设备筛选">
+      <el-input v-model="filters.keyword" clearable placeholder="搜索编号、名称、地址" @keyup.enter="load(0)" />
       <el-select v-model="filters.type" clearable placeholder="设备类型">
         <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
       </el-select>
@@ -296,73 +313,60 @@ onMounted(() => load(0))
       <el-button :icon="RotateCcw" @click="resetFilters">重置</el-button>
     </section>
 
-    <section class="device-registry-section">
-      <div class="section-heading">
+    <section class="console-panel table-panel">
+      <div class="panel-heading">
         <div>
-          <h2>任务设备</h2>
-          <p>面向协同围捕任务的资产清单，删除仅隐藏登记项，不停止 ROS 或 Unity 进程。</p>
+          <h2>设备列表</h2>
+          <p>统一维护无人机、无人艇、灯塔、ROS 和 Unity 节点。</p>
         </div>
         <el-tag effect="plain">共 {{ deviceStore.total }} 个</el-tag>
       </div>
 
-      <div v-loading="deviceStore.loading" class="device-card-grid">
-        <el-empty v-if="!deviceStore.loading && deviceStore.records.length === 0" description="暂无设备" />
-        <template v-else>
-          <article
-            v-for="device in deviceStore.records"
-            :key="device.id"
-            class="device-card"
-            :class="typeClass(device.type)"
-          >
-            <div class="device-card-top">
-              <div class="device-type-mark" :class="typeClass(device.type)">{{ deviceInitial(device.type) }}</div>
+      <el-table v-loading="deviceStore.loading" :data="deviceStore.records" class="console-table">
+        <el-table-column label="设备编号" min-width="210">
+          <template #default="{ row }">
+            <div class="asset-name-cell">
+              <span class="asset-mini-mark" :class="typeClass(row.type)">{{ deviceInitial(row.type) }}</span>
               <div>
-                <strong>{{ device.name }}</strong>
-                <span>{{ device.code }}</span>
-              </div>
-              <i class="device-status-dot" :class="statusClass(device.status)"></i>
-            </div>
-
-            <div class="device-card-body">
-              <div>
-                <span>设备类型</span>
-                <strong>{{ typeLabel(device.type) }}</strong>
-              </div>
-              <div>
-                <span>运行状态</span>
-                <strong>
-                  <i class="device-status-pill" :class="statusClass(device.status)">
-                    {{ statusLabel(device.status) }}
-                  </i>
-                </strong>
-              </div>
-              <div>
-                <span>网络地址</span>
-                <strong>{{ endpoint(device) }}</strong>
-              </div>
-              <div>
-                <span>ROS 命名空间</span>
-                <strong>{{ device.rosNamespace || '--' }}</strong>
+                <strong>{{ row.name }}</strong>
+                <small>{{ row.code }}</small>
               </div>
             </div>
-
-            <div class="device-card-footer">
-              <span>更新 {{ formatTime(device.updatedAt) }}</span>
-              <div v-if="canManage" class="device-actions">
-                <el-button link type="primary" :icon="Pencil" @click="openEdit(device)">编辑</el-button>
-                <el-button
-                  link
-                  type="danger"
-                  :icon="Trash2"
-                  :loading="deletingId === device.id"
-                  :disabled="deletingId !== null"
-                  @click="openDelete(device)"
-                >删除</el-button>
-              </div>
-            </div>
-          </article>
-        </template>
-      </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="类型" min-width="130">
+          <template #default="{ row }">{{ typeLabel(row.type) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" min-width="120">
+          <template #default="{ row }">
+            <el-tag :type="statusTag(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="通信地址" min-width="190">
+          <template #default="{ row }">{{ endpoint(row) }}</template>
+        </el-table-column>
+        <el-table-column label="ROS 命名空间" min-width="160">
+          <template #default="{ row }">{{ row.rosNamespace || '--' }}</template>
+        </el-table-column>
+        <el-table-column label="更新时间" min-width="130">
+          <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
+        </el-table-column>
+        <el-table-column v-if="canManage" label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" :icon="Pencil" @click="openEdit(row)">编辑</el-button>
+            <el-button
+              link
+              type="danger"
+              :icon="Trash2"
+              :loading="deletingId === row.id"
+              :disabled="deletingId !== null"
+              @click="openDelete(row)"
+            >
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
       <div class="table-footer">
         <el-pagination
@@ -381,10 +385,14 @@ onMounted(() => load(0))
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="620px" class="device-dialog" @closed="resetForm">
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <div class="form-grid">
-          <el-form-item label="设备编码" prop="code"><el-input v-model="form.code" placeholder="例如 uav-01" /></el-form-item>
-          <el-form-item label="设备名称" prop="name"><el-input v-model="form.name" placeholder="例如 巡检无人机" /></el-form-item>
-          <el-form-item label="设备类型" prop="type"><el-select v-model="form.type"><el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
-          <el-form-item label="运行状态" prop="status"><el-select v-model="form.status"><el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
+          <el-form-item label="设备编号" prop="code"><el-input v-model="form.code" placeholder="例如 uav-01" /></el-form-item>
+          <el-form-item label="设备名称" prop="name"><el-input v-model="form.name" placeholder="例如 协同无人机" /></el-form-item>
+          <el-form-item label="设备类型" prop="type">
+            <el-select v-model="form.type"><el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+          </el-form-item>
+          <el-form-item label="运行状态" prop="status">
+            <el-select v-model="form.status"><el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+          </el-form-item>
           <el-form-item label="主机地址" prop="host"><el-input v-model="form.host" placeholder="例如 172.30.244.87" /></el-form-item>
           <el-form-item label="端口" prop="port"><el-input-number v-model="form.port" :min="1" :max="65535" controls-position="right" class="full-control" /></el-form-item>
         </div>
@@ -406,48 +414,21 @@ onMounted(() => load(0))
       @closed="closeDeleteDialog"
     >
       <div v-if="deleteTarget" class="delete-confirm">
+        <el-alert v-if="deleteError" title="删除失败" :description="deleteError" type="error" show-icon :closable="false" />
         <el-alert
-          v-if="deleteError"
-          title="删除失败"
-          :description="deleteError"
-          type="error"
-          show-icon
-          :closable="false"
-        />
-        <el-alert
-          title="此操作会将设备从设备管理和运行监控列表中隐藏"
-          description="平台会保留历史状态事件和遥测记录，后续如需恢复可由数据库或恢复功能处理。"
+          title="此操作会将设备从平台列表中删除"
+          description="删除不会停止 ROS、Unity 或 WSL 中正在运行的进程。如需停进程，请到运行监控中执行停止。"
           type="warning"
           show-icon
           :closable="false"
         />
         <dl class="delete-device-meta">
-          <div>
-            <dt>设备名称</dt>
-            <dd>{{ deleteTarget.name }}</dd>
-          </div>
-          <div>
-            <dt>设备编码</dt>
-            <dd>{{ deleteTarget.code }}</dd>
-          </div>
-          <div>
-            <dt>设备类型</dt>
-            <dd>{{ typeLabel(deleteTarget.type) }}</dd>
-          </div>
-          <div>
-            <dt>当前状态</dt>
-            <dd><el-tag :type="statusTag(deleteTarget.status)" effect="plain">{{ statusLabel(deleteTarget.status) }}</el-tag></dd>
-          </div>
+          <div><dt>设备名称</dt><dd>{{ deleteTarget.name }}</dd></div>
+          <div><dt>设备编号</dt><dd>{{ deleteTarget.code }}</dd></div>
+          <div><dt>设备类型</dt><dd>{{ typeLabel(deleteTarget.type) }}</dd></div>
+          <div><dt>当前状态</dt><dd>{{ statusLabel(deleteTarget.status) }}</dd></div>
         </dl>
-        <div class="delete-impact">
-          <span>删除影响</span>
-          <ul>
-            <li>设备不再出现在设备管理、运行监控和后续任务选择中。</li>
-            <li>如果 ROS 或 Unity 仍在上报同一编码，平台不会再把它显示为可管理设备。</li>
-            <li>历史运行数据不会立即清空，便于后续审计和问题追踪。</li>
-          </ul>
-        </div>
-        <el-checkbox v-model="deleteAcknowledged">我确认隐藏该设备，并了解这不会停止 ROS 或 Unity 进程</el-checkbox>
+        <el-checkbox v-model="deleteAcknowledged">我确认删除该设备，并了解这不会停止 ROS 或 Unity 进程</el-checkbox>
       </div>
       <template #footer>
         <el-button :disabled="deletingId !== null" @click="closeDeleteDialog">取消</el-button>

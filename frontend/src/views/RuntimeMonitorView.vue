@@ -27,6 +27,7 @@ const filters = reactive({
 const typeOptions: Array<{ label: string; value: DeviceType }> = [
   { label: '无人机 UAV', value: 'UAV' },
   { label: '无人艇 USV', value: 'USV' },
+  { label: '灯塔目标', value: 'LIGHTHOUSE' },
   { label: 'ROS 节点', value: 'ROS_NODE' },
   { label: 'Unity 节点', value: 'UNITY_NODE' },
 ]
@@ -66,10 +67,9 @@ const canStop = computed(() => {
 const operationText = computed(() => {
   if (actionPhase.value === 'starting') return '正在启动 ROS/Gazebo、WebSocket Bridge 和 Unity 联动，请等待真实心跳确认。'
   if (actionPhase.value === 'stopping') return '正在停止平台托管的 ROS/Gazebo 与 Unity 联动，请等待节点下线。'
-  if (controlStore.runtime?.status === 'RUNNING') return '检测到仿真已经在运行，页面只是接入监控，不是自动重复启动。'
+  if (controlStore.runtime?.status === 'RUNNING') return '检测到仿真已经在运行，页面正在接入监控。'
   return ''
 })
-
 
 const rosNode = computed(() => monitoringStore.nodes.find((node) => node.type === 'ROS_NODE'))
 const unityNode = computed(() => monitoringStore.nodes.find((node) => node.type === 'UNITY_NODE'))
@@ -83,7 +83,7 @@ const liveVehicleNodes = computed(() =>
       node.positionZ !== null,
   ),
 )
-const visibleCommandLogs = computed(() => controlStore.commands.slice(0, 3))
+const visibleCommandLogs = computed(() => controlStore.commands.slice(0, 4))
 const pagedCommandLogs = computed(() => {
   const start = (commandLogPage.value - 1) * commandLogPageSize.value
   return controlStore.commands.slice(start, start + commandLogPageSize.value)
@@ -94,8 +94,8 @@ const diagnosticSteps = computed(() => [
     key: 'ros',
     title: 'ROS / Gazebo',
     status: rosNode.value?.status === 'ONLINE' ? 'ONLINE' : 'OFFLINE',
-    metric: rosNode.value?.status === 'ONLINE' ? 'WebSocket 已连接' : '等待 8765 位姿桥',
-    detail: rosNode.value?.detail || '检查 WSL 中 Gazebo 与 uav_usv_unity_websocket_bridge.launch.py',
+    metric: rosNode.value?.status === 'ONLINE' ? 'WebSocket 已连接' : '等待 8765 位姿帧',
+    detail: rosNode.value?.detail || '检查 WSL、Gazebo 和 uav_usv_unity_websocket_bridge.launch.py',
   },
   {
     key: 'backend',
@@ -122,6 +122,7 @@ const diagnosticSteps = computed(() => [
     detail: unityNode.value?.detail || '进入系统总览并等待 UNITY WEBGL ONLINE',
   },
 ])
+
 function typeLabel(type: DeviceType) {
   return typeOptions.find((item) => item.value === type)?.label ?? type
 }
@@ -141,6 +142,7 @@ function typeClass(type: DeviceType) {
 function nodeInitial(type: DeviceType) {
   if (type === 'UAV') return 'UAV'
   if (type === 'USV') return 'USV'
+  if (type === 'LIGHTHOUSE') return '灯塔'
   if (type === 'ROS_NODE') return 'ROS'
   if (type === 'UNITY_NODE') return '3D'
   return 'NODE'
@@ -306,9 +308,7 @@ async function waitForRuntimeStatus(targetStatuses: SimulationStatus[], timeoutM
   while (Date.now() - startedAt < timeoutMs) {
     await controlStore.refresh()
     await monitoringStore.refresh()
-    if (controlStore.runtime && targetStatuses.includes(controlStore.runtime.status)) {
-      return
-    }
+    if (controlStore.runtime && targetStatuses.includes(controlStore.runtime.status)) return
     await new Promise((resolve) => window.setTimeout(resolve, 1500))
   }
   throw new Error('运行状态确认超时，请查看 WSL 终端和联调诊断')
@@ -318,13 +318,9 @@ function handleRuntimeAction(action: 'start' | 'stop' | 'refresh', event: MouseE
   event.preventDefault()
   event.stopPropagation()
 
-  if (action === 'start') {
-    void startSimulation()
-  } else if (action === 'stop') {
-    void stopSimulation()
-  } else if (action === 'refresh') {
-    void load()
-  }
+  if (action === 'start') void startSimulation()
+  else if (action === 'stop') void stopSimulation()
+  else void load()
 }
 
 function handleRuntimeActionCapture(event: MouseEvent) {
@@ -333,9 +329,7 @@ function handleRuntimeActionCapture(event: MouseEvent) {
   if (!button || button.disabled) return
 
   const action = button.dataset.runtimeAction
-  if (action === 'start' || action === 'stop' || action === 'refresh') {
-    handleRuntimeAction(action, event)
-  }
+  if (action === 'start' || action === 'stop' || action === 'refresh') handleRuntimeAction(action, event)
 }
 
 onMounted(async () => {
@@ -355,7 +349,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ConsoleLayout title="运行监控" eyebrow="RUNTIME MONITOR">
+  <ConsoleLayout title="运行监控" eyebrow="RUNTIME MONITOR" :show-refresh="false">
     <template #actions>
       <el-tag :type="controlTag(controlStore.runtime?.status)" effect="plain">
         {{ controlStore.runtime ? controlLabels[controlStore.runtime.status] : '状态未知' }}
@@ -402,165 +396,143 @@ onBeforeUnmount(() => {
       :closable="false"
       class="section-alert"
     />
-    <el-alert
-      v-if="operationText"
-      :title="operationText"
-      type="info"
-      show-icon
-      :closable="false"
-      class="section-alert"
-    />
+    <el-alert v-if="operationText" :title="operationText" type="info" show-icon :closable="false" class="section-alert" />
 
-    <section class="runtime-command" aria-label="仿真运行状态">
-      <div class="runtime-command-main">
-        <p>RUNTIME LINK CONTROL</p>
-        <h2>{{ controlStore.runtime ? controlLabels[controlStore.runtime.status] : '正在读取运行状态' }}</h2>
-        <span>{{ controlStore.runtime?.message ?? '正在连接运行控制服务，等待 ROS / Unity 心跳回传。' }}</span>
+    <section class="runtime-hero console-panel">
+      <div>
+        <span>RUNTIME LINK CONTROL</span>
+        <strong>{{ controlStore.runtime ? controlLabels[controlStore.runtime.status] : '正在读取状态' }}</strong>
+        <small>{{ controlStore.runtime?.message ?? '等待 ROS / Unity 心跳回传。' }}</small>
       </div>
-      <div class="runtime-command-state">
-        <div>
-          <span class="runtime-status-dot" :class="controlStore.runtime?.status?.toLowerCase()" />
-          <strong>{{ onlineRate }}%</strong>
-          <small>节点在线率</small>
-        </div>
-        <div>
-          <span>ROS</span>
-          <strong :class="{ online: controlStore.runtime?.rosOnline }">{{ controlStore.runtime?.rosOnline ? '在线' : '离线' }}</strong>
-          <small>Gazebo 数据链路</small>
-        </div>
-        <div>
-          <span>Unity</span>
-          <strong :class="{ online: controlStore.runtime?.unityOnline }">{{ controlStore.runtime?.unityOnline ? '在线' : '离线' }}</strong>
-          <small>三维态势心跳</small>
-        </div>
+      <div class="runtime-hero-metrics">
+        <article><span>节点在线率</span><strong>{{ onlineRate }}%</strong></article>
+        <article><span>ROS</span><strong :class="{ online: controlStore.runtime?.rosOnline }">{{ controlStore.runtime?.rosOnline ? '在线' : '离线' }}</strong></article>
+        <article><span>Unity</span><strong :class="{ online: controlStore.runtime?.unityOnline }">{{ controlStore.runtime?.unityOnline ? '在线' : '离线' }}</strong></article>
+        <article><span>告警</span><strong>{{ (monitoringStore.summary?.offlineNodes ?? 0) + (monitoringStore.summary?.unknownNodes ?? 0) }}</strong></article>
       </div>
     </section>
 
-    <section class="runtime-tactical-grid" aria-label="运行状态指标">
-      <article class="runtime-tactical-card">
-        <div class="runtime-card-head">
-          <span>在线节点</span>
-          <b>{{ monitoringStore.summary?.onlineNodes ?? 0 }} / {{ monitoringStore.summary?.totalNodes ?? 0 }}</b>
-        </div>
-        <div class="runtime-progress-bar"><i :style="{ width: `${onlineRate}%` }"></i></div>
-        <p>实时心跳确认的 ROS、Unity、UAV 与 USV 节点。</p>
+    <section class="page-metric-grid">
+      <article class="console-stat-card">
+        <span>UAV 在线</span>
+        <strong>{{ onlineNodeCount('UAV') }}</strong>
+        <small>{{ latestHeartbeat('UAV') }}</small>
       </article>
-      <article class="runtime-tactical-card">
-        <div class="runtime-card-head">
-          <span>通信 / 可视化</span>
-          <b>{{ monitoringStore.summary?.rosNodes ?? 0 }} / {{ monitoringStore.summary?.unityNodes ?? 0 }}</b>
-        </div>
-        <p>ROS WebSocket 与 Unity 心跳共同构成仿真到可视化链路。</p>
+      <article class="console-stat-card">
+        <span>USV 在线</span>
+        <strong>{{ onlineNodeCount('USV') }}</strong>
+        <small>{{ latestHeartbeat('USV') }}</small>
       </article>
-      <article class="runtime-tactical-card">
-        <div class="runtime-card-head">
-          <span>协同载体</span>
-          <b>{{ monitoringStore.summary?.vehicleNodes ?? 0 }}</b>
-        </div>
-        <p>无人机和无人艇作为围捕任务的执行单元。</p>
+      <article class="console-stat-card">
+        <span>ROS Bridge 在线</span>
+        <strong>{{ onlineNodeCount('ROS_NODE') }}</strong>
+        <small>{{ latestHeartbeat('ROS_NODE') }}</small>
       </article>
-      <article class="runtime-tactical-card attention">
-        <div class="runtime-card-head">
-          <span>异常关注</span>
-          <b>{{ (monitoringStore.summary?.offlineNodes ?? 0) + (monitoringStore.summary?.unknownNodes ?? 0) }}</b>
-        </div>
-        <p>离线、未知或长时间未收到心跳的节点需要优先排查。</p>
+      <article class="console-stat-card">
+        <span>Unity 心跳</span>
+        <strong>{{ onlineNodeCount('UNITY_NODE') }}</strong>
+        <small>{{ latestHeartbeat('UNITY_NODE') }}</small>
       </article>
     </section>
 
-    <section class="runtime-node-grid" aria-label="节点类型状态">
-      <article class="runtime-node-card">
-        <div class="node-card-icon uav"><Plane :size="20" /></div>
-        <div><span>UAV 在线</span><strong>{{ onlineNodeCount('UAV') }}</strong><small>{{ latestHeartbeat('UAV') }}</small></div>
-      </article>
-      <article class="runtime-node-card">
-        <div class="node-card-icon usv"><Ship :size="20" /></div>
-        <div><span>USV 在线</span><strong>{{ onlineNodeCount('USV') }}</strong><small>{{ latestHeartbeat('USV') }}</small></div>
-      </article>
-      <article class="runtime-node-card">
-        <div class="node-card-icon ros"><Radar :size="20" /></div>
-        <div><span>ROS bridge 在线</span><strong>{{ onlineNodeCount('ROS_NODE') }}</strong><small>{{ latestHeartbeat('ROS_NODE') }}</small></div>
-      </article>
-      <article class="runtime-node-card">
-        <div class="node-card-icon unity"><Activity :size="20" /></div>
-        <div><span>Unity 在线</span><strong>{{ onlineNodeCount('UNITY_NODE') }}</strong><small>{{ latestHeartbeat('UNITY_NODE') }}</small></div>
-      </article>
-    </section>
-
-    <section class="runtime-diagnostic-panel" aria-label="联调链路诊断">
-      <div class="section-heading compact">
-        <div>
-          <h2>联调诊断</h2>
-          <p>按数据流检查 Gazebo、后端、前端刷新与 Unity WebGL 心跳。</p>
-        </div>
-        <el-tag effect="plain">{{ onlineRate }}% ONLINE</el-tag>
-      </div>
-      <div class="runtime-diagnostic-flow">
-        <article
-          v-for="step in diagnosticSteps"
-          :key="step.key"
-          class="runtime-diagnostic-card"
-          :class="step.status.toLowerCase()"
-        >
-          <div class="diagnostic-card-head">
-            <span>{{ step.title }}</span>
-            <i></i>
+    <section class="runtime-two-column">
+      <article class="console-panel runtime-diagnostic">
+        <div class="panel-heading">
+          <div>
+            <h2>联调诊断</h2>
+            <p>按数据流检查 Gazebo、后端、前端刷新与 Unity WebGL 心跳。</p>
           </div>
-          <strong>{{ step.metric }}</strong>
-          <p>{{ step.detail }}</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="runtime-command-log-panel" aria-label="控制指令日志">
-      <div class="section-heading compact">
-        <div>
-          <h2>控制日志</h2>
-          <p>记录运行、停止和快速指令的后端执行结果，便于确认按钮是否真正下发。</p>
+          <el-tag effect="plain">{{ onlineRate }}% ONLINE</el-tag>
         </div>
-        <el-button link type="primary" @click="openCommandLogDialog">
-          最近 {{ visibleCommandLogs.length }} 条 / 共 {{ controlStore.commands.length }} 条
-        </el-button>
-      </div>
-      <div class="runtime-command-log-list">
-        <el-empty
-          v-if="controlStore.commands.length === 0"
-          description="暂无控制指令记录"
-          :image-size="64"
-        />
-        <template v-else>
-          <article
-            v-for="command in visibleCommandLogs"
-            :key="command.id"
-            class="runtime-command-log-item"
-            :class="commandStatusClass(command.status)"
-          >
-            <div class="runtime-command-log-main">
-              <strong>{{ commandTypeLabel(command.commandType) }}</strong>
-              <span>{{ command.detail || '指令已记录，等待执行结果' }}</span>
-            </div>
-            <div class="runtime-command-log-meta">
-              <b :class="commandStatusClass(command.status)">{{ commandStatusLabel(command.status) }}</b>
-              <small>{{ formatTime(command.completedAt || command.requestedAt) }}</small>
-              <small>{{ command.requestedBy || 'system' }}</small>
-            </div>
+        <div class="runtime-diagnostic-list">
+          <article v-for="step in diagnosticSteps" :key="step.key" :class="step.status.toLowerCase()">
+            <span>{{ step.title }}</span>
+            <strong>{{ step.metric }}</strong>
+            <small>{{ step.detail }}</small>
           </article>
-        </template>
-      </div>
+        </div>
+      </article>
+
+      <article class="console-panel runtime-log">
+        <div class="panel-heading">
+          <div>
+            <h2>实时日志</h2>
+            <p>记录运行、停止和快捷指令的执行结果。</p>
+          </div>
+          <el-button link type="primary" @click="openCommandLogDialog">全部日志</el-button>
+        </div>
+        <div class="runtime-log-list">
+          <el-empty v-if="controlStore.commands.length === 0" description="暂无控制指令记录" :image-size="56" />
+          <article v-for="command in visibleCommandLogs" v-else :key="command.id">
+            <span>{{ formatTime(command.completedAt || command.requestedAt) }} {{ commandTypeLabel(command.commandType) }}</span>
+            <b :class="commandStatusClass(command.status)">{{ commandStatusLabel(command.status) }}</b>
+          </article>
+        </div>
+      </article>
     </section>
 
-    <el-dialog
-      v-model="commandLogDialogVisible"
-      title="控制指令日志"
-      width="860px"
-      class="runtime-command-log-dialog"
-    >
+    <section class="console-panel filter-panel">
+      <el-select v-model="filters.type" clearable placeholder="节点类型">
+        <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
+      </el-select>
+      <el-select v-model="filters.status" clearable placeholder="运行状态">
+        <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
+      </el-select>
+      <el-button type="primary" :icon="Search" :loading="monitoringStore.loading" @click="load">查询</el-button>
+      <el-button :icon="RotateCcw" @click="resetFilters">重置</el-button>
+    </section>
+
+    <section class="console-panel table-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>实时节点</h2>
+          <p>状态由 ROS WebSocket 数据和 Unity 心跳共同确认。</p>
+        </div>
+        <el-tag effect="plain">更新 {{ formatTime(monitoringStore.summary?.refreshedAt ?? null) }}</el-tag>
+      </div>
+
+      <el-table v-loading="monitoringStore.loading" :data="monitoringStore.nodes" class="console-table">
+        <el-table-column label="节点" min-width="220">
+          <template #default="{ row }">
+            <div class="asset-name-cell">
+              <span class="asset-mini-mark" :class="typeClass(row.type)">{{ nodeInitial(row.type) }}</span>
+              <div>
+                <strong>{{ row.name }}</strong>
+                <small>{{ row.code }}</small>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="类型" min-width="130">
+          <template #default="{ row }">{{ typeLabel(row.type) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" min-width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'ONLINE' ? 'success' : row.status === 'OFFLINE' ? 'danger' : 'warning'" effect="plain">
+              {{ statusLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="最新数据" min-width="210">
+          <template #default="{ row }">{{ formatPosition(row) }}</template>
+        </el-table-column>
+        <el-table-column label="心跳" min-width="130">
+          <template #default="{ row }">
+            <span class="heartbeat-pill" :class="heartbeatClass(row.heartbeatAgeSeconds)">{{ formatAge(row.heartbeatAgeSeconds) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源" min-width="140">
+          <template #default="{ row }">{{ sourceLabel(row.source) }}</template>
+        </el-table-column>
+        <el-table-column label="端点" min-width="180">
+          <template #default="{ row }">{{ endpoint(row) }}</template>
+        </el-table-column>
+      </el-table>
+    </section>
+
+    <el-dialog v-model="commandLogDialogVisible" title="控制指令日志" width="860px" class="runtime-command-log-dialog">
       <div class="runtime-command-log-dialog-list">
-        <el-empty
-          v-if="controlStore.commands.length === 0"
-          description="暂无控制指令记录"
-          :image-size="72"
-        />
+        <el-empty v-if="controlStore.commands.length === 0" description="暂无控制指令记录" :image-size="72" />
         <template v-else>
           <article
             v-for="command in pagedCommandLogs"
@@ -576,22 +548,10 @@ onBeforeUnmount(() => {
               <b :class="commandStatusClass(command.status)">{{ commandStatusLabel(command.status) }}</b>
             </div>
             <dl class="runtime-command-log-detail-grid">
-              <div>
-                <dt>执行人</dt>
-                <dd>{{ command.requestedBy || 'system' }}</dd>
-              </div>
-              <div>
-                <dt>提交时间</dt>
-                <dd>{{ formatTime(command.requestedAt) }}</dd>
-              </div>
-              <div>
-                <dt>完成时间</dt>
-                <dd>{{ formatTime(command.completedAt) }}</dd>
-              </div>
-              <div>
-                <dt>会话 ID</dt>
-                <dd>{{ command.sessionId ?? '--' }}</dd>
-              </div>
+              <div><dt>执行人</dt><dd>{{ command.requestedBy || 'system' }}</dd></div>
+              <div><dt>提交时间</dt><dd>{{ formatTime(command.requestedAt) }}</dd></div>
+              <div><dt>完成时间</dt><dd>{{ formatTime(command.completedAt) }}</dd></div>
+              <div><dt>会话 ID</dt><dd>{{ command.sessionId ?? '--' }}</dd></div>
             </dl>
             <p>{{ command.detail || '指令已记录，等待执行结果' }}</p>
           </article>
@@ -608,61 +568,5 @@ onBeforeUnmount(() => {
         />
       </template>
     </el-dialog>
-    <section class="device-filter-panel runtime-filter" aria-label="运行节点筛选">
-      <div class="runtime-filter-fields">
-        <el-select v-model="filters.type" clearable placeholder="节点类型">
-          <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-        <el-select v-model="filters.status" clearable placeholder="运行状态">
-          <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-      </div>
-      <div class="runtime-filter-actions">
-        <el-button type="primary" :icon="Search" :loading="monitoringStore.loading" @click="load">查询</el-button>
-        <el-button :icon="RotateCcw" @click="resetFilters">重置</el-button>
-      </div>
-    </section>
-
-    <section class="runtime-live-section">
-      <div class="section-heading">
-        <div>
-          <h2>实时节点</h2>
-          <p>状态由 ROS WebSocket 数据和 Unity 心跳共同确认。</p>
-        </div>
-        <el-tag effect="plain">更新 {{ formatTime(monitoringStore.summary?.refreshedAt ?? null) }}</el-tag>
-      </div>
-
-      <div v-loading="monitoringStore.loading" class="runtime-live-grid">
-        <el-empty v-if="!monitoringStore.loading && monitoringStore.nodes.length === 0" description="暂无运行节点" />
-        <template v-else>
-          <article
-            v-for="node in monitoringStore.nodes"
-            :key="node.id"
-            class="runtime-live-card"
-            :class="[typeClass(node.type), statusClass(node.status)]"
-          >
-            <div class="runtime-live-top">
-              <div class="runtime-live-mark" :class="typeClass(node.type)">{{ nodeInitial(node.type) }}</div>
-              <div>
-                <strong>{{ node.name }}</strong>
-                <span>{{ node.code }}</span>
-              </div>
-              <i class="runtime-live-dot" :class="statusClass(node.status)"></i>
-            </div>
-            <div class="runtime-live-status">
-              <span>{{ statusLabel(node.status) }}</span>
-              <b :class="heartbeatClass(node.heartbeatAgeSeconds)">{{ formatAge(node.heartbeatAgeSeconds) }}</b>
-            </div>
-            <div class="runtime-live-body">
-              <div><span>数据来源</span><strong>{{ sourceLabel(node.source) }}</strong></div>
-              <div><span>IP / 端口</span><strong>{{ endpoint(node) }}</strong></div>
-              <div><span>Gazebo 坐标</span><strong>{{ formatPosition(node) }}</strong></div>
-              <div><span>最后心跳</span><strong>{{ formatTime(node.lastHeartbeatAt) }}</strong></div>
-            </div>
-            <p class="runtime-live-detail">{{ node.detail || '暂无附加运行详情' }}</p>
-          </article>
-        </template>
-      </div>
-    </section>
   </ConsoleLayout>
 </template>

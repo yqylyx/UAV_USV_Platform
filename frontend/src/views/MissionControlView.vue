@@ -1,18 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import {
-  CalendarClock,
-  Eye,
-  Pencil,
-  Plus,
-  Radar,
-  RotateCcw,
-  Search,
-  ShieldAlert,
-  Trash2,
-  UsersRound,
-} from '@lucide/vue'
+import { Eye, Pencil, Plus, RotateCcw, Search, Trash2 } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { createMission, deleteMission, executeMissionAction, fetchMission, updateMission } from '@/api/mission'
@@ -123,6 +112,7 @@ const dialogTitle = computed(() => (editingId.value ? '编辑任务配置' : '�
 const runningCount = computed(() => missionStore.records.filter((item) => item.status === 'RUNNING').length)
 const readyCount = computed(() => missionStore.records.filter((item) => item.status === 'READY').length)
 const failedCount = computed(() => missionStore.records.filter((item) => item.status === 'FAILED').length)
+const currentMission = computed(() => missionStore.records.find((item) => item.status === 'RUNNING') ?? missionStore.records[0] ?? null)
 const encirclementCount = computed(
   () => missionStore.records.filter((item) => item.type === 'COOPERATIVE_ENCIRCLEMENT').length,
 )
@@ -207,16 +197,16 @@ function resetForm() {
     status: 'DRAFT',
     stage: 'PREPARE',
     priority: 3,
-    targetName: '海面机动目标',
-    targetBehavior: '',
-    missionArea: '',
+    targetName: '灯塔目标',
+    targetBehavior: '无人机从无人艇甲板起飞，无人艇朝灯塔方向推进',
+    missionArea: '近海协同仿真海域',
     plannedStartAt: null,
     plannedEndAt: null,
     description: '',
     devices: [],
     parameters: [
-      { key: 'encirclement_radius', value: '35', unit: 'm', description: '目标围捕半径' },
-      { key: 'heartbeat_timeout', value: '10', unit: 's', description: '节点心跳超时阈值' },
+      { key: 'takeoff_height', value: '2.5', unit: 'm', description: '无人机垂直起飞高度' },
+      { key: 'approach_speed', value: '1.2', unit: 'm/s', description: '无人艇接近灯塔速度' },
     ],
   })
   formRef.value?.clearValidate()
@@ -247,7 +237,8 @@ async function openCreate() {
   dialogVisible.value = true
 }
 
-async function openEdit(mission: Mission) {
+async function openEdit(row: Mission | Record<string, unknown>) {
+  const mission = row as Mission
   if (deviceOptions.value.length === 0) await loadDevices()
   detailLoading.value = true
   try {
@@ -288,7 +279,8 @@ async function openEdit(mission: Mission) {
   }
 }
 
-async function openDetail(mission: Mission) {
+async function openDetail(row: Mission | Record<string, unknown>) {
+  const mission = row as Mission
   detailLoading.value = true
   detailVisible.value = true
   try {
@@ -323,8 +315,8 @@ function removeParameter(index: number) {
   form.parameters.splice(index, 1)
 }
 
-function openDelete(mission: Mission) {
-  deleteTarget.value = mission
+function openDelete(row: Mission | Record<string, unknown>) {
+  deleteTarget.value = row as Mission
   deleteDialogVisible.value = true
 }
 
@@ -333,7 +325,7 @@ async function confirmDelete() {
   try {
     deletingId.value = deleteTarget.value.id
     await deleteMission(deleteTarget.value.id)
-    ElMessage.success('任务已隐藏')
+    ElMessage.success('任务已删除')
     deleteDialogVisible.value = false
     deleteTarget.value = null
     await load(Math.max(0, missionStore.records.length === 1 ? missionStore.page - 1 : missionStore.page))
@@ -344,7 +336,8 @@ async function confirmDelete() {
   }
 }
 
-async function runMissionAction(mission: Mission, action: MissionAction) {
+async function runMissionAction(row: Mission | Record<string, unknown>, action: MissionAction) {
+  const mission = row as Mission
   actionLoadingId.value = mission.id
   try {
     const result = await executeMissionAction(mission.id, action)
@@ -418,7 +411,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <ConsoleLayout title="任务控制" eyebrow="MISSION CONTROL">
+  <ConsoleLayout title="任务控制" eyebrow="MISSION COMMAND">
     <template #actions>
       <el-button v-if="canManage" type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
     </template>
@@ -433,129 +426,150 @@ onMounted(async () => {
       class="section-alert"
     />
 
-    <section class="mission-command">
-      <div class="mission-command-copy">
-        <p>COOPERATIVE ENCIRCLEMENT</p>
-        <h2>三机三艇协同围捕任务指挥台</h2>
-        <span>把任务类型、目标、海域、UAV / USV 编组、ROS 与 Unity 链路统一登记，为后续算法决策、任务启动和评估回放提供数据底座。</span>
-      </div>
-      <div class="mission-command-metrics">
-        <div>
-          <Radar :size="18" />
-          <strong>{{ missionStore.total }}</strong>
-          <span>任务总数</span>
+    <section class="mission-command-layout">
+      <article class="console-panel mission-map-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>协同围捕任务</h2>
+            <p>围绕无人机起飞、无人艇接近灯塔、协同跟踪三个核心步骤编排。</p>
+          </div>
+          <div class="mission-map-actions">
+            <el-button v-if="currentMission" type="primary" @click="runMissionAction(currentMission, currentMission.status === 'DRAFT' ? 'ready' : 'start')">
+              下发任务
+            </el-button>
+            <el-button @click="openCreate">保存方案</el-button>
+          </div>
         </div>
-        <div>
-          <UsersRound :size="18" />
-          <strong>{{ encirclementCount }}</strong>
-          <span>围捕任务</span>
+        <div class="mission-map">
+          <div class="mission-path"></div>
+          <span class="mission-node usv">USV</span>
+          <span class="mission-node uav">UAV</span>
+          <span class="mission-node target">灯塔</span>
         </div>
-        <div>
-          <CalendarClock :size="18" />
-          <strong>{{ readyCount }}</strong>
-          <span>待执行</span>
-        </div>
-        <div>
-          <ShieldAlert :size="18" />
-          <strong>{{ failedCount }}</strong>
-          <span>异常任务</span>
-        </div>
-      </div>
+      </article>
+
+      <aside class="mission-side-stack">
+        <article class="console-panel mission-state-card">
+          <span>任务状态</span>
+          <strong>{{ currentMission ? statusLabel(currentMission.status) : '待配置' }}</strong>
+          <small>{{ currentMission?.name || '暂无可执行任务' }}</small>
+        </article>
+        <article class="console-panel mission-steps-card">
+          <h3>任务阶段</h3>
+          <div class="mission-step-row active">
+            <b>1</b>
+            <span><strong>无人机起飞</strong><small>从无人艇甲板垂直起飞</small></span>
+            <em>READY</em>
+          </div>
+          <div class="mission-step-row">
+            <b>2</b>
+            <span><strong>目标接近</strong><small>无人艇朝灯塔方向推进</small></span>
+            <em>WAIT</em>
+          </div>
+          <div class="mission-step-row">
+            <b>3</b>
+            <span><strong>协同围捕</strong><small>UAV 补盲，USV 收敛</small></span>
+            <em>WAIT</em>
+          </div>
+        </article>
+        <article class="console-panel mission-command-card">
+          <h3>控制指令</h3>
+          <div class="mission-command-buttons">
+            <el-button type="primary" @click="currentMission && runMissionAction(currentMission, 'start')">起飞</el-button>
+            <el-button @click="currentMission && runMissionAction(currentMission, 'cancel')">返航</el-button>
+            <el-button @click="currentMission && runMissionAction(currentMission, 'pause')">暂停</el-button>
+            <el-button type="danger" @click="currentMission && runMissionAction(currentMission, 'fail')">终止</el-button>
+          </div>
+        </article>
+      </aside>
     </section>
 
-    <section class="mission-filter-panel">
-      <div class="mission-filter-fields">
-        <el-input v-model="filters.keyword" clearable placeholder="搜索编号、名称、目标或任务区域" @keyup.enter="load(0)" />
-        <el-select v-model="filters.type" clearable placeholder="任务类型">
-          <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-        <el-select v-model="filters.status" clearable placeholder="任务状态">
-          <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-      </div>
-      <div class="mission-filter-actions">
-        <el-button type="primary" :icon="Search" :loading="missionStore.loading" @click="load(0)">查询</el-button>
-        <el-button :icon="RotateCcw" @click="resetFilters">重置</el-button>
-      </div>
+    <section class="page-metric-grid">
+      <article class="console-stat-card">
+        <span>任务总数</span>
+        <strong>{{ missionStore.total }}</strong>
+      </article>
+      <article class="console-stat-card">
+        <span>围捕任务</span>
+        <strong>{{ encirclementCount }}</strong>
+      </article>
+      <article class="console-stat-card warning">
+        <span>待执行</span>
+        <strong>{{ readyCount }}</strong>
+      </article>
+      <article class="console-stat-card danger">
+        <span>异常任务</span>
+        <strong>{{ failedCount }}</strong>
+      </article>
     </section>
 
-    <section class="mission-section">
-      <div class="section-heading">
+    <section class="console-panel filter-panel">
+      <el-input v-model="filters.keyword" clearable placeholder="搜索编号、名称、目标或任务区域" @keyup.enter="load(0)" />
+      <el-select v-model="filters.type" clearable placeholder="任务类型">
+        <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
+      </el-select>
+      <el-select v-model="filters.status" clearable placeholder="任务状态">
+        <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
+      </el-select>
+      <el-button type="primary" :icon="Search" :loading="missionStore.loading" @click="load(0)">查询</el-button>
+      <el-button :icon="RotateCcw" @click="resetFilters">重置</el-button>
+    </section>
+
+    <section class="console-panel table-panel">
+      <div class="panel-heading">
         <div>
-          <h2>任务编组</h2>
-          <p>先管理任务方案和设备编队，后续再接 ROS 启动、Unity 态势和算法服务。</p>
+          <h2>指令队列</h2>
+          <p>这里管理任务方案和任务状态，下发结果会同步到运行控制日志。</p>
         </div>
         <el-tag effect="plain">运行中 {{ runningCount }}</el-tag>
       </div>
 
-      <div v-loading="missionStore.loading || detailLoading" class="mission-grid">
-        <el-empty v-if="!missionStore.loading && missionStore.records.length === 0" description="暂无任务" />
-        <template v-else>
-          <article
-            v-for="mission in missionStore.records"
-            :key="mission.id"
-            class="mission-card"
-            :class="statusClass(mission.status)"
-          >
-            <div class="mission-card-head">
+      <el-table v-loading="missionStore.loading || detailLoading" :data="missionStore.records" class="console-table">
+        <el-table-column label="任务" min-width="240">
+          <template #default="{ row }">
+            <div class="asset-name-cell">
+              <span class="asset-mini-mark mission">{{ row.priority }}</span>
               <div>
-                <span>{{ mission.code }}</span>
-                <strong>{{ mission.name }}</strong>
-              </div>
-              <i>{{ statusLabel(mission.status) }}</i>
-            </div>
-            <div class="mission-card-body">
-              <div>
-                <span>任务类型</span>
-                <strong>{{ typeLabel(mission.type) }}</strong>
-              </div>
-              <div>
-                <span>任务阶段</span>
-                <strong>{{ stageLabel(mission.stage) }}</strong>
-              </div>
-              <div>
-                <span>目标</span>
-                <strong>{{ mission.targetName || '--' }}</strong>
-              </div>
-              <div>
-                <span>任务海域</span>
-                <strong>{{ mission.missionArea || '--' }}</strong>
+                <strong>{{ row.name }}</strong>
+                <small>{{ row.code }}</small>
               </div>
             </div>
-            <div class="mission-card-strip">
-              <span>设备 {{ mission.deviceCount }}</span>
-              <span>优先级 {{ mission.priority }}</span>
-              <span>{{ formatTime(mission.plannedStartAt) }} - {{ formatTime(mission.plannedEndAt) }}</span>
-            </div>
-            <div class="mission-card-actions">
-              <el-button link type="primary" :icon="Eye" @click="openDetail(mission)">详情</el-button>
-              <template v-if="canManage">
-                <el-button
-                  v-for="item in missionActions(mission.status)"
-                  :key="item.action"
-                  link
-                  :type="item.type"
-                  :loading="actionLoadingId === mission.id"
-                  @click="runMissionAction(mission, item.action)"
-                >
-                  {{ item.label }}
-                </el-button>
-              </template>
-              <el-button v-if="canManage" link type="primary" :icon="Pencil" @click="openEdit(mission)">编辑</el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="类型" min-width="150">
+          <template #default="{ row }">{{ typeLabel(row.type) }}</template>
+        </el-table-column>
+        <el-table-column label="阶段" min-width="130">
+          <template #default="{ row }">{{ stageLabel(row.stage) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" min-width="120">
+          <template #default="{ row }">
+            <el-tag :type="statusTag(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="目标 / 区域" min-width="190">
+          <template #default="{ row }">{{ row.targetName || '--' }} / {{ row.missionArea || '--' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="240" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" :icon="Eye" @click="openDetail(row)">详情</el-button>
+            <template v-if="canManage">
               <el-button
-                v-if="canManage"
+                v-for="item in missionActions(row.status)"
+                :key="item.action"
                 link
-                type="danger"
-                :icon="Trash2"
-                :loading="deletingId === mission.id"
-                @click="openDelete(mission)"
+                :type="item.type"
+                :loading="actionLoadingId === row.id"
+                @click="runMissionAction(row, item.action)"
               >
-                删除
+                {{ item.label }}
               </el-button>
-            </div>
-          </article>
-        </template>
-      </div>
+              <el-button link type="primary" :icon="Pencil" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" :icon="Trash2" :loading="deletingId === row.id" @click="openDelete(row)">删除</el-button>
+            </template>
+          </template>
+        </el-table-column>
+      </el-table>
 
       <div class="table-footer">
         <el-pagination
@@ -575,7 +589,7 @@ onMounted(async () => {
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <div class="form-grid">
           <el-form-item label="任务编号" prop="code"><el-input v-model="form.code" /></el-form-item>
-          <el-form-item label="任务名称" prop="name"><el-input v-model="form.name" placeholder="例如 三机三艇协同围捕任务" /></el-form-item>
+          <el-form-item label="任务名称" prop="name"><el-input v-model="form.name" placeholder="例如 无人艇协同接近灯塔任务" /></el-form-item>
           <el-form-item label="任务类型" prop="type">
             <el-select v-model="form.type"><el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
           </el-form-item>
@@ -588,8 +602,6 @@ onMounted(async () => {
           <el-form-item label="优先级"><el-input-number v-model="form.priority" :min="1" :max="5" controls-position="right" class="full-control" /></el-form-item>
           <el-form-item label="目标名称"><el-input v-model="form.targetName" /></el-form-item>
           <el-form-item label="任务区域"><el-input v-model="form.missionArea" /></el-form-item>
-          <el-form-item label="计划开始"><el-date-picker v-model="form.plannedStartAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" class="full-control" /></el-form-item>
-          <el-form-item label="计划结束"><el-date-picker v-model="form.plannedEndAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" class="full-control" /></el-form-item>
         </div>
         <el-form-item label="目标行为"><el-input v-model="form.targetBehavior" type="textarea" :rows="2" /></el-form-item>
         <el-form-item label="任务说明"><el-input v-model="form.description" type="textarea" :rows="3" /></el-form-item>
@@ -602,12 +614,7 @@ onMounted(async () => {
           <div v-if="form.devices.length === 0" class="empty-inline">尚未绑定设备</div>
           <div v-for="(binding, index) in form.devices" :key="index" class="binding-row">
             <el-select v-model="binding.deviceId" placeholder="选择设备">
-              <el-option
-                v-for="device in deviceOptions"
-                :key="device.id"
-                :label="`${device.name} / ${device.code}`"
-                :value="device.id"
-              />
+              <el-option v-for="device in deviceOptions" :key="device.id" :label="`${device.name} / ${device.code}`" :value="device.id" />
             </el-select>
             <el-select v-model="binding.role" placeholder="任务角色">
               <el-option v-for="item in roleOptions" :key="item.value" :label="item.label" :value="item.value" />
@@ -665,27 +672,12 @@ onMounted(async () => {
             <strong>{{ parameter.value || '--' }} {{ parameter.unit || '' }}</strong>
           </div>
         </section>
-        <section>
-          <h3>事件时间线</h3>
-          <el-timeline>
-            <el-timeline-item v-for="event in detail.events" :key="event.id" :timestamp="formatTime(event.occurredAt)">
-              <strong>{{ event.title }}</strong>
-              <p>{{ event.message }}</p>
-            </el-timeline-item>
-          </el-timeline>
-        </section>
       </div>
     </el-drawer>
 
     <el-dialog v-model="deleteDialogVisible" title="删除任务" width="460px">
       <div v-if="deleteTarget" class="delete-mission">
-        <el-alert
-          title="此操作会把任务从任务控制列表中隐藏"
-          description="历史事件和设备编组记录会保留，后续评估回放仍可基于数据库恢复。"
-          type="warning"
-          show-icon
-          :closable="false"
-        />
+        <el-alert title="此操作会把任务从任务控制列表中删除" type="warning" show-icon :closable="false" />
         <p>{{ deleteTarget.name }}</p>
       </div>
       <template #footer>
@@ -695,373 +687,3 @@ onMounted(async () => {
     </el-dialog>
   </ConsoleLayout>
 </template>
-
-<style scoped>
-.mission-command {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 20px;
-  align-items: stretch;
-  margin-bottom: 18px;
-  padding: 26px 28px;
-  border: 1px solid rgba(77, 219, 205, 0.32);
-  border-radius: 8px;
-  background:
-    linear-gradient(rgba(77, 219, 205, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77, 219, 205, 0.06) 1px, transparent 1px),
-    #061d20;
-  background-size: 34px 34px;
-  color: #e8fffb;
-}
-
-.mission-command-copy p,
-.mission-command-copy span {
-  margin: 0;
-  color: #72f4e6;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.mission-command-copy h2 {
-  margin: 8px 0 8px;
-  font-size: 32px;
-  letter-spacing: 0;
-}
-
-.mission-command-copy span {
-  display: block;
-  max-width: 820px;
-  color: #a9c6c9;
-  line-height: 1.8;
-}
-
-.mission-command-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, 120px);
-  gap: 12px;
-}
-
-.mission-command-metrics div {
-  display: grid;
-  place-items: center;
-  min-height: 88px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.mission-command-metrics strong {
-  font-size: 24px;
-  color: #ffc861;
-}
-
-.mission-command-metrics span {
-  color: #84d8d4;
-  font-size: 12px;
-}
-
-.mission-filter-panel {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 22px;
-  padding: 12px;
-  border: 1px solid #d7e3e7;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.mission-filter-fields {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) 180px 180px;
-  gap: 10px;
-  width: 100%;
-}
-
-.mission-filter-actions {
-  display: flex;
-  gap: 10px;
-  flex: 0 0 auto;
-}
-
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.section-heading h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.section-heading p {
-  margin: 4px 0 0;
-  color: #66808a;
-}
-
-.mission-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(280px, 1fr));
-  gap: 14px;
-  min-height: 220px;
-}
-
-.mission-card {
-  overflow: hidden;
-  border: 1px solid #d8e5e9;
-  border-top: 4px solid #4dd9cd;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 12px 30px rgba(16, 40, 48, 0.06);
-}
-
-.mission-card.running {
-  border-top-color: #46c778;
-}
-
-.mission-card.failed,
-.mission-card.cancelled {
-  border-top-color: #ff6b83;
-}
-
-.mission-card.ready,
-.mission-card.paused {
-  border-top-color: #ffc861;
-}
-
-.mission-card-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 16px 18px;
-  background: linear-gradient(135deg, rgba(6, 29, 32, 0.96), rgba(11, 54, 58, 0.9));
-  color: #eafffb;
-}
-
-.mission-card-head div {
-  min-width: 0;
-}
-
-.mission-card-head span {
-  display: block;
-  color: #7bece2;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.mission-card-head strong {
-  display: block;
-  overflow: hidden;
-  margin-top: 6px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 17px;
-}
-
-.mission-card-head i {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 66px;
-  height: 28px;
-  border: 1px solid rgba(123, 236, 226, 0.45);
-  border-radius: 999px;
-  color: #7bece2;
-  font-style: normal;
-  font-weight: 700;
-}
-
-.mission-card-body {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 14px;
-}
-
-.mission-card-body div {
-  min-height: 62px;
-  padding: 10px;
-  border: 1px solid #dce8ec;
-  border-radius: 6px;
-  background: #f6fafb;
-}
-
-.mission-card-body span {
-  display: block;
-  color: #7b929b;
-  font-size: 12px;
-}
-
-.mission-card-body strong {
-  display: block;
-  overflow: hidden;
-  margin-top: 7px;
-  color: #0d1f26;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mission-card-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 14px 12px;
-}
-
-.mission-card-strip span {
-  padding: 5px 8px;
-  border-radius: 999px;
-  background: #eef7f8;
-  color: #55727c;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.mission-card-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid #e3edf0;
-}
-
-.table-footer {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.full-control {
-  width: 100%;
-}
-
-.dialog-block {
-  margin-top: 18px;
-  padding: 14px;
-  border: 1px solid #dce8ec;
-  border-radius: 8px;
-  background: #f8fbfc;
-}
-
-.dialog-block-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.binding-row,
-.parameter-row {
-  display: grid;
-  gap: 10px;
-  align-items: center;
-  margin-top: 10px;
-}
-
-.binding-row {
-  grid-template-columns: 1.4fr 1fr 0.9fr auto auto;
-}
-
-.parameter-row {
-  grid-template-columns: 1fr 1fr 0.5fr 1.3fr auto;
-}
-
-.empty-inline {
-  padding: 12px;
-  border: 1px dashed #c9dbe0;
-  border-radius: 6px;
-  color: #7b929b;
-  text-align: center;
-}
-
-.detail-hero {
-  display: grid;
-  gap: 8px;
-  padding: 18px;
-  border-radius: 8px;
-  background: #061d20;
-  color: #eafffb;
-}
-
-.detail-hero span {
-  color: #7bece2;
-  font-weight: 700;
-}
-
-.detail-hero strong {
-  font-size: 22px;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: 14px 0;
-}
-
-.detail-grid div,
-.detail-device,
-.detail-param {
-  padding: 10px;
-  border: 1px solid #dce8ec;
-  border-radius: 6px;
-  background: #f8fbfc;
-}
-
-.detail-grid dt {
-  color: #7b929b;
-  font-size: 12px;
-}
-
-.detail-grid dd {
-  margin: 6px 0 0;
-  font-weight: 700;
-}
-
-.mission-detail h3 {
-  margin: 18px 0 10px;
-  font-size: 16px;
-}
-
-.detail-device,
-.detail-param {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.delete-mission p {
-  margin: 14px 0 0;
-  font-weight: 700;
-}
-
-@media (max-width: 1200px) {
-  .mission-command,
-  .mission-filter-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .mission-command {
-    display: block;
-  }
-
-  .mission-command-metrics {
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
-    margin-top: 18px;
-  }
-
-  .mission-grid {
-    grid-template-columns: repeat(2, minmax(280px, 1fr));
-  }
-}
-</style>
