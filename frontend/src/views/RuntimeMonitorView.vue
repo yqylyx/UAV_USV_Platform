@@ -13,7 +13,11 @@ import type { SimulationStatus } from '@/types/runtimeControl'
 const monitoringStore = useMonitoringStore()
 const controlStore = useRuntimeControlStore()
 let controlTimer: number | null = null
+let commandTimer: number | null = null
 const actionPhase = ref<'idle' | 'starting' | 'stopping'>('idle')
+const commandLogDialogVisible = ref(false)
+const commandLogPage = ref(1)
+const commandLogPageSize = ref(10)
 
 const filters = reactive({
   type: '' as DeviceType | '',
@@ -79,6 +83,11 @@ const liveVehicleNodes = computed(() =>
       node.positionZ !== null,
   ),
 )
+const visibleCommandLogs = computed(() => controlStore.commands.slice(0, 3))
+const pagedCommandLogs = computed(() => {
+  const start = (commandLogPage.value - 1) * commandLogPageSize.value
+  return controlStore.commands.slice(start, start + commandLogPageSize.value)
+})
 
 const diagnosticSteps = computed(() => [
   {
@@ -178,6 +187,42 @@ function sourceLabel(source: string) {
   return source || '--'
 }
 
+function commandTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    START: '运行',
+    STOP: '停止',
+    TAKEOFF: '起飞',
+    LAND: '降落',
+    START_MISSION: '开始任务',
+    STOP_MISSION: '停止任务',
+    SELECT_DEVICE: '选择设备',
+    FOCUS_DEVICE: '聚焦设备',
+    SWITCH_CAMERA: '切换视角',
+    TOGGLE_TRAJECTORY: '轨迹显示',
+  }
+  return labels[type] ?? type
+}
+
+function commandStatusLabel(status: string) {
+  if (status === 'SUCCEEDED') return '已执行'
+  if (status === 'FAILED') return '失败'
+  return '等待中'
+}
+
+function commandStatusClass(status: string) {
+  return status.toLowerCase()
+}
+
+async function openCommandLogDialog() {
+  await controlStore.refreshCommands()
+  commandLogPage.value = 1
+  commandLogDialogVisible.value = true
+}
+
+function handleCommandLogPageChange(page: number) {
+  commandLogPage.value = page
+}
+
 function heartbeatClass(seconds: number) {
   if (seconds < 0) return 'unknown'
   if (seconds <= 5) return 'fresh'
@@ -217,6 +262,7 @@ async function startSimulation() {
       return
     }
     await waitForRuntimeStatus(['RUNNING', 'PARTIAL', 'FAILED'], 45000)
+    await controlStore.refreshCommands()
     await monitoringStore.refresh()
     if (controlStore.runtime?.status === 'RUNNING') {
       ElMessage.success('仿真已运行，ROS / Unity 心跳已确认')
@@ -241,6 +287,7 @@ async function stopSimulation() {
       return
     }
     await waitForRuntimeStatus(['STOPPED', 'FAILED'], 30000)
+    await controlStore.refreshCommands()
     await monitoringStore.refresh()
     if (controlStore.runtime?.status === 'STOPPED') {
       ElMessage.success('仿真已停止，运行节点已下线')
@@ -293,15 +340,17 @@ function handleRuntimeActionCapture(event: MouseEvent) {
 
 onMounted(async () => {
   document.addEventListener('click', handleRuntimeActionCapture, true)
-  await Promise.all([load(), controlStore.refresh()])
+  await Promise.all([load(), controlStore.refresh(), controlStore.refreshCommands()])
   monitoringStore.connectEvents()
   controlTimer = window.setInterval(() => controlStore.refresh(), 2000)
+  commandTimer = window.setInterval(() => controlStore.refreshCommands(), 5000)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleRuntimeActionCapture, true)
   monitoringStore.disconnectEvents()
   if (controlTimer !== null) window.clearInterval(controlTimer)
+  if (commandTimer !== null) window.clearInterval(commandTimer)
 })
 </script>
 
@@ -462,6 +511,103 @@ onBeforeUnmount(() => {
         </article>
       </div>
     </section>
+
+    <section class="runtime-command-log-panel" aria-label="控制指令日志">
+      <div class="section-heading compact">
+        <div>
+          <h2>控制日志</h2>
+          <p>记录运行、停止和快速指令的后端执行结果，便于确认按钮是否真正下发。</p>
+        </div>
+        <el-button link type="primary" @click="openCommandLogDialog">
+          最近 {{ visibleCommandLogs.length }} 条 / 共 {{ controlStore.commands.length }} 条
+        </el-button>
+      </div>
+      <div class="runtime-command-log-list">
+        <el-empty
+          v-if="controlStore.commands.length === 0"
+          description="暂无控制指令记录"
+          :image-size="64"
+        />
+        <template v-else>
+          <article
+            v-for="command in visibleCommandLogs"
+            :key="command.id"
+            class="runtime-command-log-item"
+            :class="commandStatusClass(command.status)"
+          >
+            <div class="runtime-command-log-main">
+              <strong>{{ commandTypeLabel(command.commandType) }}</strong>
+              <span>{{ command.detail || '指令已记录，等待执行结果' }}</span>
+            </div>
+            <div class="runtime-command-log-meta">
+              <b :class="commandStatusClass(command.status)">{{ commandStatusLabel(command.status) }}</b>
+              <small>{{ formatTime(command.completedAt || command.requestedAt) }}</small>
+              <small>{{ command.requestedBy || 'system' }}</small>
+            </div>
+          </article>
+        </template>
+      </div>
+    </section>
+
+    <el-dialog
+      v-model="commandLogDialogVisible"
+      title="控制指令日志"
+      width="860px"
+      class="runtime-command-log-dialog"
+    >
+      <div class="runtime-command-log-dialog-list">
+        <el-empty
+          v-if="controlStore.commands.length === 0"
+          description="暂无控制指令记录"
+          :image-size="72"
+        />
+        <template v-else>
+          <article
+            v-for="command in pagedCommandLogs"
+            :key="command.id"
+            class="runtime-command-log-detail"
+            :class="commandStatusClass(command.status)"
+          >
+            <div class="runtime-command-log-detail-head">
+              <div>
+                <strong>{{ commandTypeLabel(command.commandType) }}</strong>
+                <span>#{{ command.id }} / {{ command.commandType }}</span>
+              </div>
+              <b :class="commandStatusClass(command.status)">{{ commandStatusLabel(command.status) }}</b>
+            </div>
+            <dl class="runtime-command-log-detail-grid">
+              <div>
+                <dt>执行人</dt>
+                <dd>{{ command.requestedBy || 'system' }}</dd>
+              </div>
+              <div>
+                <dt>提交时间</dt>
+                <dd>{{ formatTime(command.requestedAt) }}</dd>
+              </div>
+              <div>
+                <dt>完成时间</dt>
+                <dd>{{ formatTime(command.completedAt) }}</dd>
+              </div>
+              <div>
+                <dt>会话 ID</dt>
+                <dd>{{ command.sessionId ?? '--' }}</dd>
+              </div>
+            </dl>
+            <p>{{ command.detail || '指令已记录，等待执行结果' }}</p>
+          </article>
+        </template>
+      </div>
+      <template #footer>
+        <el-pagination
+          background
+          layout="total, prev, pager, next"
+          :total="controlStore.commands.length"
+          :current-page="commandLogPage"
+          :page-size="commandLogPageSize"
+          @current-change="handleCommandLogPageChange"
+        />
+      </template>
+    </el-dialog>
     <section class="device-filter-panel runtime-filter" aria-label="运行节点筛选">
       <div class="runtime-filter-fields">
         <el-select v-model="filters.type" clearable placeholder="节点类型">

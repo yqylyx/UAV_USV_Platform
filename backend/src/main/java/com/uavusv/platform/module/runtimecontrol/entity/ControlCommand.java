@@ -51,4 +51,32 @@ public class ControlCommand extends BaseEntity {
         this.detail = detail;
         this.completedAt = LocalDateTime.now();
     }
+
+    public Long getSessionId() {
+        return sessionId;
+    }
+
+    public CommandType getCommandType() {
+        return commandType;
+    }
+
+    public CommandStatus getStatus() {
+        return status;
+    }
+
+    public String getRequestedBy() {
+        return requestedBy;
+    }
+
+    public LocalDateTime getRequestedAt() {
+        return requestedAt;
+    }
+
+    public LocalDateTime getCompletedAt() {
+        return completedAt;
+    }
+
+    public String getDetail() {
+        return detail;
+    }
 }

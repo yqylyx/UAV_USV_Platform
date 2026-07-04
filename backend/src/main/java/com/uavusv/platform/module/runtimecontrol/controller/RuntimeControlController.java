@@ -1,6 +1,7 @@
 package com.uavusv.platform.module.runtimecontrol.controller;
 
 import com.uavusv.platform.common.api.ApiResponse;
+import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandLogResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeControlResponse;
@@ -12,6 +13,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/runtime-control")
@@ -25,6 +28,11 @@ public class RuntimeControlController {
     @GetMapping("/status")
     public ApiResponse<RuntimeControlResponse> status() {
         return ApiResponse.success(runtimeControlService.getStatus());
+    }
+
+    @GetMapping("/commands/recent")
+    public ApiResponse<List<RuntimeCommandLogResponse>> recentCommands() {
+        return ApiResponse.success(runtimeControlService.recentCommands());
     }
 
     @PostMapping("/start")

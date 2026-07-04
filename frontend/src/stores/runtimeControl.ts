@@ -1,16 +1,23 @@
 import { defineStore } from 'pinia'
 
-import { fetchRuntimeControlStatus, startRuntime, stopRuntime } from '@/api/runtimeControl'
+import {
+  fetchRuntimeCommandLogs,
+  fetchRuntimeControlStatus,
+  startRuntime,
+  stopRuntime,
+  type RuntimeCommandLog,
+} from '@/api/runtimeControl'
 import type { RuntimeControlState } from '@/types/runtimeControl'
 
 interface State {
   runtime: RuntimeControlState | null
+  commands: RuntimeCommandLog[]
   loading: boolean
   error: string
 }
 
 export const useRuntimeControlStore = defineStore('runtimeControl', {
-  state: (): State => ({ runtime: null, loading: false, error: '' }),
+  state: (): State => ({ runtime: null, commands: [], loading: false, error: '' }),
   actions: {
     async refresh() {
       try {
@@ -20,10 +27,18 @@ export const useRuntimeControlStore = defineStore('runtimeControl', {
         this.error = error instanceof Error ? error.message : '无法读取运行控制状态'
       }
     },
+    async refreshCommands() {
+      try {
+        this.commands = await fetchRuntimeCommandLogs()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '无法读取控制指令日志'
+      }
+    },
     async start() {
       this.loading = true
       try {
         this.runtime = await startRuntime()
+        await this.refreshCommands()
         this.error = ''
       } catch (error) {
         this.error = error instanceof Error ? error.message : '启动失败'
@@ -35,6 +50,7 @@ export const useRuntimeControlStore = defineStore('runtimeControl', {
       this.loading = true
       try {
         this.runtime = await stopRuntime()
+        await this.refreshCommands()
         this.error = ''
       } catch (error) {
         this.error = error instanceof Error ? error.message : '停止失败'

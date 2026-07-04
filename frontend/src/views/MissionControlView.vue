@@ -17,6 +17,8 @@ import { computed, onMounted, reactive, ref } from 'vue'
 
 import { createMission, deleteMission, executeMissionAction, fetchMission, updateMission } from '@/api/mission'
 import type { MissionAction } from '@/api/mission'
+import { issueRuntimeCommand } from '@/api/runtimeControl'
+import type { RuntimeCommandType } from '@/api/runtimeControl'
 import { fetchDevices } from '@/api/device'
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -124,6 +126,15 @@ const failedCount = computed(() => missionStore.records.filter((item) => item.st
 const encirclementCount = computed(
   () => missionStore.records.filter((item) => item.type === 'COOPERATIVE_ENCIRCLEMENT').length,
 )
+
+const missionCommandMap: Partial<Record<MissionAction, RuntimeCommandType>> = {
+  start: 'START_MISSION',
+  resume: 'START_MISSION',
+  pause: 'STOP_MISSION',
+  complete: 'STOP_MISSION',
+  fail: 'STOP_MISSION',
+  cancel: 'STOP_MISSION',
+}
 
 function typeLabel(type: MissionType) {
   return typeOptions.find((item) => item.value === type)?.label ?? type
@@ -337,6 +348,7 @@ async function runMissionAction(mission: Mission, action: MissionAction) {
   actionLoadingId.value = mission.id
   try {
     const result = await executeMissionAction(mission.id, action)
+    await recordMissionRuntimeCommand(result.mission, action)
     detail.value = detail.value?.mission.id === mission.id ? result : detail.value
     ElMessage.success(`${result.mission.name}：${statusLabel(result.mission.status)}`)
     await load(missionStore.page)
@@ -344,6 +356,28 @@ async function runMissionAction(mission: Mission, action: MissionAction) {
     ElMessage.error(error instanceof Error ? error.message : '任务状态变更失败')
   } finally {
     actionLoadingId.value = null
+  }
+}
+
+async function recordMissionRuntimeCommand(mission: Mission, action: MissionAction) {
+  const commandType = missionCommandMap[action]
+  if (!commandType) return
+
+  try {
+    await issueRuntimeCommand({
+      commandType,
+      deviceCode: mission.code,
+      detail: `任务控制：${mission.name} / ${action}`,
+      payload: JSON.stringify({
+        missionId: mission.id,
+        missionCode: mission.code,
+        action,
+        status: mission.status,
+        stage: mission.stage,
+      }),
+    })
+  } catch (error) {
+    ElMessage.warning(error instanceof Error ? `任务状态已更新，但控制指令记录失败：${error.message}` : '任务状态已更新，但控制指令记录失败')
   }
 }
 

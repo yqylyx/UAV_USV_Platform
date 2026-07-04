@@ -26,43 +26,6 @@ type UnityPanelExpose = {
   sendPoseFrame: (payload: Record<string, unknown>) => void
 }
 
-const assets = [
-  { code: 'UAV-01', role: '高空侦察', detail: '目标视觉锁定 / 东北航线', type: 'air', status: 'READY' },
-  { code: 'UAV-02', role: '侧翼压制', detail: '轨迹预测 / 西北航线', type: 'air', status: 'READY' },
-  { code: 'UAV-03', role: '低空补盲', detail: '海面遮挡补偿 / 南向跟随', type: 'air', status: 'READY' },
-  { code: 'USV-01', role: '正面拦截', detail: '主追踪艇 / 收敛航向', type: 'sea', status: 'READY' },
-  { code: 'USV-02', role: '左翼封锁', detail: '速度匹配 / 半径约束', type: 'sea', status: 'READY' },
-  { code: 'USV-03', role: '右翼封锁', detail: '水面包络 / 目标截断', type: 'sea', status: 'READY' },
-]
-
-const phases = [
-  { step: '1', title: '目标发现', text: 'UAV 先行侦察，USV 接收目标航迹与速度估计。' },
-  { step: '2', title: '协同分配', text: '算法服务按距离、角度和任务角色分配包围位置。' },
-  { step: '3', title: '闭环围捕', text: 'Unity 显示态势，ROS2 持续反馈位姿，Web 统一控制任务。' },
-]
-
-const readouts = [
-  { label: '围捕完成度', value: '72%', text: '包络半径持续收缩' },
-  { label: '目标相对速度', value: '2.8 m/s', text: '预测航向稳定' },
-  { label: '通信延迟', value: '38 ms', text: 'ROS2 / Unity 链路正常' },
-  { label: '安全距离', value: '15.4 m', text: '未触发碰撞预警' },
-]
-
-const links = [
-  { name: 'ROS2 / Gazebo', value: 88 },
-  { name: 'WebSocket Bridge', value: 92 },
-  { name: 'Unity WebGL View', value: 84 },
-  { name: 'Mission Control', value: 76 },
-]
-
-const architecture = [
-  { layer: '5', title: '展示交互层', text: 'Vue 控制台 / Unity 三维态势', state: '建设中' },
-  { layer: '4', title: '业务服务层', text: '设备、任务、状态、日志、评估', state: '建设中' },
-  { layer: '3', title: '智能算法层', text: '识别、分配、路径规划、围捕控制', state: '待接入' },
-  { layer: '2', title: '通信与认知层', text: 'ROS2 / WebSocket / 多源状态共享', state: '已打通' },
-  { layer: '1', title: '仿真与执行层', text: 'Gazebo / UAV / USV / Unity 场景', state: '已打通' },
-]
-
 const monitoringStore = useMonitoringStore()
 const unityPanel = ref<UnityPanelExpose | null>(null)
 const selectedDeviceCode = ref('USV-01')
@@ -82,8 +45,29 @@ const cameraModes = [
   { label: '灯塔视角', value: 'lighthouse' },
 ]
 
+const commandButtons = [
+  { label: '起飞', value: 'takeoff' },
+  { label: '降落', value: 'land' },
+  { label: '开始任务', value: 'startMission' },
+  { label: '停止任务', value: 'stopMission' },
+]
+
 function normalizeDeviceCode(code: string) {
   return code.trim().toLowerCase()
+}
+
+function hasRuntimePosition(node: RuntimeNode) {
+  return node.positionX !== null && node.positionY !== null && node.positionZ !== null
+}
+
+function formatCoordinate(value: number | null) {
+  return value === null ? '-' : value.toFixed(2)
+}
+
+function formatHeartbeat(age: number) {
+  if (age < 0) return '-'
+  if (age < 60) return `${age}s`
+  return `${Math.floor(age / 60)}m ${age % 60}s`
 }
 
 const runtimeNodeByCode = computed(() => {
@@ -91,50 +75,100 @@ const runtimeNodeByCode = computed(() => {
   monitoringStore.nodes.forEach((node) => map.set(normalizeDeviceCode(node.code), node))
   return map
 })
-const missionAssets = computed(() =>
-  assets.map((asset) => {
-    const runtimeNode = runtimeNodeByCode.value.get(normalizeDeviceCode(asset.code))
-    const online = runtimeNode?.status === 'ONLINE'
-    return {
-      ...asset,
-      runtimeNode,
-      online,
-      status: online ? 'ONLINE' : runtimeNode ? runtimeNode.status : 'WAITING',
-      detail: runtimeNode?.detail || asset.detail,
-    }
-  }),
+
+const displayedNodes = computed(() =>
+  monitoringStore.nodes.filter((node) => ['UAV', 'USV', 'ROS_NODE', 'UNITY_NODE', 'LIGHTHOUSE'].includes(node.type)),
 )
-const selectedAsset = computed(() =>
-  missionAssets.value.find((asset) => normalizeDeviceCode(asset.code) === normalizeDeviceCode(selectedDeviceCode.value)),
-)
-const cooperativeUnitCount = computed(() => missionAssets.value.length)
-const onlineCooperativeUnitCount = computed(() => missionAssets.value.filter((asset) => asset.online).length)
-const bridgeHealth = computed(() => links.find((link) => link.name === 'WebSocket Bridge')?.value ?? 0)
-const unityReady = computed(() => unityConnection.value.includes('Unity WebGL 已连接'))
+
+const selectableDevices = computed(() => {
+  const devices = displayedNodes.value.filter((node) => ['UAV', 'USV', 'LIGHTHOUSE'].includes(node.type))
+  if (devices.length > 0) return devices
+  return [
+    {
+      id: -1,
+      code: 'USV-01',
+      name: '协同无人艇',
+      type: 'USV',
+      status: 'UNKNOWN',
+      host: null,
+      port: null,
+      endpoint: '',
+      rosNamespace: null,
+      lastHeartbeatAt: null,
+      heartbeatAgeSeconds: -1,
+      source: 'LOCAL',
+      instanceId: null,
+      positionX: null,
+      positionY: null,
+      positionZ: null,
+      detail: '等待运行监控数据',
+    } as RuntimeNode,
+    {
+      id: -2,
+      code: 'UAV-01',
+      name: '协同无人机',
+      type: 'UAV',
+      status: 'UNKNOWN',
+      host: null,
+      port: null,
+      endpoint: '',
+      rosNamespace: null,
+      lastHeartbeatAt: null,
+      heartbeatAgeSeconds: -1,
+      source: 'LOCAL',
+      instanceId: null,
+      positionX: null,
+      positionY: null,
+      positionZ: null,
+      detail: '等待运行监控数据',
+    } as RuntimeNode,
+  ]
+})
+
+const selectedNode = computed(() => runtimeNodeByCode.value.get(normalizeDeviceCode(selectedDeviceCode.value)) ?? null)
 const rosBridgeOnline = computed(() =>
   monitoringStore.nodes.some((node) => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
 )
+const unityReady = computed(() => unityConnection.value.includes('Unity WebGL 已连接'))
 const realtimePoseCount = computed(
   () =>
     monitoringStore.nodes.filter(
       (node) => ['UAV', 'USV'].includes(node.type) && node.status === 'ONLINE' && hasRuntimePosition(node),
     ).length,
 )
-const overviewLinkState = computed(() => {
-  if (!unityReady.value) return '等待 WebGL 接入'
-  if (rosBridgeOnline.value && realtimePoseCount.value > 0) return '实时位姿同步中'
-  if (rosBridgeOnline.value) return 'ROS 已连接，等待载体位姿'
-  return 'Unity 已接入，等待 ROS 实时数据'
+const onlineNodeCount = computed(() => displayedNodes.value.filter((node) => node.status === 'ONLINE').length)
+const taskStateText = computed(() => {
+  if (!unityReady.value) return '等待 Unity'
+  if (rosBridgeOnline.value && realtimePoseCount.value > 0) return '实时同步'
+  if (rosBridgeOnline.value) return '等待位姿'
+  return '演示预览'
 })
-const overviewLinkDetail = computed(() => {
-  if (!unityReady.value) return 'Unity WebGL 构建包尚未完成加载'
-  if (rosBridgeOnline.value && realtimePoseCount.value > 0) return `已接收 ${realtimePoseCount.value} 个协同载体实时位姿`
-  if (rosBridgeOnline.value) return 'ROS WebSocket 已连接，尚未收到 UAV / USV 有效位姿'
-  return '三维场景已加载，ROS/Gazebo 实时桥接暂未在线'
-})
-function hasRuntimePosition(node: RuntimeNode) {
-  return node.positionX !== null && node.positionY !== null && node.positionZ !== null
-}
+const topStatusCards = computed(() => [
+  {
+    label: 'ROS / Gazebo',
+    value: rosBridgeOnline.value ? '在线' : '离线',
+    tone: rosBridgeOnline.value ? 'online' : 'offline',
+    detail: rosBridgeOnline.value ? 'WebSocket 数据链路可用' : '等待 ROS bridge 心跳',
+  },
+  {
+    label: 'Unity WebGL',
+    value: unityReady.value ? '在线' : '等待',
+    tone: unityReady.value ? 'online' : 'warning',
+    detail: unityConnection.value,
+  },
+  {
+    label: '位姿同步',
+    value: `${realtimePoseCount.value}/2`,
+    tone: realtimePoseCount.value >= 2 ? 'online' : 'warning',
+    detail: realtimePoseCount.value > 0 ? `已同步 ${realtimePoseCount.value} 个载体` : '尚未收到实时位姿',
+  },
+  {
+    label: '最新命令',
+    value: unityCommandState.value.includes('失败') ? '异常' : '就绪',
+    tone: unityCommandState.value.includes('失败') ? 'offline' : 'online',
+    detail: unityCommandState.value,
+  },
+])
 
 function toUnityPose(node: RuntimeNode) {
   return {
@@ -166,6 +200,7 @@ function pushPoseFrameToUnity() {
     poses,
   })
 }
+
 function unityHeartbeatDetail() {
   return [
     `Unity WebGL page active`,
@@ -323,6 +358,7 @@ function handleUnityError(message: string) {
   ElMessage.error(message)
   void sendUnityHeartbeat('FAILED')
 }
+
 onMounted(() => {
   void monitoringStore.refresh({}, true).then(pushPoseFrameToUnity)
   monitoringStore.connectEvents()
@@ -347,96 +383,47 @@ watch(
 
 <template>
   <ConsoleLayout title="系统总览" eyebrow="MISSION OVERVIEW">
-    <section class="mission-overview" aria-label="海空协同围捕态势总览">
-      <header class="mission-hero">
+    <section class="overview-console" aria-label="海空协同仿真总览">
+      <header class="overview-header">
         <div>
-          <p class="mission-kicker">UAV-USV COOPERATIVE ENCIRCLEMENT COMMAND</p>
-          <h2>海空协同围捕态势总览</h2>
-          <p>
-            面向无人机、无人艇协同任务，融合 ROS2/Gazebo 仿真、Unity3D 三维态势与 Web 任务控制，
-            形成感知、通信、决策、协同与展示的一体化控制闭环。
-          </p>
+          <p class="overview-kicker">UAV-USV RUNTIME CONSOLE</p>
+          <h2>系统总览</h2>
+          <span>聚焦 ROS/Gazebo、Unity WebGL、实时位姿和快捷控制。</span>
         </div>
-        <div class="mission-link-summary" aria-label="联调链路状态">
-          <div class="mission-link-summary-head">
-            <span>联调链路</span>
-            <strong>{{ overviewLinkState }}</strong>
-            <small>{{ overviewLinkDetail }}</small>
-          </div>
-          <div class="mission-link-summary-metrics">
-            <div>
-              <b>{{ cooperativeUnitCount }}</b>
-              <span>协同单元</span>
-            </div>
-            <div>
-              <b>{{ bridgeHealth }}%</b>
-              <span>桥接健康</span>
-            </div>
-          </div>
-          <div class="mission-link-flow" aria-label="ROS 到 Unity 的数据链路">
-            <span>ROS2 / Gazebo</span>
-            <i></i>
-            <span>WebSocket</span>
-            <i></i>
-            <span>Unity / Vue</span>
-          </div>
+        <div class="overview-runtime-summary">
+          <strong>{{ onlineNodeCount }} / {{ displayedNodes.length }}</strong>
+          <span>实时节点在线</span>
         </div>
       </header>
 
-      <div class="mission-dashboard">
-        <aside class="mission-panel">
-          <div class="mission-panel-title">
-            <h3>协同编队</h3>
-            <span class="mission-tag">{{ onlineCooperativeUnitCount }} / {{ cooperativeUnitCount }} ONLINE</span>
-          </div>
-          <div class="mission-asset-grid">
-            <button
-              v-for="asset in missionAssets"
-              :key="asset.code"
-              class="mission-asset-row"
-              :class="{ selected: asset.code === selectedDeviceCode, offline: !asset.online }"
-              type="button"
-              @click="selectDevice(asset.code)"
-            >
-              <div class="mission-asset-icon" :class="asset.type">
-                {{ asset.type === 'air' ? 'UAV' : 'USV' }}
-              </div>
-              <div>
-                <strong>{{ asset.code }} {{ asset.role }}</strong>
-                <span>{{ asset.detail }}</span>
-              </div>
-              <small>{{ asset.status }}</small>
-            </button>
-          </div>
+      <div class="overview-status-strip">
+        <article v-for="card in topStatusCards" :key="card.label" class="overview-status-card" :class="card.tone">
+          <span>{{ card.label }}</span>
+          <strong>{{ card.value }}</strong>
+          <small>{{ card.detail }}</small>
+        </article>
+      </div>
 
-          <div class="mission-phase-list">
-            <div v-for="phase in phases" :key="phase.step" class="mission-phase">
-              <div class="mission-phase-index">{{ phase.step }}</div>
-              <div>
-                <strong>{{ phase.title }}</strong>
-                <span>{{ phase.text }}</span>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        <section class="mission-panel mission-tactical">
-          <div class="mission-map-header">
+      <div class="overview-main-grid">
+        <section class="overview-stage-panel">
+          <div class="overview-stage-header">
             <div>
-              <h3>数字海域三维态势</h3>
-              <p>Unity WebGL 场景嵌入系统总览，替代原雷达扫描示意图。</p>
+              <h3>Unity 三维态势</h3>
+              <span>当前任务：{{ taskStateText }}</span>
             </div>
-            <div class="mission-signal"><i></i> ROS2 WebSocket</div>
-            <div class="mission-signal"><i></i> Unity WebGL</div>
+            <div class="overview-stage-signals">
+              <b :class="{ online: rosBridgeOnline }">ROS2 WebSocket</b>
+              <b :class="{ online: unityReady }">Unity WebGL</b>
+            </div>
           </div>
 
-          <div class="mission-unity-controls">
-            <div class="mission-selected-device">
+          <div class="overview-toolbar">
+            <div class="overview-selected-device">
               <span>当前对象</span>
               <strong>{{ selectedDeviceCode }}</strong>
-              <small>{{ selectedAsset?.role ?? '未选择设备' }}</small>
+              <small>{{ selectedNode?.detail ?? '等待实时状态' }}</small>
             </div>
-            <div class="mission-camera-tabs" aria-label="Unity 视角切换">
+            <div class="overview-camera-tabs" aria-label="Unity 视角切换">
               <button
                 v-for="mode in cameraModes"
                 :key="mode.value"
@@ -447,99 +434,92 @@ watch(
                 {{ mode.label }}
               </button>
             </div>
-            <button class="mission-control-button" type="button" @click="focusSelectedDevice">
-              聚焦设备
-            </button>
-            <button class="mission-control-button" type="button" @click="toggleTrajectory">
+            <button class="overview-tool-button" type="button" @click="focusSelectedDevice">聚焦设备</button>
+            <button class="overview-tool-button" type="button" @click="toggleTrajectory">
               {{ trajectoryVisible ? '隐藏轨迹' : '显示轨迹' }}
             </button>
           </div>
 
           <UnityWebglPanel
             ref="unityPanel"
-            class="mission-unity-stage"
+            class="overview-unity-stage"
             @unity-ready="handleUnityReady"
             @unity-message="handleUnityMessage"
             @unity-error="handleUnityError"
             @unity-command="handleUnityCommand"
           />
-
-          <div class="mission-readouts">
-            <div v-for="readout in readouts" :key="readout.label" class="mission-readout">
-              <span>{{ readout.label }}</span>
-              <strong>{{ readout.value }}</strong>
-              <small>{{ readout.text }}</small>
-            </div>
-          </div>
         </section>
 
-        <aside class="mission-panel">
-          <div class="mission-panel-title">
-            <h3>任务闭环</h3>
-            <span class="mission-tag warn">DEMO MODE</span>
-          </div>
-          <div class="mission-status-stack">
-            <div class="mission-status-card">
-              <span>当前阶段</span>
-              <strong>协同收敛</strong>
-              <small>无人机提供目标航迹，无人艇按包围点位推进。</small>
-            </div>
-            <div class="mission-status-card">
-              <span>指挥链路</span>
-              <strong>Web -> Spring Boot -> ROS2</strong>
-              <small>管理平台负责任务配置、节点状态和控制命令编排。</small>
-            </div>
-            <div class="mission-status-card">
-              <span>三维态势</span>
-              <strong>Unity WebGL 半实物可视化</strong>
-              <small>同步 Gazebo 位姿，展示海面、无人艇、无人机和目标。</small>
-            </div>
-            <div class="mission-status-card">
-              <span>Unity 通信</span>
-              <strong>{{ unityConnection }}</strong>
-              <small>最近事件：{{ lastUnityEvent }}</small>
-              <small>命令状态：{{ unityCommandState }}</small>
-            </div>
-          </div>
-
-          <div class="mission-panel-title compact">
-            <h3>快速指令</h3>
-            <span class="mission-tag">VUE -> UNITY</span>
-          </div>
-          <div class="mission-command-grid">
-            <button type="button" @click="sendCommand('takeoff')">起飞</button>
-            <button type="button" @click="sendCommand('land')">降落</button>
-            <button type="button" @click="sendCommand('startMission')">开始任务</button>
-            <button type="button" @click="sendCommand('stopMission')">停止任务</button>
-          </div>
-
-          <div class="mission-panel-title compact">
-            <h3>链路健康</h3>
-            <span class="mission-tag">LOW LATENCY</span>
-          </div>
-          <div class="mission-link-stack">
-            <div v-for="link in links" :key="link.name" class="mission-link-row">
-              <span>{{ link.name }}</span>
-              <div class="mission-bar"><i :style="{ width: `${link.value}%` }"></i></div>
-            </div>
-          </div>
-
-          <div class="mission-architecture">
-            <div v-for="item in architecture" :key="item.layer" class="mission-arch-layer">
-              <b>{{ item.layer }}</b>
+        <aside class="overview-ops-panel">
+          <section>
+            <h3>任务与控制</h3>
+            <div class="overview-info-stack">
               <div>
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.text }}</span>
+                <span>任务状态</span>
+                <strong>{{ taskStateText }}</strong>
               </div>
-              <em>{{ item.state }}</em>
+              <div>
+                <span>Unity 通信</span>
+                <strong>{{ unityConnection }}</strong>
+                <small>{{ lastUnityEvent }}</small>
+              </div>
+              <div>
+                <span>命令状态</span>
+                <strong>{{ unityCommandState }}</strong>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div class="mission-note">
-            本页作为任务态势入口，后续会继续接入运行监控、任务管理、算法服务与 Unity 场景状态。
-          </div>
+          <section>
+            <h3>设备选择</h3>
+            <div class="overview-device-list">
+              <button
+                v-for="device in selectableDevices"
+                :key="device.code"
+                type="button"
+                :class="{ active: normalizeDeviceCode(device.code) === normalizeDeviceCode(selectedDeviceCode) }"
+                @click="selectDevice(device.code)"
+              >
+                <b>{{ device.code }}</b>
+                <span>{{ device.status }}</span>
+              </button>
+            </div>
+          </section>
+
+          <section>
+            <h3>快捷指令</h3>
+            <div class="overview-command-grid">
+              <button v-for="command in commandButtons" :key="command.value" type="button" @click="sendCommand(command.value)">
+                {{ command.label }}
+              </button>
+            </div>
+          </section>
         </aside>
       </div>
+
+      <section class="overview-live-panel">
+        <div class="overview-live-head">
+          <h3>实时节点</h3>
+          <span>状态由 ROS WebSocket 数据和 Unity 心跳共同确认。</span>
+        </div>
+        <div class="overview-node-table">
+          <div class="overview-node-row head">
+            <span>节点</span>
+            <span>类型</span>
+            <span>状态</span>
+            <span>坐标 X/Y/Z</span>
+            <span>心跳</span>
+          </div>
+          <div v-for="node in displayedNodes" :key="node.code" class="overview-node-row">
+            <strong>{{ node.code }}</strong>
+            <span>{{ node.type }}</span>
+            <b :class="node.status.toLowerCase()">{{ node.status }}</b>
+            <span>{{ formatCoordinate(node.positionX) }} / {{ formatCoordinate(node.positionY) }} / {{ formatCoordinate(node.positionZ) }}</span>
+            <span>{{ formatHeartbeat(node.heartbeatAgeSeconds) }}</span>
+          </div>
+          <div v-if="displayedNodes.length === 0" class="overview-empty-row">暂无实时节点数据</div>
+        </div>
+      </section>
     </section>
   </ConsoleLayout>
 </template>

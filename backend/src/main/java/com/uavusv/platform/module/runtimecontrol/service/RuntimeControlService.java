@@ -1,6 +1,7 @@
 package com.uavusv.platform.module.runtimecontrol.service;
 
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
+import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandLogResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeControlResponse;
@@ -22,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.EnumSet;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -85,10 +87,21 @@ public class RuntimeControlService {
                 ));
     }
 
+    @Transactional(readOnly = true)
+    public List<RuntimeCommandLogResponse> recentCommands() {
+        return commandRepository.findTop100ByOrderByRequestedAtDesc()
+                .stream()
+                .map(RuntimeCommandLogResponse::from)
+                .toList();
+    }
+
     @Transactional
     public RuntimeControlResponse start(String username) {
         var active = sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(ACTIVE_STATUSES);
         if (active.isPresent()) {
+            ControlCommand command = commandRepository.save(new ControlCommand(active.get().getId(), CommandType.START, username));
+            command.succeed("已有活动仿真会话，平台未重复启动");
+            commandRepository.save(command);
             return getStatus();
         }
 
@@ -135,10 +148,13 @@ public class RuntimeControlService {
     public RuntimeControlResponse stop(String username) {
         var active = sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(ACTIVE_STATUSES);
         if (active.isEmpty()) {
+            ControlCommand command = commandRepository.save(new ControlCommand(null, CommandType.STOP, username));
             try {
                 runRosScript("stop");
                 requestUnityStop();
                 runtimeStateService.markRuntimeStopped("平台停止指令已执行，运行节点已下线");
+                command.succeed("未找到活动会话，已执行停止清理并下线运行节点");
+                commandRepository.save(command);
                 return new RuntimeControlResponse(
                         null,
                         SimulationStatus.STOPPED,
@@ -151,6 +167,8 @@ public class RuntimeControlService {
                         "未找到活动会话，已执行停止清理并下线运行节点"
                 );
             } catch (Exception exception) {
+                command.fail(exception.getMessage());
+                commandRepository.save(command);
                 return new RuntimeControlResponse(
                         null,
                         SimulationStatus.FAILED,
