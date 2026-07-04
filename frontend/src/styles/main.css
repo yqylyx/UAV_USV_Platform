@@ -477,9 +477,22 @@ h2 {
 
 .mission-dashboard {
   display: grid;
+  grid-template-areas: "roster tactical status";
   grid-template-columns: minmax(270px, 330px) minmax(520px, 1fr) minmax(270px, 330px);
   gap: 16px;
   padding-top: 18px;
+}
+
+.mission-dashboard > .mission-panel:first-child {
+  grid-area: roster;
+}
+
+.mission-dashboard > .mission-tactical {
+  grid-area: tactical;
+}
+
+.mission-dashboard > .mission-panel:last-child {
+  grid-area: status;
 }
 
 .mission-panel {
@@ -729,14 +742,16 @@ h2 {
 }
 
 .mission-unity-controls {
-  display: grid;
-  grid-template-columns: minmax(160px, 210px) minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   margin: 14px 18px 0;
 }
 
 .mission-selected-device {
+  flex: 1 1 180px;
+  max-width: 260px;
   min-height: 42px;
   padding: 8px 10px;
   background: rgba(232, 255, 251, 0.04);
@@ -763,7 +778,8 @@ h2 {
 
 .mission-camera-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 999 1 460px;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 6px;
   min-width: 0;
   padding: 4px;
@@ -776,6 +792,7 @@ h2 {
 .mission-control-button,
 .mission-command-grid button {
   min-height: 34px;
+  white-space: nowrap;
   color: #dff8f4;
   font: inherit;
   font-size: 12px;
@@ -800,6 +817,7 @@ h2 {
 }
 
 .mission-control-button {
+  flex: 0 0 auto;
   min-width: 82px;
   padding: 0 12px;
 }
@@ -1171,13 +1189,89 @@ h2 {
   }
 }
 
-@media (max-width: 1360px) {
+@media (max-width: 1700px) {
   .mission-dashboard {
+    grid-template-areas:
+      "roster tactical"
+      "status tactical";
+    grid-template-columns: minmax(280px, 340px) minmax(640px, 1fr);
+    align-items: start;
+  }
+
+  .mission-tactical {
+    min-height: auto;
+  }
+
+  .mission-map-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mission-signal {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 1220px) {
+  .mission-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-link-summary {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .mission-dashboard {
+    grid-template-areas:
+      "tactical"
+      "roster"
+      "status";
     grid-template-columns: 1fr;
   }
 
   .mission-tactical {
     min-height: auto;
+  }
+
+  .mission-unity-stage,
+  .mission-unity-stage.unity-webgl-panel {
+    height: 480px;
+    min-height: 480px;
+  }
+}
+
+@media (max-width: 720px) {
+  .mission-overview {
+    padding: 14px;
+  }
+
+  .mission-hero h2 {
+    font-size: 30px;
+  }
+
+  .mission-unity-controls {
+    margin: 12px 12px 0;
+  }
+
+  .mission-selected-device {
+    max-width: none;
+  }
+
+  .mission-camera-tabs {
+    flex-basis: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mission-control-button {
+    flex: 1 1 calc(50% - 6px);
+  }
+
+  .mission-unity-stage,
+  .mission-unity-stage.unity-webgl-panel {
+    height: 360px;
+    min-height: 360px;
+    margin: 12px;
   }
 }
 
