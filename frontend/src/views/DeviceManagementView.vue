@@ -339,7 +339,9 @@ onMounted(() => load(0))
         </el-table-column>
         <el-table-column label="状态" min-width="120">
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
+            <el-tag class="device-table-status" :type="statusTag(row.status)" effect="plain">
+              {{ statusLabel(row.status) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="通信地址" min-width="190">

@@ -13,6 +13,8 @@ import com.uavusv.platform.module.runtimecontrol.entity.SimulationStatus;
 import com.uavusv.platform.module.runtimecontrol.repository.ControlCommandRepository;
 import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,6 +70,15 @@ public class RuntimeControlService {
         this.integrationToken = integrationToken;
     }
 
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void resetRuntimeStateOnApplicationReady() {
+        sessionRepository.findAll().stream()
+                .filter(session -> ACTIVE_STATUSES.contains(session.getStatus()))
+                .forEach(session -> session.updateStatus(SimulationStatus.STOPPED));
+        runtimeStateService.markRuntimeStopped("平台服务已启动，等待手动点击运行");
+    }
+
     @Transactional(readOnly = true)
     public RuntimeControlResponse getStatus() {
         boolean rosOnline = runtimeStateService.isOnline(RuntimeStateService.ROS_CODE);
@@ -99,8 +110,31 @@ public class RuntimeControlService {
     public RuntimeControlResponse start(String username) {
         var active = sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(ACTIVE_STATUSES);
         if (active.isPresent()) {
-            ControlCommand command = commandRepository.save(new ControlCommand(active.get().getId(), CommandType.START, username));
-            command.succeed("已有活动仿真会话，平台未重复启动");
+            SimulationSession session = active.get();
+            ControlCommand command = commandRepository.save(new ControlCommand(session.getId(), CommandType.START, username));
+            boolean rosOnline = runtimeStateService.isOnline(RuntimeStateService.ROS_CODE);
+            boolean unityOnline = runtimeStateService.isOnline(RuntimeStateService.UNITY_CODE);
+            boolean retried = false;
+            try {
+                if (!rosOnline) {
+                    runRosScript("start");
+                    retried = true;
+                }
+                if (!unityOnline) {
+                    requestUnityStart();
+                    retried = true;
+                }
+                command.succeed(retried ? "已有活动仿真会话，已补启动离线组件" : "已有活动仿真会话，平台未重复启动");
+                session.updateStatus(statusFromHeartbeats(
+                        runtimeStateService.isOnline(RuntimeStateService.ROS_CODE),
+                        runtimeStateService.isOnline(RuntimeStateService.UNITY_CODE)
+                ));
+                sessionRepository.save(session);
+            } catch (Exception exception) {
+                command.fail(exception.getMessage());
+                session.fail(exception.getMessage());
+                sessionRepository.save(session);
+            }
             commandRepository.save(command);
             return getStatus();
         }
@@ -335,5 +369,15 @@ private void requestUnityStop() throws IOException {
             return "ROS、Unity 及设备状态正常";
         }
         return "正在等待组件心跳";
+    }
+
+    private SimulationStatus statusFromHeartbeats(boolean rosOnline, boolean unityOnline) {
+        if (rosOnline && unityOnline) {
+            return SimulationStatus.RUNNING;
+        }
+        if (rosOnline || unityOnline) {
+            return SimulationStatus.PARTIAL;
+        }
+        return SimulationStatus.STARTING;
     }
 }

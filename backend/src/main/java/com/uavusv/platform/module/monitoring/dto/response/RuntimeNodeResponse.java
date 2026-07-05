@@ -54,6 +54,28 @@ public record RuntimeNodeResponse(
         );
     }
 
+    public static RuntimeNodeResponse offline(Device device, String detail) {
+        return new RuntimeNodeResponse(
+                device.getId(),
+                device.getCode(),
+                device.getName(),
+                device.getType(),
+                DeviceStatus.OFFLINE,
+                device.getHost(),
+                device.getPort(),
+                buildEndpoint(device, null),
+                device.getRosNamespace(),
+                null,
+                -1,
+                "CONTROL_SESSION",
+                null,
+                null,
+                null,
+                null,
+                detail
+        );
+    }
+
     private static String buildEndpoint(Device device, RuntimeDeviceStatus runtime) {
         String host = runtime != null && runtime.getHost() != null ? runtime.getHost() : device.getHost();
         Integer port = runtime != null && runtime.getPort() != null ? runtime.getPort() : device.getPort();

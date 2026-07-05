@@ -9,6 +9,8 @@ import com.uavusv.platform.module.monitoring.dto.response.RuntimeSummaryResponse
 import com.uavusv.platform.module.monitoring.entity.RuntimeDeviceStatus;
 import com.uavusv.platform.module.monitoring.repository.RuntimeDeviceStatusRepository;
 import com.uavusv.platform.module.monitoring.service.MonitoringService;
+import com.uavusv.platform.module.runtimecontrol.entity.SimulationStatus;
+import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,10 +35,16 @@ public class MonitoringServiceImpl implements MonitoringService {
 
     private final DeviceRepository deviceRepository;
     private final RuntimeDeviceStatusRepository runtimeStatusRepository;
+    private final SimulationSessionRepository sessionRepository;
 
-    public MonitoringServiceImpl(DeviceRepository deviceRepository, RuntimeDeviceStatusRepository runtimeStatusRepository) {
+    public MonitoringServiceImpl(
+            DeviceRepository deviceRepository,
+            RuntimeDeviceStatusRepository runtimeStatusRepository,
+            SimulationSessionRepository sessionRepository
+    ) {
         this.deviceRepository = deviceRepository;
         this.runtimeStatusRepository = runtimeStatusRepository;
+        this.sessionRepository = sessionRepository;
     }
 
     @Override
@@ -44,13 +52,14 @@ public class MonitoringServiceImpl implements MonitoringService {
         List<Device> nodes = loadRuntimeDevices();
         Map<Long, RuntimeDeviceStatus> runtimeStatuses = loadRuntimeStatuses(nodes);
         LocalDateTime refreshedAt = LocalDateTime.now();
+        boolean runtimeActive = hasActiveRuntimeSession();
 
         return new RuntimeSummaryResponse(
                 nodes.size(),
-                countByStatus(nodes, runtimeStatuses, DeviceStatus.ONLINE),
-                countByStatus(nodes, runtimeStatuses, DeviceStatus.OFFLINE),
-                countByStatus(nodes, runtimeStatuses, DeviceStatus.MAINTENANCE),
-                countByStatus(nodes, runtimeStatuses, DeviceStatus.UNKNOWN),
+                runtimeActive ? countByStatus(nodes, runtimeStatuses, DeviceStatus.ONLINE) : 0,
+                runtimeActive ? countByStatus(nodes, runtimeStatuses, DeviceStatus.OFFLINE) : nodes.size(),
+                runtimeActive ? countByStatus(nodes, runtimeStatuses, DeviceStatus.MAINTENANCE) : 0,
+                runtimeActive ? countByStatus(nodes, runtimeStatuses, DeviceStatus.UNKNOWN) : 0,
                 countByType(nodes, DeviceType.ROS_NODE),
                 countByType(nodes, DeviceType.UNITY_NODE),
                 nodes.stream().filter(device -> device.getType() == DeviceType.UAV || device.getType() == DeviceType.USV).count(),
@@ -63,11 +72,23 @@ public class MonitoringServiceImpl implements MonitoringService {
         LocalDateTime now = LocalDateTime.now();
         List<Device> devices = loadRuntimeDevices();
         Map<Long, RuntimeDeviceStatus> runtimeStatuses = loadRuntimeStatuses(devices);
+        boolean runtimeActive = hasActiveRuntimeSession();
         return devices.stream()
                 .filter(device -> type == null || device.getType() == type)
-                .map(device -> RuntimeNodeResponse.from(device, runtimeStatuses.get(device.getId()), now))
+                .map(device -> runtimeActive
+                        ? RuntimeNodeResponse.from(device, runtimeStatuses.get(device.getId()), now)
+                        : RuntimeNodeResponse.offline(device, "平台仿真未运行，等待点击运行后接入真实心跳"))
                 .filter(node -> status == null || node.status() == status)
                 .toList();
+    }
+
+    private boolean hasActiveRuntimeSession() {
+        return sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(EnumSet.of(
+                SimulationStatus.STARTING,
+                SimulationStatus.RUNNING,
+                SimulationStatus.PARTIAL,
+                SimulationStatus.STOPPING
+        )).isPresent();
     }
 
     private List<Device> loadRuntimeDevices() {
