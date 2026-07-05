@@ -288,9 +288,12 @@ async function stopSimulation() {
       ElMessage.error(controlStore.error)
       return
     }
+
+    await controlStore.refresh()
     await waitForRuntimeStatus(['STOPPED', 'FAILED'], 30000)
     await controlStore.refreshCommands()
     await monitoringStore.refresh()
+
     if (controlStore.runtime?.status === 'STOPPED') {
       ElMessage.success('仿真已停止，运行节点已下线')
     } else {
@@ -299,6 +302,7 @@ async function stopSimulation() {
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '停止状态确认失败')
   } finally {
+    await controlStore.refresh()
     actionPhase.value = 'idle'
   }
 }

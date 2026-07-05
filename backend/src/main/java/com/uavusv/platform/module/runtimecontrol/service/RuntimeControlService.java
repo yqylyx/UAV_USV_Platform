@@ -76,14 +76,14 @@ public class RuntimeControlService {
                 .map(session -> RuntimeControlResponse.from(session, rosOnline, unityOnline, statusMessage(session, rosOnline, unityOnline)))
                 .orElseGet(() -> new RuntimeControlResponse(
                         null,
-                        rosOnline || unityOnline ? SimulationStatus.RUNNING : SimulationStatus.STOPPED,
-                        rosOnline,
-                        unityOnline,
+                        SimulationStatus.STOPPED,
+                        false,
+                        false,
                         false,
                         false,
                         false,
                         null,
-                        rosOnline || unityOnline ? "检测到外部启动的仿真组件，平台只监控不终止" : "仿真未运行"
+                        "仿真未运行"
                 ));
     }
 
@@ -281,11 +281,16 @@ public class RuntimeControlService {
         return process.pid();
     }
 
-    private void requestUnityStop() throws IOException {
-        Path controlDirectory = unityProject.resolve("Library").resolve("PlatformControl");
-        Files.createDirectories(controlDirectory);
-        Files.writeString(controlDirectory.resolve("stop.request"), "stop", StandardCharsets.UTF_8);
-    }
+private void requestUnityStop() throws IOException {
+    Path controlDirectory = unityProject.resolve("Library").resolve("PlatformControl");
+    Files.createDirectories(controlDirectory);
+
+    // 停止时删除启动请求，防止 Unity 或监听逻辑再次读取 start.request 后重新启动
+    Files.deleteIfExists(controlDirectory.resolve("start.request"));
+
+    // 写入停止请求
+    Files.writeString(controlDirectory.resolve("stop.request"), "stop", StandardCharsets.UTF_8);
+}
 
     private String buildCommandDetail(RuntimeCommandRequest request) {
         StringBuilder detail = new StringBuilder("Web 控制台指令已记录");
