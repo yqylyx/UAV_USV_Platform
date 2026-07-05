@@ -36,7 +36,7 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
-                        .ignoringRequestMatchers("/api/auth/login", "/api/integration/**")
+                        .ignoringRequestMatchers("/api/auth/login", "/api/integration/**","/api/runtime-control/**")
                 )
                 .securityContext(context -> context
                         .securityContextRepository(securityContextRepository)
