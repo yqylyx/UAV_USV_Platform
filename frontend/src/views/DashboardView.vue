@@ -384,18 +384,6 @@ watch(
 <template>
   <ConsoleLayout title="系统总览" eyebrow="MISSION OVERVIEW">
     <section class="overview-console" aria-label="海空协同仿真总览">
-      <header class="overview-header">
-        <div>
-          <p class="overview-kicker">UAV-USV RUNTIME CONSOLE</p>
-          <h2>系统总览</h2>
-          <span>聚焦 ROS/Gazebo、Unity WebGL、实时位姿和快捷控制。</span>
-        </div>
-        <div class="overview-runtime-summary">
-          <strong>{{ onlineNodeCount }} / {{ displayedNodes.length }}</strong>
-          <span>实时节点在线</span>
-        </div>
-      </header>
-
       <div class="overview-status-strip">
         <article v-for="card in topStatusCards" :key="card.label" class="overview-status-card" :class="card.tone">
           <span>{{ card.label }}</span>
@@ -405,6 +393,7 @@ watch(
       </div>
 
       <div class="overview-main-grid">
+        <div class="overview-left-col">
         <section class="overview-stage-panel">
           <div class="overview-stage-header">
             <div>
@@ -413,16 +402,11 @@ watch(
             </div>
             <div class="overview-stage-signals">
               <b :class="{ online: rosBridgeOnline }">ROS2 WebSocket</b>
-              <b :class="{ online: unityReady }">Unity WebGL</b>
+              <b :class="{ online: rosBridgeOnline }">Unity WebGL</b>
             </div>
           </div>
 
           <div class="overview-toolbar">
-            <div class="overview-selected-device">
-              <span>当前对象</span>
-              <strong>{{ selectedDeviceCode }}</strong>
-              <small>{{ selectedNode?.detail ?? '等待实时状态' }}</small>
-            </div>
             <div class="overview-camera-tabs" aria-label="Unity 视角切换">
               <button
                 v-for="mode in cameraModes"
@@ -450,7 +434,37 @@ watch(
           />
         </section>
 
+        <section class="overview-live-panel">
+          <div class="overview-live-head">
+          <h3>实时节点</h3>
+          <span>状态由 ROS WebSocket 数据和 Unity 心跳共同确认。</span>
+          </div>
+          <div class="overview-node-table">
+          <div class="overview-node-row head">
+            <span>节点</span>
+            <span>类型</span>
+            <span>状态</span>
+            <span>坐标 X/Y/Z</span>
+            <span>心跳</span>
+          </div>
+          <div v-for="node in displayedNodes" :key="node.code" class="overview-node-row">
+            <strong>{{ node.code }}</strong>
+            <span>{{ node.type }}</span>
+            <b :class="node.status.toLowerCase()">{{ node.status }}</b>
+            <span>{{ formatCoordinate(node.positionX) }} / {{ formatCoordinate(node.positionY) }} / {{ formatCoordinate(node.positionZ) }}</span>
+            <span>{{ formatHeartbeat(node.heartbeatAgeSeconds) }}</span>
+          </div>
+          <div v-if="displayedNodes.length === 0" class="overview-empty-row">暂无实时节点数据</div>
+        </div>
+        </section>
+        </div>
+
         <aside class="overview-ops-panel">
+          <div class="overview-runtime-summary">
+          <strong>{{ onlineNodeCount }} / {{ displayedNodes.length }}</strong>
+          <span>实时节点在线</span>
+        </div>
+
           <section>
             <h3>任务与控制</h3>
             <div class="overview-info-stack">
@@ -469,7 +483,24 @@ watch(
               </div>
             </div>
           </section>
-
+          <section>
+            <h3>设备控制</h3>
+            <div class="overview-device-control">
+              <div class="overview-control-device">
+                <span class="overview-device-badge">{{ selectedDeviceCode?.slice(0, 2) || '--' }}</span>
+                <div class="overview-control-meta">
+                  <strong>{{ selectedDeviceCode }}</strong>
+                  <span>{{ selectedNode?.detail ?? '等待实时状态' }}</span>
+                </div>
+                <b class="overview-control-status" :class="(selectedNode?.status ?? '').toLowerCase()">{{ selectedNode?.status || '--' }}</b>
+              </div>
+              <div class="overview-command-grid">
+                <button v-for="command in commandButtons" :key="command.value" type="button" @click="sendCommand(command.value)">
+                  {{ command.label }}
+                </button>
+              </div>
+            </div>
+          </section>
           <section>
             <h3>设备选择</h3>
             <div class="overview-device-list">
@@ -486,40 +517,27 @@ watch(
             </div>
           </section>
 
-          <section>
-            <h3>快捷指令</h3>
-            <div class="overview-command-grid">
-              <button v-for="command in commandButtons" :key="command.value" type="button" @click="sendCommand(command.value)">
-                {{ command.label }}
-              </button>
+          <!-- <section>
+            <h3>设备控制</h3>
+            <div class="overview-device-control">
+              <div class="overview-control-device">
+                <span class="overview-device-badge">{{ selectedDeviceCode?.slice(0, 2) || '--' }}</span>
+                <div class="overview-control-meta">
+                  <strong>{{ selectedDeviceCode }}</strong>
+                  <span>{{ selectedNode?.detail ?? '等待实时状态' }}</span>
+                </div>
+                <b class="overview-control-status" :class="(selectedNode?.status ?? '').toLowerCase()">{{ selectedNode?.status || '--' }}</b>
+              </div>
+              <div class="overview-command-grid">
+                <button v-for="command in commandButtons" :key="command.value" type="button" @click="sendCommand(command.value)">
+                  {{ command.label }}
+                </button>
+              </div>
             </div>
-          </section>
+          </section> -->
         </aside>
       </div>
 
-      <section class="overview-live-panel">
-        <div class="overview-live-head">
-          <h3>实时节点</h3>
-          <span>状态由 ROS WebSocket 数据和 Unity 心跳共同确认。</span>
-        </div>
-        <div class="overview-node-table">
-          <div class="overview-node-row head">
-            <span>节点</span>
-            <span>类型</span>
-            <span>状态</span>
-            <span>坐标 X/Y/Z</span>
-            <span>心跳</span>
-          </div>
-          <div v-for="node in displayedNodes" :key="node.code" class="overview-node-row">
-            <strong>{{ node.code }}</strong>
-            <span>{{ node.type }}</span>
-            <b :class="node.status.toLowerCase()">{{ node.status }}</b>
-            <span>{{ formatCoordinate(node.positionX) }} / {{ formatCoordinate(node.positionY) }} / {{ formatCoordinate(node.positionZ) }}</span>
-            <span>{{ formatHeartbeat(node.heartbeatAgeSeconds) }}</span>
-          </div>
-          <div v-if="displayedNodes.length === 0" class="overview-empty-row">暂无实时节点数据</div>
-        </div>
-      </section>
-    </section>
+  </section>
   </ConsoleLayout>
 </template>

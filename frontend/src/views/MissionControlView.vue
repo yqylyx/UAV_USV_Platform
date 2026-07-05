@@ -525,7 +525,7 @@ onMounted(async () => {
       </div>
 
       <el-table v-loading="missionStore.loading || detailLoading" :data="missionStore.records" class="console-table">
-        <el-table-column label="任务" min-width="240">
+        <el-table-column label="任务" min-width="180">
           <template #default="{ row }">
             <div class="asset-name-cell">
               <span class="asset-mini-mark mission">{{ row.priority }}</span>
@@ -536,28 +536,29 @@ onMounted(async () => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="类型" min-width="150">
+        <el-table-column label="类型" min-width="80">
           <template #default="{ row }">{{ typeLabel(row.type) }}</template>
         </el-table-column>
-        <el-table-column label="阶段" min-width="130">
+        <el-table-column label="阶段" min-width="70">
           <template #default="{ row }">{{ stageLabel(row.stage) }}</template>
         </el-table-column>
-        <el-table-column label="状态" min-width="120">
+        <el-table-column label="状态" min-width="70">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="目标 / 区域" min-width="190">
+        <el-table-column label="目标 / 区域" min-width="120">
           <template #default="{ row }">{{ row.targetName || '--' }} / {{ row.missionArea || '--' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="350" fixed="right">
           <template #default="{ row }">
+            <span class="action-row">
             <el-button link type="primary" :icon="Eye" @click="openDetail(row)">详情</el-button>
             <template v-if="canManage">
               <el-button
+                link
                 v-for="item in missionActions(row.status)"
                 :key="item.action"
-                link
                 :type="item.type"
                 :loading="actionLoadingId === row.id"
                 @click="runMissionAction(row, item.action)"
@@ -567,6 +568,7 @@ onMounted(async () => {
               <el-button link type="primary" :icon="Pencil" @click="openEdit(row)">编辑</el-button>
               <el-button link type="danger" :icon="Trash2" :loading="deletingId === row.id" @click="openDelete(row)">删除</el-button>
             </template>
+            </span>
           </template>
         </el-table-column>
       </el-table>

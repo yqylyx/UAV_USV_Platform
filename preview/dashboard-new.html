@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UAV-USV 协同控制台</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+      color: #dff8f4;
+      background: #061113;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; min-width: 320px; }
+    body { overflow-x: hidden; background: #061113; }
+
+    .app {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ===== SIDEBAR ===== */
+    .sidebar {
+      position: relative;
+      display: flex; flex-direction: column;
+      height: 100vh;
+      padding: 14px 10px;
+      background: linear-gradient(180deg, rgba(9,22,24,.96), rgba(6,17,19,.99)), #061113;
+      border-right: 1px solid rgba(114,230,215,.09);
+      overflow: hidden;
+    }
+    .sidebar::before {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(109,233,218,.03) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(109,233,218,.03) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,.5), rgba(0,0,0,.04));
+    }
+    .sidebar > * { position: relative; z-index: 1; }
+
+    .logo {
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 2px 10px; margin-bottom: 8px;
+      border-bottom: 1px solid rgba(114,230,215,.07);
+    }
+    .logo-badge {
+      width: 26px; height: 26px; display: grid; place-items: center;
+      font-size: 11px; font-weight: 900; color: #061113;
+      background: #72e6d7; border-radius: 4px;
+      box-shadow: 0 0 10px rgba(114,230,215,.18);
+    }
+    .logo strong { display: block; font-size: 11px; color: #f4fffd; }
+    .logo span { display: block; font-size: 8px; color: #8fb4b2; margin-top: 1px; }
+
+    .nav { display: grid; gap: 2px; }
+    .nav a {
+      display: flex; align-items: center; gap: 6px;
+      min-height: 28px; padding: 0 8px;
+      color: #8fb4b2; font-size: 10px; text-decoration: none;
+      border-radius: 4px; cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .nav a:hover { color: #dff8f4; background: rgba(114,230,215,.04); }
+    .nav a.active {
+      color: #f4fffd; font-weight: 700;
+      background: rgba(114,230,215,.08);
+      box-shadow: inset 2px 0 #72e6d7;
+    }
+    .nav a i { width: 12px; text-align: center; font-style: normal; }
+
+    .sidebar-foot { margin-top: auto; padding-top: 8px; border-top: 1px solid rgba(114,230,215,.06); color: #708187; font-size: 8px; line-height: 1.4; }
+
+    /* ===== MAIN ===== */
+    .main {
+      overflow-y: auto;
+      padding: 10px 14px 14px;
+      background:
+        linear-gradient(180deg, rgba(9,22,24,.84), rgba(6,17,19,.94)),
+        radial-gradient(circle at 50% 20%, rgba(43,141,134,.05), transparent 40%),
+        #061113;
+      position: relative;
+    }
+    .main::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(109,233,218,.03) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(109,233,218,.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,.4), rgba(0,0,0,.03));
+    }
+    .main > * { position: relative; z-index: 1; }
+
+    /* --- Top bar --- */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 8px; margin-bottom: 10px;
+      border-bottom: 1px solid rgba(133,238,226,.14);
+    }
+    .topbar-left h1 { color: #f4fffd; font-size: 15px; font-weight: 700; }
+    .topbar-left .sub { color: #78eee0; font-size: 9px; font-weight: 800; letter-spacing: .04em; margin-bottom: 2px; }
+    .user-tag {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 8px;
+      background: rgba(232,255,251,.03);
+      border: 1px solid rgba(143,180,178,.11);
+      border-radius: 4px;
+    }
+    .user-tag span { color: #8fb4b2; font-size: 9px; }
+    .user-tag strong { color: #dff8f4; font-size: 9px; }
+    .btn-outline {
+      padding: 3px 8px; font-size: 9px; font-weight: 700;
+      background: transparent; border: 1px solid rgba(114,230,215,.22); border-radius: 3px;
+      color: #dff8f4; cursor: pointer;
+    }
+    .btn-outline:hover { background: rgba(114,230,215,.07); }
+
+    /* --- Metrics --- */
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+    .card {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px;
+      background: rgba(232,255,251,.03);
+      border: 1px solid rgba(143,180,178,.11);
+      border-radius: 5px;
+    }
+    .card-icon {
+      width: 26px; height: 26px; display: grid; place-items: center;
+      font-size: 10px; border-radius: 4px; flex-shrink: 0;
+    }
+    .card-icon.t1 { background: rgba(114,230,215,.12); color: #72e6d7; }
+    .card-icon.t2 { background: rgba(138,198,255,.12); color: #8ac6ff; }
+    .card-icon.t3 { background: rgba(255,207,114,.12); color: #ffcf72; }
+    .card-icon.t4 { background: rgba(255,109,130,.12); color: #ff6d82; }
+    .card strong { font-size: 14px; color: #f4fffd; display: block; }
+    .card span { font-size: 9px; color: #8fb4b2; display: block; }
+
+    /* ===== THREE EQUAL COLUMNS ===== */
+    .cols {
+      display: grid;
+      grid-template-columns: 1fr 1.5fr 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+
+    /* --- Panel --- */
+    .panel {
+      position: relative;
+      padding: 10px;
+      background: linear-gradient(180deg, rgba(13,33,35,.84), rgba(8,22,24,.80)), rgba(8,22,24,.84);
+      border: 1px solid rgba(114,230,215,.16);
+      border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    }
+    .panel + .panel { margin-top: 8px; }
+    .panel::before { content: ""; position: absolute; top: 0; left: 10px; width: 40px; height: 2px; background: #72e6d7; }
+    .panel-hd {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px;
+    }
+    .panel-hd h3 { color: #f4fffd; font-size: 11px; font-weight: 700; }
+    .tag {
+      display: inline-flex; align-items: center; min-height: 15px; padding: 0 5px;
+      color: #08201f; font-size: 8px; font-weight: 800; background: #72e6d7; border-radius: 2px;
+    }
+
+    /* --- Unity --- */
+    .unity-area {
+      position: relative;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 280px;
+      background: radial-gradient(ellipse at 50% 50%, rgba(43,141,134,.05), transparent 50%),
+                  linear-gradient(180deg, rgba(10,28,30,.65), rgba(6,19,21,.75)), #061113;
+      border: 1px solid rgba(114,230,215,.2);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .unity-area::before {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(109,233,218,.04) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(109,233,218,.04) 1px, transparent 1px);
+      background-size: 24px 24px;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,.6), rgba(0,0,0,.08));
+    }
+    .unity-area > * { position: relative; z-index: 1; }
+    .unity-label { color: rgba(114,230,215,.45); font-size: 9px; font-weight: 800; letter-spacing: .05em; margin-bottom: 8px; }
+    .unity-frame {
+      width: 88%; max-width: 540px; aspect-ratio: 16 / 9;
+      border: 1px solid rgba(114,230,215,.18); border-radius: 5px;
+      background: radial-gradient(circle at 30% 40%, rgba(20,80,75,.22), transparent 40%),
+                  radial-gradient(circle at 70% 60%, rgba(10,50,48,.18), transparent 30%),
+                  rgba(7,24,26,.55);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; overflow: hidden; position: relative;
+    }
+    .unity-placeholder { text-align: center; color: rgba(114,230,215,.3); font-size: 10px; line-height: 1.5; }
+    .unity-placeholder strong { display: block; font-size: 12px; color: rgba(114,230,215,.45); margin-bottom: 3px; }
+    .unity-info { display: flex; gap: 10px; margin-top: 8px; color: #8fb4b2; font-size: 8px; }
+    .unity-info span { display: flex; align-items: center; gap: 3px; }
+
+    .runtime-bar { display: flex; gap: 5px; margin-top: 8px; }
+    .runtime-item {
+      flex: 1; display: flex; align-items: center; gap: 5px;
+      padding: 5px 8px;
+      background: rgba(232,255,251,.03);
+      border: 1px solid rgba(143,180,178,.11); border-radius: 4px;
+    }
+    .runtime-item strong { color: #f4fffd; font-size: 12px; min-width: 18px; }
+    .runtime-item span { color: #8fb4b2; font-size: 8px; }
+    .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .dot.green { background: #2fcf94; box-shadow: 0 0 4px rgba(47,207,148,.35); }
+    .dot.red { background: #ff6d82; }
+    .dot.yellow { background: #ffcf72; }
+
+    /* --- Lists --- */
+    .device-list { display: grid; gap: 4px; }
+    .device-row {
+      display: grid; grid-template-columns: 22px minmax(0,1fr) auto;
+      gap: 5px; align-items: center; min-height: 28px; padding: 4px 7px;
+      background: rgba(232,255,251,.03);
+      border: 1px solid rgba(143,180,178,.1); border-radius: 4px;
+    }
+    .device-row:hover { background: rgba(114,230,215,.04); }
+    .dev-icon {
+      width: 22px; height: 22px; display: grid; place-items: center;
+      font-size: 7px; font-weight: 900; color: #061113; border-radius: 3px;
+    }
+    .dev-icon.air { background: #8ac6ff; }
+    .dev-icon.sea { background: #72e6d7; }
+    .device-row strong { color: #f3fffd; font-size: 9px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .device-row span { color: #8fb4b2; font-size: 8px; display: block; margin-top: 0px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .device-row small { font-size: 8px; font-weight: 800; }
+    .device-row small.online { color: #2fcf94; }
+    .device-row small.offline { color: #ff6d82; }
+
+    .phase-item {
+      display: grid; grid-template-columns: 16px minmax(0,1fr); gap: 5px; align-items: start;
+      padding: 4px 0; border-bottom: 1px solid rgba(143,180,178,.06);
+    }
+    .phase-item:last-child { border: 0; }
+    .phase-num {
+      width: 16px; height: 16px; display: grid; place-items: center;
+      color: #061113; font-size: 7px; font-weight: 900; background: #ffcf72; border-radius: 50%;
+    }
+    .phase-item strong { color: #f5fffd; font-size: 9px; display: block; }
+    .phase-item span { color: #87aaa8; font-size: 8px; line-height: 1.3; display: block; margin-top: 1px; }
+
+    .section-label {
+      display: flex; justify-content: space-between; align-items: center;
+      margin: 8px 0 5px;
+    }
+    .section-label h2 { margin: 0; color: #78eee0; font-size: 9px; font-weight: 800; }
+    .section-label span { color: #8fb4b2; font-size: 8px; }
+
+    .stat-box {
+      padding: 5px 7px;
+      background: rgba(232,255,251,.03);
+      border: 1px solid rgba(143,180,178,.1); border-radius: 4px;
+    }
+    .stat-box span { color: #8fb4b2; font-size: 8px; display: block; }
+    .stat-box strong { color: #f4fffd; font-size: 12px; display: block; margin-top: 1px; }
+    .stat-box small { color: #ffcf72; font-size: 8px; display: block; margin-top: 1px; line-height: 1.2; }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 5px; margin-top: 6px; }
+
+    .diag-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 5px; }
+    .diag-item { padding: 6px 7px; background: rgba(232,255,251,.03); border: 1px solid rgba(143,180,178,.1); border-radius: 4px; }
+    .diag-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+    .diag-head span { color: #8fb4b2; font-size: 8px; font-weight: 700; }
+    .diag-item strong { color: #f4fffd; font-size: 10px; display: block; }
+    .diag-item p { color: #87aaa8; font-size: 8px; line-height: 1.3; margin-top: 1px; }
+
+    .link-item {
+      display: grid; grid-template-columns: minmax(44px,1fr) 38px; gap: 5px; align-items: center;
+      min-height: 22px; padding: 3px 5px;
+      background: rgba(232,255,251,.03); border: 1px solid rgba(143,180,178,.1); border-radius: 3px;
+    }
+    .link-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #dff8f4; font-size: 8px; }
+    .bar { height: 3px; background: rgba(143,180,178,.13); border-radius: 99px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: linear-gradient(90deg,#72e6d7,#ffcf72); border-radius: inherit; }
+
+    .arch-item {
+      display: grid; grid-template-columns: 18px minmax(0,1fr) auto; gap: 5px; align-items: center;
+      min-height: 24px; padding: 3px 5px;
+      background: rgba(12,42,43,.4); border: 1px solid rgba(114,230,215,.12); border-radius: 3px;
+    }
+    .arch-item b {
+      width: 18px; height: 18px; display: grid; place-items: center;
+      color: #061113; font-size: 7px; background: #72e6d7; border-radius: 3px;
+    }
+    .arch-item strong { color: #f4fffd; font-size: 9px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .arch-item span { color: #8fb4b2; font-size: 8px; display: block; margin-top: 0px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .arch-item em { color: #ffcf72; font-size: 8px; font-style: normal; font-weight: 800; }
+
+    .link-stack, .arch-stack { display: grid; gap: 3px; }
+
+    .notice {
+      margin-top: 10px; padding: 6px 10px;
+      color: #c8e8e3; font-size: 9px; line-height: 1.4;
+      background: rgba(255,207,114,.05);
+      border: 1px solid rgba(255,207,114,.13); border-radius: 4px;
+    }
+
+    @media (max-width: 1100px) {
+      .cols { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: repeat(2,1fr); }
+    }
+    @media (max-width: 680px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { height: auto; padding: 8px; }
+      .nav { display: flex; flex-wrap: wrap; gap: 2px; }
+      .nav a { font-size: 9px; padding: 0 6px; min-height: 24px; }
+      .sidebar-foot { display: none; }
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-badge">⛵</div>
+      <div><strong>UAV-USV</strong><span>协同仿真平台</span></div>
+    </div>
+    <nav class="nav">
+      <a class="active"><i>📊</i> 总览</a>
+      <a><i>📦</i> 设备</a>
+      <a><i>🚁</i> 任务</a>
+      <a><i>📡</i> 监控</a>
+    </nav>
+    <div class="sidebar-foot">海空协同控制台 v0.2</div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="sub">MISSION CONTROL</div>
+        <h1>系统总览</h1>
+      </div>
+      <div class="user-tag">
+        <span>👤 <strong>admin</strong></span>
+        <button class="btn-outline">退出</button>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="cards">
+      <div class="card"><div class="card-icon t1">🔗</div><div><strong>10</strong><span>在线节点</span></div></div>
+      <div class="card"><div class="card-icon t2">🚁</div><div><strong>6</strong><span>协同单元</span></div></div>
+      <div class="card"><div class="card-icon t3">📋</div><div><strong>4</strong><span>活跃任务</span></div></div>
+      <div class="card"><div class="card-icon t4">⚡</div><div><strong>2</strong><span>需关注</span></div></div>
+    </div>
+
+    <!-- Three equal columns -->
+    <div class="cols">
+
+      <!-- LEFT: Devices + Flow + Status -->
+      <div>
+        <div class="panel">
+          <div class="panel-hd"><h3>📦 设备资产</h3><span class="tag">8</span></div>
+          <div class="device-list">
+            <div class="device-row"><div class="dev-icon air">UAV</div><div><strong>UAV-01 高空侦察</strong><span>目标视觉锁定</span></div><small class="online">🟢</small></div>
+            <div class="device-row"><div class="dev-icon air">UAV</div><div><strong>UAV-02 侧翼压制</strong><span>轨迹预测</span></div><small class="online">🟢</small></div>
+            <div class="device-row"><div class="dev-icon air">UAV</div><div><strong>UAV-03 低空补盲</strong><span>海面遮挡补偿</span></div><small class="online">🟢</small></div>
+            <div class="device-row"><div class="dev-icon sea">USV</div><div><strong>USV-01 正面拦截</strong><span>主追踪艇</span></div><small class="online">🟢</small></div>
+            <div class="device-row"><div class="dev-icon sea">USV</div><div><strong>USV-02 左翼封锁</strong><span>速度匹配</span></div><small class="online">🟢</small></div>
+            <div class="device-row"><div class="dev-icon sea">USV</div><div><strong>USV-03 右翼封锁</strong><span>水面包络</span></div><small class="offline">🔴</small></div>
+          </div>
+          <div class="section-label"><h2>围捕流程</h2></div>
+          <div class="phase-item"><div class="phase-num">1</div><div><strong>目标发现</strong><span>UAV 先行侦察，USV 接收航迹。</span></div></div>
+          <div class="phase-item"><div class="phase-num">2</div><div><strong>协同分配</strong><span>按距离和角度分配包围位置。</span></div></div>
+          <div class="phase-item"><div class="phase-num">3</div><div><strong>闭环围捕</strong><span>Unity 态势显示，ROS2 反馈位姿。</span></div></div>
+          <div class="stat-grid">
+            <div class="stat-box"><span>完成度</span><strong>72%</strong><small>包络收缩中</small></div>
+            <div class="stat-box"><span>目标速度</span><strong>2.8 m/s</strong><small>航向稳定</small></div>
+            <div class="stat-box"><span>通信延迟</span><strong>38 ms</strong><small>链路正常</small></div>
+            <div class="stat-box"><span>安全距离</span><strong>15.4 m</strong><small>无碰撞预警</small></div>
+          </div>
+        </div>
+        <!-- Link health (moved here for balance) -->
+        <div class="panel" style="margin-top:8px;">
+          <div class="panel-hd"><h3>🔗 链路健康</h3><span class="tag">低延迟</span></div>
+          <div class="link-stack">
+            <div class="link-item"><span>ROS2 / Gazebo</span><div class="bar"><i style="width:88%"></i></div></div>
+            <div class="link-item"><span>WebSocket</span><div class="bar"><i style="width:92%"></i></div></div>
+            <div class="link-item"><span>Unity Pose</span><div class="bar"><i style="width:84%"></i></div></div>
+            <div class="link-item"><span>Mission Ctrl</span><div class="bar"><i style="width:76%"></i></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: Unity + Runtime -->
+      <div>
+        <div class="unity-area">
+          <div class="unity-label">▸ UNITY 3D 态势可视化 ◂</div>
+          <div class="unity-frame">
+            <div class="unity-placeholder">
+              <strong>🌊 三维协同态势</strong>
+              Unity WebGL 加载后将在此处渲染<br>实时展示 UAV / USV 海空包围态势
+            </div>
+          </div>
+          <div class="unity-info">
+            <span>🟢 3 UAV</span><span>🔵 3 USV</span><span>🎯 1 目标</span><span>📡 实时位姿同步</span>
+          </div>
+        </div>
+        <!-- Runtime below Unity -->
+        <div class="runtime-bar">
+          <div class="runtime-item"><div class="dot green"></div><strong>10</strong><span>节点在线</span></div>
+          <div class="runtime-item"><div class="dot green"></div><strong>2/2</strong><span>ROS/Unity</span></div>
+          <div class="runtime-item"><div class="dot green"></div><strong>4</strong><span>载体位姿</span></div>
+          <div class="runtime-item"><div class="dot yellow"></div><strong>2</strong><span>需关注</span></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Diagnostics + Task + Architecture -->
+      <div>
+        <div class="panel">
+          <div class="panel-hd"><h3>🔍 联调诊断</h3><span class="tag">4</span></div>
+          <div class="diag-grid">
+            <div class="diag-item"><div class="diag-head"><span>ROS / Gazebo</span><div class="dot green"></div></div><strong>WebSocket 已连接</strong><p>bridge 正常</p></div>
+            <div class="diag-item"><div class="diag-head"><span>Spring Boot</span><div class="dot green"></div></div><strong>4 个载体位姿</strong><p>有效 Gazebo 坐标</p></div>
+            <div class="diag-item"><div class="diag-head"><span>Vue 刷新</span><div class="dot green"></div></div><strong>17:30:22</strong><p>SSE 通道可用</p></div>
+            <div class="diag-item"><div class="diag-head"><span>Unity WebGL</span><div class="dot red"></div></div><strong>等待加载</strong><p>WEBGL 待启动</p></div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:8px;">
+          <div class="panel-hd"><h3>🚀 任务闭环</h3><span class="tag">当前</span></div>
+          <div class="stat-box" style="margin-bottom:6px;">
+            <span>当前阶段</span><strong>协同收缩</strong>
+            <small>无人机提供目标航迹，无人艇按包围点位推进。</small>
+          </div>
+          <div class="section-label"><h2>系统架构</h2></div>
+          <div class="arch-stack">
+            <div class="arch-item"><b>5</b><div><strong>展示交互层</strong><span>Vue 控制台 / Unity 三维</span></div><em>已具备</em></div>
+            <div class="arch-item"><b>4</b><div><strong>业务服务层</strong><span>设备、任务、状态</span></div><em>建设中</em></div>
+            <div class="arch-item"><b>3</b><div><strong>智能算法层</strong><span>识别、分配、路径规划</span></div><em>待接入</em></div>
+            <div class="arch-item"><b>2</b><div><strong>通信层</strong><span>ROS2 / WebSocket</span></div><em>已打通</em></div>
+            <div class="arch-item"><b>1</b><div><strong>仿真执行层</strong><span>Gazebo / UAV / USV</span></div><em>已打通</em></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="notice">
+      三栏等宽分布：左侧设备资产 + 围捕流程 + 链路健康 | 中央 Unity 三维态势 + 运行状态 | 右侧联调诊断 + 任务闭环 + 系统架构。
+    </div>
+  </main>
+</div>
+</body>
+</html>

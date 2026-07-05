@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Unity 态势可视化展示</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #061113; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+
+    /* The main container - matches the page style */
+    .dv-wrap {
+      width: 100%; max-width: 860px; margin: 20px;
+      background: linear-gradient(180deg,rgba(9,22,24,.84),rgba(6,17,19,.94)),
+                  radial-gradient(circle at 50% 20%,rgba(43,141,134,.1),transparent 40%),#061113;
+      border: 1px solid rgba(114,230,215,.2);
+      border-radius: 10px; padding: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .dv-wrap::before {
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background-image:linear-gradient(rgba(109,233,218,.04) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(109,233,218,.04) 1px,transparent 1px);
+      background-size: 28px 28px;
+      mask-image:linear-gradient(180deg,rgba(0,0,0,.6),rgba(0,0,0,.08));
+    }
+    .dv-wrap > * { position:relative; z-index:1; }
+
+    /* === ANIMATED UNITY VIEW === */
+    .dv-unity {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      border: 1px solid rgba(114,230,215,.18);
+      border-radius: 6px;
+      background: radial-gradient(circle at 30% 40%, rgba(20,80,75,.2), transparent 40%),
+                  radial-gradient(circle at 70% 60%, rgba(10,50,48,.15), transparent 30%),
+                  rgba(7,24,26,.6);
+      overflow: hidden;
+    }
+    .dv-unity::before {
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background-image:linear-gradient(rgba(109,233,218,.045) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(109,233,218,.045) 1px,transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    /* Radar sweep */
+    .radar-sweep {
+      position: absolute; inset: 50%;
+      width: 90%; height: 90%;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(114,230,215,.1);
+      border-radius: 50%;
+    }
+    .radar-sweep::before {
+      content: ""; position: absolute;
+      inset: 50%; width: 50%; height: 1px;
+      background: linear-gradient(90deg, rgba(114,230,215,0), rgba(114,230,215,.6));
+      transform-origin: left center;
+      animation: sweep 4s linear infinite;
+    }
+    .radar-ring1 { position:absolute; inset:25%; border:1px solid rgba(114,230,215,.1); border-radius:50%; }
+    .radar-ring2 { position:absolute; inset:12%; border:1px solid rgba(114,230,215,.08); border-radius:50%; }
+    .radar-ring3 { position:absolute; inset:2%; border:1px solid rgba(114,230,215,.06); border-radius:50%; }
+
+    @keyframes sweep {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: .5; transform: scale(.8); }
+      50% { opacity: 1; transform: scale(1.1); }
+    }
+
+    @keyframes orbit1 { from { transform: rotate(0deg) translateX(160px) rotate(0deg); } to { transform: rotate(360deg) translateX(160px) rotate(-360deg); } }
+    @keyframes orbit2 { from { transform: rotate(0deg) translateX(-130px) rotate(0deg); } to { transform: rotate(360deg) translateX(-130px) rotate(-360deg); } }
+    @keyframes orbit3 { from { transform: rotate(0deg) translateX(140px) rotate(0deg); } to { transform: rotate(360deg) translateX(140px) rotate(-360deg); } }
+    @keyframes orbit4 { from { transform: rotate(0deg) translateX(-170px) rotate(0deg); } to { transform: rotate(360deg) translateX(-170px) rotate(-360deg); } }
+    @keyframes orbit5 { from { transform: rotate(0deg) translateX(120px) rotate(0deg); } to { transform: rotate(360deg) translateX(120px) rotate(-360deg); } }
+    @keyframes orbit6 { from { transform: rotate(0deg) translateX(-150px) rotate(0deg); } to { transform: rotate(360deg) translateX(-150px) rotate(-360deg); } }
+
+    .craft {
+      position: absolute; inset: 50%;
+      width: 0; height: 0;
+    }
+    .craft-dot {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 12px; height: 12px; border-radius: 50%;
+      box-shadow: 0 0 12px currentColor;
+    }
+    .craft-dot.uav { background: #8ac6ff; color: #8ac6ff; }
+    .craft-dot.usv { background: #72e6d7; color: #72e6d7; }
+    .craft-dot.target { width: 18px; height: 18px; background: transparent; border: 2px solid #ff6d82; color: #ff6d82; box-shadow: 0 0 24px rgba(255,109,130,.5); }
+
+    .craft-dot::after {
+      content: attr(data-label);
+      position: absolute; left: 16px; top: -8px;
+      font-size: 9px; font-weight: 700; white-space: nowrap;
+      color: rgba(255,255,255,.7);
+      text-shadow: 0 0 6px rgba(0,0,0,.8);
+    }
+
+    .c1 { animation: orbit1 8s linear infinite; }
+    .c2 { animation: orbit2 10s linear infinite reverse; }
+    .c3 { animation: orbit3 7s linear infinite; }
+    .c4 { animation: orbit4 11s linear infinite reverse; }
+    .c5 { animation: orbit5 9s linear infinite; }
+    .c6 { animation: orbit6 12s linear infinite reverse; }
+    .center-target { position: absolute; inset: 50%; transform: translate(-50%,-50%); }
+    .target-pulse { width: 14px; height: 14px; background: #ff6d82; border-radius: 50%; animation: pulse 2s ease-in-out infinite; box-shadow: 0 0 20px rgba(255,109,130,.6); }
+
+    /* Status bar below unity */
+    .dv-status { display:flex; gap:5px; margin-top:6px; }
+    .dv-s { flex:1; display:flex; align-items:center; gap:5px; padding:5px 8px; background:rgba(232,255,251,.03); border:1px solid rgba(143,180,178,.11); border-radius:4px; }
+    .dv-s strong { color:#f4fffd; font-size:12px; min-width:18px; }
+    .dv-s span { color:#8fb4b2; font-size:8px; }
+    .dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+    .dot.g { background:#2fcf94; box-shadow:0 0 4px rgba(47,207,148,.35); }
+    .dot.y { background:#ffcf72; }
+  </style>
+</head>
+<body>
+<div class="dv-wrap">
+  <!-- Animated Unity view - no placeholder text, just the animation -->
+  <div class="dv-unity">
+    <!-- Radar rings -->
+    <div class="radar-ring3"></div>
+    <div class="radar-ring2"></div>
+    <div class="radar-ring1"></div>
+    <div class="radar-sweep"></div>
+
+    <!-- Center target -->
+    <div class="center-target"><div class="target-pulse"></div></div>
+
+    <!-- UAVs (blue triangles in anime) -->
+    <div class="craft c1"><div class="craft-dot uav" data-label="UAV-01"></div></div>
+    <div class="craft c2"><div class="craft-dot uav" data-label="UAV-02"></div></div>
+    <div class="craft c3"><div class="craft-dot uav" data-label="UAV-03"></div></div>
+
+    <!-- USVs (teal triangles) -->
+    <div class="craft c4"><div class="craft-dot usv" data-label="USV-01"></div></div>
+    <div class="craft c5"><div class="craft-dot usv" data-label="USV-02"></div></div>
+    <div class="craft c6"><div class="craft-dot usv" data-label="USV-03"></div></div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="dv-status">
+    <div class="dv-s"><i class="dot g"></i><strong>10</strong><span>节点在线</span></div>
+    <div class="dv-s"><i class="dot g"></i><strong>2/2</strong><span>ROS/Unity</span></div>
+    <div class="dv-s"><i class="dot g"></i><strong>4</strong><span>载体位姿</span></div>
+    <div class="dv-s"><i class="dot y"></i><strong>2</strong><span>需关注</span></div>
+  </div>
+
+  <div style="margin-top:6px;padding:6px 10px;color:#8fb4b2;font-size:9px;background:rgba(255,207,114,.05);border:1px solid rgba(255,207,114,.13);border-radius:4px;">
+    以上为 Unity 三维态势区域，去除空白占位，动画直接展示海空协同包围态势。
+  </div>
+</div>
+</body>
+</html>

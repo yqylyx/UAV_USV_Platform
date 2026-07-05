@@ -2712,10 +2712,17 @@ h2 {
 
 .overview-main-grid {
   display: grid;
-  grid-template-columns: minmax(680px, 1fr) 320px;
+  grid-template-columns: 3.1fr 1fr;
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
+.overview-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
 
 .overview-stage-panel,
 .overview-ops-panel,
@@ -2789,35 +2796,6 @@ h2 {
   padding: 12px 16px 0;
 }
 
-.overview-selected-device {
-  flex: 0 0 220px;
-  min-height: 52px;
-  padding: 8px 10px;
-  background: rgba(232, 255, 251, 0.04);
-  border: 1px solid rgba(143, 180, 178, 0.16);
-  border-radius: 6px;
-}
-
-.overview-selected-device span,
-.overview-selected-device strong,
-.overview-selected-device small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-selected-device span,
-.overview-selected-device small {
-  color: #8fb4b2;
-  font-size: 11px;
-}
-
-.overview-selected-device strong {
-  margin-top: 2px;
-  color: #f4fffd;
-  font-size: 16px;
-}
 
 .overview-camera-tabs {
   display: grid;
@@ -2875,19 +2853,29 @@ h2 {
 }
 
 .overview-ops-panel {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   padding: 16px;
 }
 
 .overview-ops-panel section {
-  display: grid;
-  gap: 10px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+}
+.overview-ops-panel section + section {
+  border-top: 1px solid rgba(114, 230, 215, 0.06);
 }
 
 .overview-info-stack {
-  display: grid;
-  gap: 8px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
 }
 
 .overview-info-stack div {
@@ -2919,10 +2907,20 @@ h2 {
   line-height: 1.35;
 }
 
-.overview-device-list,
+.overview-device-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+
 .overview-command-grid {
+  flex: 1;
   display: grid;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  align-content: center;
 }
 
 .overview-device-list button {
@@ -2941,9 +2939,84 @@ h2 {
   white-space: nowrap;
 }
 
-.overview-command-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.overview-device-control {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
+
+.overview-control-device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(114, 230, 215, 0.06);
+  border: 1px solid rgba(114, 230, 215, 0.12);
+  border-radius: 5px;
+}
+
+.overview-device-badge {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: #061113;
+  font-size: 10px;
+  font-weight: 900;
+  background: #72e6d7;
+  border-radius: 4px;
+}
+
+.overview-control-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.overview-control-meta strong {
+  display: block;
+  color: #f4fffd;
+  font-size: 12px;
+}
+
+.overview-control-meta span {
+  display: block;
+  color: #8fb4b2;
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-control-status {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.overview-control-status.online {
+  color: #68d9a4;
+  background: rgba(104, 217, 164, 0.1);
+}
+
+.overview-control-status.offline {
+  color: #fb8691;
+  background: rgba(251, 134, 145, 0.1);
+}
+
+.overview-control-status.unknown,
+.overview-control-status.waiting {
+  color: #f0b37b;
+  background: rgba(240, 179, 123, 0.1);
+}
+
+.overview-device-control .overview-command-grid button {
+  min-height: 28px;
+}
+
+
 
 .overview-live-panel {
   padding: 14px 16px 16px;
@@ -3027,14 +3100,15 @@ h2 {
   text-align: center;
 }
 
-@media (max-width: 1440px) {
+@media (max-width: 1120px) {
   .overview-main-grid {
     grid-template-columns: 1fr;
   }
 
   .overview-ops-panel {
+    display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    align-items: start;
+    gap: 14px;
   }
 }
 
@@ -3051,7 +3125,7 @@ h2 {
 
   .overview-status-strip,
   .overview-ops-panel {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .overview-camera-tabs {
@@ -3319,6 +3393,21 @@ h2 {
 .console-table .el-table__inner-wrapper::before {
   display: none;
 }
+
+/* 表格悬停 — 蓝灰色半透明反馈 */
+.console-table .el-table__body tr:hover > td {
+  background-color: rgba(160, 180, 200, 0.08) !important;
+}
+
+/* 指令队列操作栏 — 弹性容器 */
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
 
 .asset-name-cell {
   display: flex;
@@ -3859,4 +3948,5 @@ h2 {
   .delete-device-meta {
     grid-template-columns: 1fr;
   }
+
 }

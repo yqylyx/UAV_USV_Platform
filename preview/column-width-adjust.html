@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>指令队列列宽调整v2</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.430.0/font/lucide.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+      background: #061113; color: #dff8f4;
+      padding: 32px;
+    }
+    h2 { color: #f4fffd; font-size: 16px; margin-bottom: 6px; }
+    .subtitle { color: #8fb4b2; font-size: 11px; margin-bottom: 22px; max-width: 700px; line-height: 1.6; }
+
+    .demo-table {
+      width: 100%;
+      background: rgba(232,255,251,.03);
+      border: 1px solid rgba(143,180,178,.16);
+      border-radius: 6px;
+      overflow-x: auto;
+      margin-bottom: 28px;
+    }
+    .demo-table table { width: 100%; border-collapse: collapse; min-width: 760px; }
+    .demo-table th {
+      padding: 10px 14px; font-size: 11px; font-weight: 700;
+      text-align: left; color: #8bded4;
+      background: rgba(232,255,251,.06);
+      border-bottom: 1px solid rgba(108,228,213,.12);
+      white-space: nowrap;
+    }
+    .demo-table td {
+      padding: 8px 14px; font-size: 12px; color: #dff8f4;
+      border-bottom: 1px solid rgba(108,228,213,.06);
+      vertical-align: middle;
+    }
+    .demo-table tr:last-child td { border-bottom: 0; }
+
+    .status-tag {
+      display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
+      font-size: 10px; font-weight: 700; border-radius: 3px;
+    }
+    .status-tag.running { color: #68d9a4; background: rgba(104,217,164,.12); border: 1px solid rgba(104,217,164,.2); }
+    .status-tag.paused { color: #f0b37b; background: rgba(240,179,123,.12); border: 1px solid rgba(240,179,123,.2); }
+    .status-tag.ready { color: #72e6d7; background: rgba(114,230,215,.12); border: 1px solid rgba(114,230,215,.2); }
+
+    /* === 新列宽 === */
+    .col-1 { width: 180px; min-width: 180px; }
+    .col-2 { width: 80px; min-width: 80px; }
+    .col-3 { width: 70px; min-width: 70px; }
+    .col-4 { width: 70px; min-width: 70px; }
+    .col-5 { width: 120px; min-width: 120px; }
+    .col-6 { width: 350px; min-width: 350px; }
+
+    /* === 原始 link 按钮 + action-row === */
+    .action-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: nowrap;
+      width: 100%;
+    }
+    .action-row .link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      font-size: 12px;
+      font-weight: 600;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0 2px;
+      color: #72e6d7;
+      white-space: nowrap;
+      transition: color .15s;
+    }
+    .action-row .link-btn .lucide { font-size: 13px; }
+    .action-row .link-btn:hover { color: #a0f4ea; }
+    .action-row .link-btn.danger { color: #fb8691; }
+    .action-row .link-btn.danger:hover { color: #ffaab2; }
+    .action-row .link-btn.success { color: #68d9a4; }
+    .action-row .link-btn.success:hover { color: #8be8be; }
+    .action-row .link-btn.warning { color: #f0b37b; }
+    .action-row .link-btn.warning:hover { color: #f5ca9e; }
+
+    .section-label {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 10px;
+    }
+    .badge {
+      display: inline-flex; align-items: center;
+      min-height: 18px; padding: 0 7px;
+      font-size: 9px; font-weight: 800; border-radius: 3px;
+    }
+    .badge.new { color: #d6f5f0; background: rgba(114,230,215,.12); border: 1px solid rgba(114,230,215,.2); }
+
+    .note {
+      padding: 10px 14px;
+      background: rgba(160,180,200,.06);
+      border: 1px solid rgba(160,180,200,.12);
+      border-radius: 5px;
+      color: #b0c8d0; font-size: 10px; line-height: 1.6;
+      max-width: 680px;
+    }
+    .note strong { color: #f4fffd; }
+    .note code { color: #ffcf72; font-size: 9px; }
+  </style>
+</head>
+<body>
+
+<h2>指令队列 — 列宽再调整</h2>
+<p class="subtitle">
+  前面五列缩小 → 操作列加宽至 350px，6 个 link 按钮全部完整展示，无遮挡。
+</p>
+
+<div class="section-label">
+  <span class="badge new">调整后</span>
+  <span style="color:#f4fffd;font-size:11px;font-weight:700;">操作列 350px · 任务 180 · 类型 80 · 阶段 70 · 状态 70 · 目标 120</span>
+</div>
+
+<div class="demo-table">
+  <table>
+    <tr>
+      <th class="col-1">任务</th>
+      <th class="col-2">类型</th>
+      <th class="col-3">阶段</th>
+      <th class="col-4">状态</th>
+      <th class="col-5">目标 / 区域</th>
+      <th class="col-6">操作</th>
+    </tr>
+    <!-- RUNNING — 6 按钮 -->
+    <tr>
+      <td><strong>灯塔协同巡查</strong><br><small>M-2026-001</small></td>
+      <td>协同巡查</td>
+      <td>执行中</td>
+      <td><span class="status-tag running">RUNNING</span></td>
+      <td>灯塔 A / 北部</td>
+      <td>
+        <span class="action-row">
+          <span class="link-btn"><span class="lucide" data-icon=""></span>详情</span>
+          <span class="link-btn warning"><span class="lucide" data-icon=""></span>暂停</span>
+          <span class="link-btn success"><span class="lucide" data-icon="✓"></span>完成</span>
+          <span class="link-btn danger"><span class="lucide" data-icon="✕"></span>异常</span>
+          <span class="link-btn"><span class="lucide" data-icon=""></span>编辑</span>
+          <span class="link-btn danger"><span class="lucide" data-icon=""></span>删除</span>
+        </span>
+      </td>
+    </tr>
+    <!-- PAUSED — 6 按钮 -->
+    <tr>
+      <td><strong>信标编队跟踪</strong><br><small>M-2026-002</small></td>
+      <td>编队跟踪</td>
+      <td>已暂停</td>
+      <td><span class="status-tag paused">PAUSED</span></td>
+      <td>信标 B / 东部</td>
+      <td>
+        <span class="action-row">
+          <span class="link-btn"><span class="lucide" data-icon=""></span>详情</span>
+          <span class="link-btn success"><span class="lucide" data-icon="▶"></span>恢复</span>
+          <span class="link-btn success"><span class="lucide" data-icon="✓"></span>完成</span>
+          <span class="link-btn danger"><span class="lucide" data-icon="✕"></span>取消</span>
+          <span class="link-btn"><span class="lucide" data-icon=""></span>编辑</span>
+          <span class="link-btn danger"><span class="lucide" data-icon=""></span>删除</span>
+        </span>
+      </td>
+    </tr>
+    <!-- READY — 5 按钮 -->
+    <tr>
+      <td><strong>浮标自主部署</strong><br><small>M-2026-003</small></td>
+      <td>自主部署</td>
+      <td>待执行</td>
+      <td><span class="status-tag ready">READY</span></td>
+      <td>浮标 3 / 外海</td>
+      <td>
+        <span class="action-row">
+          <span class="link-btn"><span class="lucide" data-icon=""></span>详情</span>
+          <span class="link-btn success"><span class="lucide" data-icon="▶"></span>启动</span>
+          <span class="link-btn danger"><span class="lucide" data-icon="✕"></span>取消</span>
+          <span class="link-btn"><span class="lucide" data-icon=""></span>编辑</span>
+          <span class="link-btn danger"><span class="lucide" data-icon=""></span>删除</span>
+        </span>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="note">
+  <strong>本次调整：</strong><br>
+  任务 <code>min-width 240 → 180</code> · 类型 <code>110 → 80</code> · 阶段 <code>100 → 70</code> · 状态 <code>90 → 70</code> · 目标/区域 <code>160 → 120</code><br>
+  <strong>操作 <code>width 280 → 350</code></strong> — 多出 70px 净宽，按钮宽松排列、文字完整可见
+</div>
+
+</body>
+</html>

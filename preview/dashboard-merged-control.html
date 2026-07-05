@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>设备选择 + 快捷指令 融合设计</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.430.0/font/lucide.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+      background: #040e11; color: #dff8f4;
+      padding: 20px;
+    }
+    h2 { color: #f4fffd; font-size: 15px; margin-bottom: 4px; }
+    .sub { color: #8fb4b2; font-size: 10px; margin-bottom: 16px; }
+
+    .overview-console {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      color: #dff8f4;
+      background: linear-gradient(180deg, rgba(8,22,24,.96), rgba(5,16,18,.98)), #061113;
+      border: 1px solid rgba(114,230,215,.2);
+      border-radius: 8px;
+    }
+
+    .overview-main-grid {
+      display: grid;
+      grid-template-columns: 3fr 1fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+    .overview-left-col {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    /* 面板 */
+    .stage-panel, .live-panel, .ops-panel {
+      min-width: 0;
+      background: linear-gradient(180deg, rgba(13,33,35,.9), rgba(8,22,24,.88)), rgba(8,22,24,.88);
+      border: 1px solid rgba(114,230,215,.2);
+      border-radius: 8px;
+    }
+    .stage-panel { overflow: hidden; }
+
+    /* Unity header */
+    .stage-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px 0;
+    }
+    .stage-header h3 { margin: 0; color: #f4fffd; font-size: 14px; }
+    .stage-header span { display: block; margin-top: 2px; color: #8fb4b2; font-size: 10px; }
+    .signals { display: flex; gap: 6px; }
+    .signals b {
+      display: inline-flex; align-items: center; height: 20px; padding: 0 6px;
+      font-size: 8px; color: #68d9a4; background: rgba(104,217,164,.1); border: 1px solid rgba(104,217,164,.18); border-radius: 3px;
+    }
+
+    /* Toolbar — 无 selected-device */
+    .toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px; flex-wrap: wrap;
+    }
+    .cam-tabs { display: flex; gap: 3px; }
+    .cam-tabs button {
+      min-height: 24px; padding: 0 8px;
+      font-size: 9px; font-weight: 700;
+      color: #dff8f4; background: rgba(114,230,215,.08);
+      border: 1px solid rgba(114,230,215,.15); border-radius: 4px; cursor: pointer;
+    }
+    .cam-tabs button.active, .cam-tabs button:hover { color: #061113; background: #72e6d7; border-color: #72e6d7; }
+    .tool-btn {
+      min-height: 24px; padding: 0 8px;
+      font-size: 9px; font-weight: 700;
+      color: #8fb4b2; background: rgba(143,180,178,.08);
+      border: 1px solid rgba(143,180,178,.15); border-radius: 4px; cursor: pointer;
+    }
+
+    .unity-placeholder {
+      width: 100%; aspect-ratio: 16 / 9; min-height: 240px;
+      background: radial-gradient(ellipse at 50% 45%, rgba(6,43,53,.7), rgba(3,12,15,.95));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; color: rgba(114,230,215,.2); letter-spacing: 2px;
+    }
+
+    /* Live panel */
+    .live-panel { padding: 12px 14px; }
+    .live-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+    .live-head h3 { margin: 0; color: #f4fffd; font-size: 13px; }
+    .live-head span { font-size: 10px; color: #8fb4b2; }
+
+    .node-row {
+      display: grid; grid-template-columns: 90px 80px 70px 1fr 70px;
+      gap: 6px; padding: 6px 8px;
+      font-size: 10px; border-bottom: 1px solid rgba(108,228,213,.06); align-items: center;
+    }
+    .node-row.head { color: #6c9b96; font-size: 9px; font-weight: 700; border-bottom-color: rgba(108,228,213,.1); }
+    .node-row b.online { color: #68d9a4; }
+
+    /* ===== Ops Panel — 新设计 ===== */
+    .ops-panel {
+      padding: 14px 16px;
+      display: flex; flex-direction: column;
+      gap: 0;
+    }
+
+    .ops-section {
+      flex: 1;
+      display: flex; flex-direction: column;
+      padding: 10px 0;
+    }
+    .ops-section + .ops-section {
+      border-top: 1px solid rgba(114,230,215,.06);
+    }
+    .ops-section h4 {
+      margin: 0 0 8px;
+      color: #f4fffd; font-size: 12px; font-weight: 700;
+    }
+
+    /* 任务与控制 */
+    .info-stack { flex: 1; display: flex; flex-direction: column; gap: 5px; justify-content: center; }
+    .info-stack > div {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px;
+      padding: 4px 8px;
+      background: rgba(6,17,19,.4); border-radius: 4px;
+    }
+    .info-stack > div span { font-size: 10px; color: #8fb4b2; min-width: 56px; }
+    .info-stack > div strong { font-size: 11px; color: #f4fffd; }
+
+    /* 设备选择 */
+    .device-list { flex: 1; display: flex; flex-direction: column; gap: 3px; justify-content: center; }
+    .device-list button {
+      display: flex; align-items: center; justify-content: space-between;
+      min-height: 28px; padding: 0 8px;
+      font-size: 10px; font-weight: 600; color: #dff8f4;
+      background: rgba(114,230,215,.04); border: 1px solid transparent; border-radius: 4px; cursor: pointer;
+    }
+    .device-list button.active { background: rgba(114,230,215,.1); border-color: rgba(114,230,215,.2); }
+    .device-list button span { font-size: 9px; color: #68d9a4; font-weight: 400; }
+
+    /* ===== 融合区域: 设备信息 + 快捷指令 ===== */
+    .device-control {
+      display: flex; flex-direction: column;
+      gap: 6px;
+    }
+    .device-control .current-device {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px;
+      background: rgba(114,230,215,.06);
+      border: 1px solid rgba(114,230,215,.12);
+      border-radius: 5px;
+    }
+    .device-control .current-device .dev-icon {
+      flex: 0 0 24px; width: 24px; height: 24px;
+      display: grid; place-items: center;
+      color: #061113; font-size: 10px; font-weight: 900;
+      background: #72e6d7; border-radius: 4px;
+    }
+    .device-control .current-device .dev-meta {
+      flex: 1; min-width: 0;
+    }
+    .device-control .current-device .dev-meta strong {
+      display: block; font-size: 11px; color: #f4fffd;
+    }
+    .device-control .current-device .dev-meta span {
+      font-size: 9px; color: #8fb4b2;
+    }
+    .device-control .current-device .dev-status {
+      font-size: 9px; font-weight: 700; color: #68d9a4;
+      padding: 2px 6px;
+      background: rgba(104,217,164,.1); border-radius: 3px;
+    }
+
+    .cmd-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+    .cmd-grid button {
+      min-height: 28px; padding: 0 6px;
+      font-size: 10px; font-weight: 700;
+      color: #dff8f4; background: rgba(114,230,215,.08);
+      border: 1px solid rgba(114,230,215,.15); border-radius: 4px; cursor: pointer;
+      transition: all .12s;
+    }
+    .cmd-grid button:hover {
+      color: #061113; background: #72e6d7; border-color: #72e6d7;
+    }
+
+    .note {
+      margin-top: 16px; padding: 10px 14px;
+      background: rgba(160,180,200,.06); border: 1px solid rgba(160,180,200,.12); border-radius: 5px;
+      color: #b0c8d0; font-size: 10px; line-height: 1.6;
+      max-width: 720px;
+    }
+    .note strong { color: #f4fffd; }
+    .note code { color: #ffcf72; }
+  </style>
+</head>
+<body>
+
+<h2>设备选择 + 快捷指令 融合设计</h2>
+<p class="sub">
+  overview-selected-device 从 Unity 工具栏移入右侧面板，与快捷指令合并为「设备控制」区块。
+</p>
+
+<div class="overview-console">
+
+  <!-- 主网格 3fr 1fr -->
+  <div class="overview-main-grid">
+
+    <!-- 左列 (3/4) -->
+    <div class="overview-left-col">
+
+      <!-- Unity (selected-device 已移除) -->
+      <div class="stage-panel">
+        <div class="stage-header">
+          <div><h3>Unity 三维态势</h3><span>当前任务：实时同步</span></div>
+          <div class="signals"><b>ROS2</b><b>WebGL</b></div>
+        </div>
+        <div class="toolbar">
+          <div class="cam-tabs">
+            <button class="active">总览</button>
+            <button>跟随艇</button>
+            <button>跟随机</button>
+            <button>灯塔</button>
+          </div>
+          <button class="tool-btn">聚焦设备</button>
+          <button class="tool-btn">轨迹</button>
+        </div>
+        <div class="unity-placeholder">三维态势可视化</div>
+      </div>
+
+      <!-- Live -->
+      <div class="live-panel">
+        <div class="live-head"><h3>实时节点</h3><span>ROS + Unity 心跳确认</span></div>
+        <div>
+          <div class="node-row head"><span>节点</span><span>类型</span><span>状态</span><span>坐标</span><span>心跳</span></div>
+          <div class="node-row"><strong>USV-01</strong><span>USV</span><b class="online">ONLINE</b><span>12.3 / 45.6 / 0.8</span><span>3s</span></div>
+          <div class="node-row"><strong>UAV-01</strong><span>UAV</span><b class="online">ONLINE</b><span>25.1 / 30.2</span><span>5s</span></div>
+          <div class="node-row"><strong>ROS-MASTER</strong><span>ROS_NODE</span><b class="online">ONLINE</b><span>--</span><span>1s</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 右列 (1/4) — 新设计 ===== -->
+    <div class="ops-panel">
+
+      <!-- 任务与控制 -->
+      <div class="ops-section">
+        <h4>任务与控制</h4>
+        <div class="info-stack">
+          <div><span>任务状态</span><strong>实时同步</strong></div>
+          <div><span>Unity 通信</span><strong>WebGL 已连接</strong></div>
+          <div><span>命令状态</span><strong>等待控制指令</strong></div>
+        </div>
+      </div>
+
+      <!-- 设备选择 -->
+      <div class="ops-section">
+        <h4>设备选择</h4>
+        <div class="device-list">
+          <button class="active"><b>USV-01</b><span>ONLINE</span></button>
+          <button><b>UAV-01</b><span>ONLINE</span></button>
+          <button><b>USV-02</b><span>OFFLINE</span></button>
+          <button><b>LIGHT-A</b><span>ONLINE</span></button>
+        </div>
+      </div>
+
+      <!-- 融合区域：设备信息 + 快捷指令 -->
+      <div class="ops-section">
+        <h4>设备控制</h4>
+        <div class="device-control">
+          <div class="current-device">
+            <div class="dev-icon">U1</div>
+            <div class="dev-meta">
+              <strong>USV-01</strong>
+              <span>无人艇 · 运行中</span>
+            </div>
+            <span class="dev-status">ONLINE</span>
+          </div>
+          <div class="cmd-grid">
+            <button>起飞</button>
+            <button>降落</button>
+            <button>开始任务</button>
+            <button>停止任务</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <strong>改动说明：</strong><br>
+  【1】Unity 工具栏移除了 <code>overview-selected-device</code>，仅保留视角切换和工具按钮<br>
+  【2】右侧面板新增「设备控制」区块，融合 <i>当前设备信息</i>（名称 + 状态 + 描述）与 <i>快捷指令按钮</i><br>
+  【3】当前设备信息使用暗色卡片 + 蓝色标记区分，与设备列表中的选中状态呼应<br>
+  【4】三个区块（任务控制 / 设备选择 / 设备控制）高度均分，与左侧 Unity + Live 等高对齐
+</div>
+
+</body>
+</html>
