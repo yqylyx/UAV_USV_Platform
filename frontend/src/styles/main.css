@@ -2906,8 +2906,8 @@ h2 {
 }
 
 .overview-device-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
 }
 
@@ -2919,6 +2919,7 @@ h2 {
 
 .overview-device-list button {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -3822,6 +3823,39 @@ h2 {
 
 .heartbeat-pill {
   font-weight: 900;
+}
+
+.runtime-command-log-item.acknowledged,
+.runtime-command-log-detail.acknowledged {
+  border-left-color: #2fcf94;
+}
+
+.runtime-command-log-item.dispatched,
+.runtime-command-log-detail.dispatched {
+  border-left-color: #3f9cf5;
+}
+
+.runtime-command-log-item.timeout,
+.runtime-command-log-detail.timeout {
+  border-left-color: #f1a43c;
+}
+
+.runtime-command-log-meta b.acknowledged,
+.runtime-command-log-detail-head b.acknowledged,
+.runtime-log-list b.acknowledged {
+  color: #169b6f;
+}
+
+.runtime-command-log-meta b.dispatched,
+.runtime-command-log-detail-head b.dispatched,
+.runtime-log-list b.dispatched {
+  color: #287fc8;
+}
+
+.runtime-command-log-meta b.timeout,
+.runtime-command-log-detail-head b.timeout,
+.runtime-log-list b.timeout {
+  color: #d77b16;
 }
 
 .form-grid {

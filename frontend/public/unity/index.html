@@ -55,7 +55,13 @@
       var progressBarFull = document.querySelector('#unity-progress-bar-full');
       var fullscreenButton = document.querySelector('#unity-fullscreen-button');
       var warningBanner = document.querySelector('#unity-warning');
-      var embedded = new URLSearchParams(window.location.search).has('embedded');
+      var urlParameters = new URLSearchParams(window.location.search);
+      var embedded = urlParameters.has('embedded');
+      var buildStamp = urlParameters.get('v') || String(Date.now());
+
+      function withBuildStamp(url) {
+        return url + (url.indexOf('?') === -1 ? '?' : '&') + 'v=' + encodeURIComponent(buildStamp);
+      }
 
       if (embedded) document.body.classList.add('embedded');
 
@@ -232,11 +238,11 @@
         reportFatal('Your browser does not support WebGL or hardware acceleration is disabled. Enable hardware acceleration in Chrome/Edge and verify WebGL/WebGL2 in chrome://gpu or edge://gpu.');
       } else {
         var buildUrl = 'Build';
-        var loaderUrl = buildUrl + '/UAV_USV_WebGL.loader.js';
+        var loaderUrl = withBuildStamp(buildUrl + '/UAV_USV_WebGL.loader.js');
         var config = {
-          dataUrl: buildUrl + '/UAV_USV_WebGL.data',
-          frameworkUrl: buildUrl + '/UAV_USV_WebGL.framework.js',
-          codeUrl: buildUrl + '/UAV_USV_WebGL.wasm',
+          dataUrl: withBuildStamp(buildUrl + '/UAV_USV_WebGL.data'),
+          frameworkUrl: withBuildStamp(buildUrl + '/UAV_USV_WebGL.framework.js'),
+          codeUrl: withBuildStamp(buildUrl + '/UAV_USV_WebGL.wasm'),
           streamingAssetsUrl: 'StreamingAssets',
           companyName: 'UAV-USV',
           productName: 'UAV_USV_WebGL',

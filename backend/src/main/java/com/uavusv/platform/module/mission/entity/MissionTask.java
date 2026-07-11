@@ -97,6 +97,10 @@ public class MissionTask extends BaseEntity {
         this.plannedStartAt = plannedStartAt;
         this.plannedEndAt = plannedEndAt;
         this.description = description;
+        if (status == MissionStatus.DRAFT || status == MissionStatus.READY) {
+            this.startedAt = null;
+            this.completedAt = null;
+        }
     }
 
     public void softDelete() {
@@ -113,6 +117,13 @@ public class MissionTask extends BaseEntity {
         if (status == MissionStatus.COMPLETED || status == MissionStatus.CANCELLED || status == MissionStatus.FAILED) {
             this.completedAt = LocalDateTime.now();
         }
+    }
+
+    public void prepareForRun() {
+        this.status = MissionStatus.READY;
+        this.stage = MissionStage.PREPARE;
+        this.startedAt = null;
+        this.completedAt = null;
     }
 
     public String getCode() {

@@ -8,6 +8,10 @@ import com.uavusv.platform.module.monitoring.dto.request.IntegrationHeartbeatReq
 import com.uavusv.platform.module.monitoring.dto.request.RosPoseFrame;
 import com.uavusv.platform.module.monitoring.entity.DeviceStatusEvent;
 import com.uavusv.platform.module.monitoring.entity.DeviceTelemetry;
+import com.uavusv.platform.module.mission.entity.MissionRunStatus;
+import com.uavusv.platform.module.mission.repository.MissionRunRepository;
+import com.uavusv.platform.module.runtimecontrol.entity.SimulationStatus;
+import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
 import com.uavusv.platform.module.monitoring.entity.RuntimeDeviceStatus;
 import com.uavusv.platform.module.monitoring.entity.RuntimePose;
 import com.uavusv.platform.module.monitoring.repository.DeviceStatusEventRepository;
@@ -43,6 +47,8 @@ public class RuntimeStateService {
     private final DeviceStatusEventRepository statusEventRepository;
     private final DeviceTelemetryRepository telemetryRepository;
     private final RuntimeEventPublisher eventPublisher;
+    private final MissionRunRepository missionRunRepository;
+    private final SimulationSessionRepository simulationSessionRepository;
     private final Map<String, Observation> observations = new ConcurrentHashMap<>();
     private final int heartbeatTimeoutSeconds;
     private final int telemetryRetentionDays;
@@ -55,6 +61,8 @@ public class RuntimeStateService {
             DeviceStatusEventRepository statusEventRepository,
             DeviceTelemetryRepository telemetryRepository,
             RuntimeEventPublisher eventPublisher,
+            MissionRunRepository missionRunRepository,
+            SimulationSessionRepository simulationSessionRepository,
             @Value("${app.runtime.heartbeat-timeout-seconds:5}") int heartbeatTimeoutSeconds,
             @Value("${app.runtime.telemetry-retention-days:7}") int telemetryRetentionDays,
             @Value("${app.runtime.ros-websocket-url}") String rosWebSocketUrl
@@ -64,6 +72,8 @@ public class RuntimeStateService {
         this.statusEventRepository = statusEventRepository;
         this.telemetryRepository = telemetryRepository;
         this.eventPublisher = eventPublisher;
+        this.missionRunRepository = missionRunRepository;
+        this.simulationSessionRepository = simulationSessionRepository;
         this.heartbeatTimeoutSeconds = heartbeatTimeoutSeconds;
         this.telemetryRetentionDays = telemetryRetentionDays;
         URI uri = URI.create(rosWebSocketUrl);
@@ -133,6 +143,17 @@ public class RuntimeStateService {
     @Transactional
     public void reconcileRuntimeState() {
         LocalDateTime now = LocalDateTime.now();
+        Long activeRunId = missionRunRepository.findFirstByStatusInOrderByStartedAtDesc(
+                        EnumSet.of(MissionRunStatus.RUNNING, MissionRunStatus.PAUSED))
+                .map(run -> run.getId())
+                .orElse(null);
+        Long activeSessionId = simulationSessionRepository.findFirstByStatusInOrderByCreatedAtDesc(EnumSet.of(
+                        SimulationStatus.STARTING,
+                        SimulationStatus.RUNNING,
+                        SimulationStatus.PARTIAL
+                ))
+                .map(session -> session.getId())
+                .orElse(null);
         for (Device device : deviceRepository.findAllByDeletedFalse(Sort.by(Sort.Direction.ASC, "id"))) {
             if (!RUNTIME_TYPES.contains(device.getType())) {
                 continue;
@@ -162,7 +183,15 @@ public class RuntimeStateService {
             }
             if (online && observation.pose() != null
                     && (device.getType() == DeviceType.UAV || device.getType() == DeviceType.USV)) {
-                telemetryRepository.save(new DeviceTelemetry(device.getId(), now, observation.sequence(), observation.pose()));
+                telemetryRepository.save(new DeviceTelemetry(
+                        device.getId(),
+                        activeRunId,
+                        activeSessionId,
+                        now,
+                        observation.sequence(),
+                        observation.pose(),
+                        observation.source()
+                ));
             }
         }
         eventPublisher.publishRuntimeChange();

@@ -6,6 +6,8 @@ public record MissionDetailResponse(
         MissionResponse mission,
         List<MissionDeviceResponse> devices,
         List<MissionParameterResponse> parameters,
-        List<MissionEventResponse> events
+        List<MissionEventResponse> events,
+        MissionRunResponse currentRun,
+        List<MissionRunResponse> runs
 ) {
 }

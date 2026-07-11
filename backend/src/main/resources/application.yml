@@ -40,6 +40,8 @@ app:
   integration:
     token: ${PLATFORM_INTEGRATION_TOKEN}
   control:
+    command-dispatch-mode: ${COMMAND_DISPATCH_MODE:mock}
+    command-ack-timeout-seconds: ${COMMAND_ACK_TIMEOUT_SECONDS:15}
     wsl-distribution: ${WSL_DISTRIBUTION:Ubuntu22}
     ros-script: ${ROS_RUNTIME_SCRIPT:F:/UAV_USV_Platform/scripts/uav-usv-runtime.sh}
     unity-editor: ${UNITY_EDITOR_PATH:F:/Unity/Editors/2022.3.57f1/Editor/Unity.exe}

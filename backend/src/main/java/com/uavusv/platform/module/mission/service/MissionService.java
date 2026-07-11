@@ -3,6 +3,7 @@ package com.uavusv.platform.module.mission.service;
 import com.uavusv.platform.common.api.PageResponse;
 import com.uavusv.platform.module.mission.dto.request.MissionSaveRequest;
 import com.uavusv.platform.module.mission.dto.response.MissionDetailResponse;
+import com.uavusv.platform.module.mission.dto.response.MissionActionResponse;
 import com.uavusv.platform.module.mission.dto.response.MissionResponse;
 import com.uavusv.platform.module.mission.entity.MissionStatus;
 import com.uavusv.platform.module.mission.entity.MissionType;
@@ -25,17 +26,17 @@ public interface MissionService {
 
     void deleteMission(Long id);
 
-    MissionDetailResponse markReady(Long id, String operator);
+    MissionActionResponse markReady(Long id, String operator);
 
-    MissionDetailResponse startMission(Long id, String operator);
+    MissionActionResponse startMission(Long id, String operator);
 
-    MissionDetailResponse pauseMission(Long id, String operator);
+    MissionActionResponse pauseMission(Long id, String operator);
 
-    MissionDetailResponse resumeMission(Long id, String operator);
+    MissionActionResponse resumeMission(Long id, String operator);
 
-    MissionDetailResponse completeMission(Long id, String operator);
+    MissionActionResponse completeMission(Long id, String operator);
 
-    MissionDetailResponse failMission(Long id, String operator);
+    MissionActionResponse failMission(Long id, String operator);
 
-    MissionDetailResponse cancelMission(Long id, String operator);
+    MissionActionResponse cancelMission(Long id, String operator);
 }

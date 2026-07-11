@@ -10,6 +10,11 @@ export type RuntimeCommandType =
   | 'LAND'
   | 'START_MISSION'
   | 'STOP_MISSION'
+  | 'PAUSE_MISSION'
+  | 'RESUME_MISSION'
+  | 'COMPLETE_MISSION'
+  | 'FAIL_MISSION'
+  | 'CANCEL_MISSION'
   | 'SELECT_DEVICE'
   | 'FOCUS_DEVICE'
   | 'SWITCH_CAMERA'
@@ -17,14 +22,17 @@ export type RuntimeCommandType =
 
 export interface RuntimeCommandPayload {
   commandType: RuntimeCommandType
+  runId?: number
   deviceCode?: string
   payload?: string
   detail?: string
 }
 
 export interface RuntimeCommandResult {
+  id: number
+  commandKey: string
   commandType: RuntimeCommandType
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED'
+  status: RuntimeCommandStatus
   detail: string
   acceptedAt: string
 }
@@ -32,13 +40,21 @@ export interface RuntimeCommandResult {
 export interface RuntimeCommandLog {
   id: number
   sessionId: number | null
+  runId: number | null
+  deviceId: number | null
+  commandKey: string
   commandType: RuntimeCommandType
-  status: 'PENDING' | 'SUCCEEDED' | 'FAILED'
+  status: RuntimeCommandStatus
   requestedBy: string
   requestedAt: string
+  dispatchedAt: string | null
+  acknowledgedAt: string | null
   completedAt: string | null
   detail: string
+  errorCode: string | null
 }
+
+export type RuntimeCommandStatus = 'PENDING' | 'DISPATCHED' | 'ACKNOWLEDGED' | 'FAILED' | 'TIMEOUT'
 
 export async function fetchRuntimeControlStatus(): Promise<RuntimeControlState> {
   const response = await http.get<ApiResponse<RuntimeControlState>>('/runtime-control/status')

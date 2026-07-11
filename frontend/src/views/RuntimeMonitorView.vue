@@ -197,6 +197,11 @@ function commandTypeLabel(type: string) {
     LAND: '降落',
     START_MISSION: '开始任务',
     STOP_MISSION: '停止任务',
+    PAUSE_MISSION: '暂停任务',
+    RESUME_MISSION: '恢复任务',
+    COMPLETE_MISSION: '完成任务',
+    FAIL_MISSION: '异常终止',
+    CANCEL_MISSION: '取消任务',
     SELECT_DEVICE: '选择设备',
     FOCUS_DEVICE: '聚焦设备',
     SWITCH_CAMERA: '切换视角',
@@ -206,9 +211,11 @@ function commandTypeLabel(type: string) {
 }
 
 function commandStatusLabel(status: string) {
-  if (status === 'SUCCEEDED') return '已执行'
+  if (status === 'ACKNOWLEDGED') return '已确认'
+  if (status === 'DISPATCHED') return '已下发'
   if (status === 'FAILED') return '失败'
-  return '等待中'
+  if (status === 'TIMEOUT') return '确认超时'
+  return '待处理'
 }
 
 function commandStatusClass(status: string) {
@@ -554,8 +561,13 @@ onBeforeUnmount(() => {
             <dl class="runtime-command-log-detail-grid">
               <div><dt>执行人</dt><dd>{{ command.requestedBy || 'system' }}</dd></div>
               <div><dt>提交时间</dt><dd>{{ formatTime(command.requestedAt) }}</dd></div>
-              <div><dt>完成时间</dt><dd>{{ formatTime(command.completedAt) }}</dd></div>
+              <div><dt>下发时间</dt><dd>{{ formatTime(command.dispatchedAt) }}</dd></div>
+              <div><dt>确认时间</dt><dd>{{ formatTime(command.acknowledgedAt) }}</dd></div>
               <div><dt>会话 ID</dt><dd>{{ command.sessionId ?? '--' }}</dd></div>
+              <div><dt>任务批次</dt><dd>{{ command.runId ?? '--' }}</dd></div>
+              <div><dt>目标设备</dt><dd>{{ command.deviceId ?? '--' }}</dd></div>
+              <div><dt>指令编号</dt><dd :title="command.commandKey">{{ command.commandKey }}</dd></div>
+              <div><dt>错误码</dt><dd>{{ command.errorCode ?? '--' }}</dd></div>
             </dl>
             <p>{{ command.detail || '指令已记录，等待执行结果' }}</p>
           </article>

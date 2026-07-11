@@ -7,6 +7,7 @@
 - [architecture.md](architecture.md)：对齐 PPT 的五层软件架构，说明当前项目在 Spring Boot、Vue、ROS2/Gazebo、Unity3D 和算法服务中的定位。
 - [frontend-backend-roadmap.md](frontend-backend-roadmap.md)：梳理前后端已有模块、下一阶段模块和接口开发顺序。
 - [mission-management-design.md](mission-management-design.md)：任务管理 / 任务配置模块的数据库、后端、前端和接口设计草案。
+- [execution-and-command-roadmap.md](execution-and-command-roadmap.md)：说明仿真会话、任务执行批次、控制指令确认和后续开发顺序。
 
 ## 维护原则
 

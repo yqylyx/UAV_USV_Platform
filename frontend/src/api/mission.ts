@@ -2,6 +2,7 @@ import { fetchCsrfToken } from './auth'
 import { http } from './http'
 import type { ApiResponse, PageResponse } from '@/types/api'
 import type { Mission, MissionDetail, MissionQuery, MissionSavePayload } from '@/types/mission'
+import type { RuntimeCommandResult } from '@/api/runtimeControl'
 
 export async function fetchMissions(query: MissionQuery): Promise<PageResponse<Mission>> {
   const response = await http.get<ApiResponse<PageResponse<Mission>>>('/missions', {
@@ -40,9 +41,14 @@ export async function deleteMission(id: number): Promise<void> {
 
 export type MissionAction = 'ready' | 'start' | 'pause' | 'resume' | 'complete' | 'fail' | 'cancel'
 
-export async function executeMissionAction(id: number, action: MissionAction): Promise<MissionDetail> {
+export interface MissionActionResult {
+  detail: MissionDetail
+  command: RuntimeCommandResult | null
+}
+
+export async function executeMissionAction(id: number, action: MissionAction): Promise<MissionActionResult> {
   const csrf = await fetchCsrfToken()
-  const response = await http.post<ApiResponse<MissionDetail>>(`/missions/${id}/${action}`, undefined, {
+  const response = await http.post<ApiResponse<MissionActionResult>>(`/missions/${id}/${action}`, undefined, {
     headers: { [csrf.headerName]: csrf.token },
   })
   return response.data.data

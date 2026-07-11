@@ -6,10 +6,9 @@ import { computed, onMounted, reactive, ref } from 'vue'
 
 import { createMission, deleteMission, executeMissionAction, fetchMission, updateMission } from '@/api/mission'
 import type { MissionAction } from '@/api/mission'
-import { issueRuntimeCommand } from '@/api/runtimeControl'
-import type { RuntimeCommandType } from '@/api/runtimeControl'
 import { fetchDevices } from '@/api/device'
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import MissionTrajectoryMap from '@/components/mission/MissionTrajectoryMap.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMissionStore } from '@/stores/mission'
 import type { Device } from '@/types/device'
@@ -17,6 +16,7 @@ import type {
   Mission,
   MissionDetail,
   MissionDeviceRole,
+  MissionRunStatus,
   MissionSavePayload,
   MissionStage,
   MissionStatus,
@@ -87,6 +87,8 @@ const statusOptions: Array<{ label: string; value: MissionStatus }> = [
   { label: '已取消', value: 'CANCELLED' },
 ]
 
+const editableStatusOptions = statusOptions.filter((item) => item.value === 'DRAFT' || item.value === 'READY')
+
 const stageOptions: Array<{ label: string; value: MissionStage }> = [
   { label: '任务准备', value: 'PREPARE' },
   { label: '目标发现', value: 'TARGET_DETECTED' },
@@ -117,21 +119,17 @@ const encirclementCount = computed(
   () => missionStore.records.filter((item) => item.type === 'COOPERATIVE_ENCIRCLEMENT').length,
 )
 
-const missionCommandMap: Partial<Record<MissionAction, RuntimeCommandType>> = {
-  start: 'START_MISSION',
-  resume: 'START_MISSION',
-  pause: 'STOP_MISSION',
-  complete: 'STOP_MISSION',
-  fail: 'STOP_MISSION',
-  cancel: 'STOP_MISSION',
-}
-
 function typeLabel(type: MissionType) {
   return typeOptions.find((item) => item.value === type)?.label ?? type
 }
 
 function statusLabel(status: MissionStatus) {
   return statusOptions.find((item) => item.value === status)?.label ?? status
+}
+
+function runStatusLabel(status: MissionRunStatus) {
+  if (status === 'PENDING') return '等待确认'
+  return statusLabel(status as MissionStatus)
 }
 
 function stageLabel(stage: MissionStage) {
@@ -341,36 +339,20 @@ async function runMissionAction(row: Mission | Record<string, unknown>, action: 
   actionLoadingId.value = mission.id
   try {
     const result = await executeMissionAction(mission.id, action)
-    await recordMissionRuntimeCommand(result.mission, action)
-    detail.value = detail.value?.mission.id === mission.id ? result : detail.value
-    ElMessage.success(`${result.mission.name}：${statusLabel(result.mission.status)}`)
+    const latest = result.detail
+    detail.value = detail.value?.mission.id === mission.id ? latest : detail.value
+    if (result.command?.status === 'DISPATCHED' || result.command?.status === 'PENDING') {
+      ElMessage.warning(`${latest.mission.name}：指令已下发，等待外部组件确认`)
+    } else if (result.command?.status === 'FAILED' || result.command?.status === 'TIMEOUT') {
+      ElMessage.error(`${latest.mission.name}：${result.command.detail || '控制指令执行失败'}`)
+    } else {
+      ElMessage.success(`${latest.mission.name}：${statusLabel(latest.mission.status)}`)
+    }
     await load(missionStore.page)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '任务状态变更失败')
   } finally {
     actionLoadingId.value = null
-  }
-}
-
-async function recordMissionRuntimeCommand(mission: Mission, action: MissionAction) {
-  const commandType = missionCommandMap[action]
-  if (!commandType) return
-
-  try {
-    await issueRuntimeCommand({
-      commandType,
-      deviceCode: mission.code,
-      detail: `任务控制：${mission.name} / ${action}`,
-      payload: JSON.stringify({
-        missionId: mission.id,
-        missionCode: mission.code,
-        action,
-        status: mission.status,
-        stage: mission.stage,
-      }),
-    })
-  } catch (error) {
-    ElMessage.warning(error instanceof Error ? `任务状态已更新，但控制指令记录失败：${error.message}` : '任务状态已更新，但控制指令记录失败')
   }
 }
 
@@ -430,8 +412,8 @@ onMounted(async () => {
       <article class="console-panel mission-map-panel">
         <div class="panel-heading">
           <div>
-            <h2>协同围捕任务</h2>
-            <p>围绕无人机起飞、无人艇接近灯塔、协同跟踪三个核心步骤编排。</p>
+            <h2>协同围捕轨迹地图</h2>
+            <p>按 Unity 场景的 X/Z 坐标与三角合围逻辑，在 Vue 中独立绘制定位轨迹。</p>
           </div>
           <div class="mission-map-actions">
             <el-button v-if="currentMission" type="primary" @click="runMissionAction(currentMission, currentMission.status === 'DRAFT' ? 'ready' : 'start')">
@@ -440,12 +422,10 @@ onMounted(async () => {
             <el-button @click="openCreate">保存方案</el-button>
           </div>
         </div>
-        <div class="mission-map">
-          <div class="mission-path"></div>
-          <span class="mission-node usv">USV</span>
-          <span class="mission-node uav">UAV</span>
-          <span class="mission-node target">灯塔</span>
-        </div>
+        <MissionTrajectoryMap
+          :mission-name="currentMission?.name || '三机三艇协同围捕预演'"
+          :mission-status="currentMission?.status || 'READY'"
+        />
       </article>
 
       <aside class="mission-side-stack">
@@ -596,10 +576,7 @@ onMounted(async () => {
             <el-select v-model="form.type"><el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
           </el-form-item>
           <el-form-item label="任务状态" prop="status">
-            <el-select v-model="form.status"><el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
-          </el-form-item>
-          <el-form-item label="任务阶段" prop="stage">
-            <el-select v-model="form.stage"><el-option v-for="item in stageOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+            <el-select v-model="form.status"><el-option v-for="item in editableStatusOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
           </el-form-item>
           <el-form-item label="优先级"><el-input-number v-model="form.priority" :min="1" :max="5" controls-position="right" class="full-control" /></el-form-item>
           <el-form-item label="目标名称"><el-input v-model="form.targetName" /></el-form-item>
@@ -660,6 +637,14 @@ onMounted(async () => {
           <div><dt>目标</dt><dd>{{ detail.mission.targetName || '--' }}</dd></div>
           <div><dt>海域</dt><dd>{{ detail.mission.missionArea || '--' }}</dd></div>
         </dl>
+        <section>
+          <h3>执行批次</h3>
+          <div v-if="detail.runs.length === 0" class="empty-inline">尚未执行</div>
+          <div v-for="run in detail.runs" :key="run.id" class="detail-param">
+            <span>第 {{ run.runNo }} 次 / {{ stageLabel(run.stage) }}</span>
+            <strong>{{ runStatusLabel(run.status) }} · {{ formatTime(run.startedAt) }}</strong>
+          </div>
+        </section>
         <section>
           <h3>设备编组</h3>
           <div v-for="device in detail.devices" :key="device.id" class="detail-device">
