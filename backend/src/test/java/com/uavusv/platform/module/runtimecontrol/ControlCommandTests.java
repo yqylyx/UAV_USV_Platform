@@ -40,4 +40,13 @@ class ControlCommandTests {
         assertEquals("ACK_TIMEOUT", command.getErrorCode());
         assertNotNull(command.getCompletedAt());
     }
+
+    @Test
+    void shouldKeepVehicleSpecificCommandSemantics() {
+        ControlCommand uav = new ControlCommand(1L, null, 11L, CommandType.UAV_HOVER, "{}", "admin");
+        ControlCommand usv = new ControlCommand(1L, null, 21L, CommandType.USV_HOLD, "{}", "admin");
+
+        assertEquals(CommandType.UAV_HOVER, uav.getCommandType());
+        assertEquals(CommandType.USV_HOLD, usv.getCommandType());
+    }
 }

@@ -2,6 +2,7 @@ package com.uavusv.platform.module.runtimecontrol.controller;
 
 import com.uavusv.platform.common.api.ApiResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandLogResponse;
+import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandAckRequest;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeControlResponse;
@@ -10,6 +11,7 @@ import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -51,5 +53,13 @@ public class RuntimeControlController {
             Authentication authentication
     ) {
         return ApiResponse.success(runtimeControlService.issueCommand(request, authentication.getName()));
+    }
+
+    @PostMapping("/commands/{commandKey}/ack")
+    public ApiResponse<RuntimeCommandResponse> acknowledgeCommand(
+            @PathVariable String commandKey,
+            @Valid @RequestBody RuntimeCommandAckRequest request
+    ) {
+        return ApiResponse.success(runtimeControlService.acknowledgeCommand(commandKey, request));
     }
 }

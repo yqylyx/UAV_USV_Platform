@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useTrajectoryStore } from '@/stores/trajectory'
+import { useUnityBridgeStore } from '@/stores/unityBridge'
+import type { UnityBridgeMessage } from '@/stores/unityBridge'
 
 type UnityMessage = {
   type: string
@@ -25,6 +28,8 @@ const emit = defineEmits<{
 }>()
 
 const iframeRef = ref<HTMLIFrameElement | null>(null)
+const trajectoryStore = useTrajectoryStore()
+const unityBridgeStore = useUnityBridgeStore()
 const loading = ref(true)
 const ready = ref(false)
 const errorMessage = ref('')
@@ -45,6 +50,8 @@ function markReady() {
   ready.value = true
   errorMessage.value = ''
   loadHint.value = 'Unity WebGL 已加载'
+  unityBridgeStore.setConnected(true)
+  flushUnityOutbox()
   if (!readyEmitted) {
     readyEmitted = true
     emit('unityReady')
@@ -55,6 +62,8 @@ function markError(message: string) {
   loading.value = false
   ready.value = false
   errorMessage.value = message
+  unityBridgeStore.setConnected(false)
+  unityBridgeStore.setError(message)
   emit('unityError', message)
 }
 
@@ -94,6 +103,21 @@ function handleWindowMessage(event: MessageEvent) {
   if (message.type === 'unityError') {
     markError(String(message.payload?.message ?? 'Unity WebGL 加载失败'))
   }
+
+  if (message.type === 'trajectoryFrame' && message.payload) {
+    trajectoryStore.ingest(message.payload)
+  }
+
+  if (message.type === 'commandAck' && message.payload) {
+    void unityBridgeStore.handleCommandAck(message.requestId ?? '', message.payload)
+  }
+
+  unityBridgeStore.noteMessage({
+    type: message.type,
+    requestId: message.requestId ?? '',
+    timestamp: message.timestamp ?? Date.now(),
+    payload: message.payload ?? {},
+  })
 
   emit('unityMessage', message)
 }
@@ -177,6 +201,12 @@ function postToUnity(type: string, payload: Record<string, unknown> = {}) {
     timestamp: Date.now(),
     payload,
   }
+  unityBridgeStore.noteOutgoing({
+    type: message.type,
+    requestId: message.requestId ?? '',
+    timestamp: message.timestamp ?? Date.now(),
+    payload: message.payload ?? {},
+  })
   emit('unityCommand', message)
   iframeRef.value?.contentWindow?.postMessage(
     {
@@ -186,6 +216,21 @@ function postToUnity(type: string, payload: Record<string, unknown> = {}) {
     window.location.origin,
   )
   return message.requestId
+}
+
+function postEnvelope(message: UnityBridgeMessage) {
+  unityBridgeStore.noteOutgoing(message)
+  emit('unityCommand', message)
+  iframeRef.value?.contentWindow?.postMessage({ source: 'vue-console', message }, window.location.origin)
+}
+
+function flushUnityOutbox() {
+  if (!unityBridgeStore.connected || !iframeRef.value?.contentWindow) return
+  let message = unityBridgeStore.takeNext()
+  while (message) {
+    postEnvelope(message)
+    message = unityBridgeStore.takeNext()
+  }
 }
 
 function selectDevice(deviceCode: string) {
@@ -226,7 +271,10 @@ onMounted(() => {
   window.addEventListener('message', handleWindowMessage)
 })
 
+watch(() => [unityBridgeStore.connected, unityBridgeStore.outbox.length], flushUnityOutbox)
+
 onBeforeUnmount(() => {
+  unityBridgeStore.setConnected(false)
   window.removeEventListener('message', handleWindowMessage)
   if (probeTimer !== null) window.clearInterval(probeTimer)
 })

@@ -8,6 +8,18 @@ export type RuntimeCommandType =
   | 'STOP'
   | 'TAKEOFF'
   | 'LAND'
+  | 'UAV_TAKEOFF'
+  | 'UAV_HOVER'
+  | 'UAV_RESUME'
+  | 'UAV_RETURN'
+  | 'UAV_LAND'
+  | 'UAV_EMERGENCY_LAND'
+  | 'USV_DEPART'
+  | 'USV_HOLD'
+  | 'USV_RESUME'
+  | 'USV_RETURN'
+  | 'USV_STOP'
+  | 'USV_EMERGENCY_STOP'
   | 'START_MISSION'
   | 'STOP_MISSION'
   | 'PAUSE_MISSION'
@@ -85,5 +97,18 @@ export async function stopRuntime(): Promise<RuntimeControlState> {
 export async function issueRuntimeCommand(payload: RuntimeCommandPayload): Promise<RuntimeCommandResult> {
   await fetchCsrfToken()
   const response = await http.post<ApiResponse<RuntimeCommandResult>>('/runtime-control/commands', payload)
+  return response.data.data
+}
+
+export async function acknowledgeRuntimeCommand(
+  commandKey: string,
+  success: boolean,
+  detail: string,
+): Promise<RuntimeCommandResult> {
+  await fetchCsrfToken()
+  const response = await http.post<ApiResponse<RuntimeCommandResult>>(
+    `/runtime-control/commands/${encodeURIComponent(commandKey)}/ack`,
+    { success, detail, errorCode: success ? null : 'UNITY_EXECUTION_FAILED' },
+  )
   return response.data.data
 }

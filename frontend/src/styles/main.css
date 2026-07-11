@@ -2712,7 +2712,7 @@ h2 {
 
 .overview-main-grid {
   display: grid;
-  grid-template-columns: 3.1fr 1fr;
+  grid-template-columns: minmax(0, 2.55fr) minmax(330px, 1fr);
   gap: 14px;
   align-items: stretch;
 }
@@ -2909,6 +2909,11 @@ h2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
+}
+
+.overview-control-stack {
+  display: grid;
+  gap: 10px;
 }
 
 .overview-command-grid {
@@ -3552,6 +3557,281 @@ h2 {
   min-height: 620px;
 }
 
+/* High-fidelity command overview layout. UnityWebglPanel remains unchanged. */
+.overview-hf {
+  display: grid;
+  gap: 12px;
+}
+
+.overview-hf-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 58px;
+  padding: 9px 14px;
+  background: linear-gradient(90deg, rgba(5, 24, 34, 0.98), rgba(4, 15, 25, 0.96));
+  border: 1px solid rgba(65, 170, 205, 0.24);
+  border-radius: 8px;
+}
+
+.overview-current-view {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0 10px;
+  align-items: center;
+}
+
+.overview-current-view span {
+  grid-row: 1 / 3;
+  min-width: 84px;
+  padding: 8px 12px;
+  color: #071316;
+  font-size: 14px;
+  font-weight: 950;
+  text-align: center;
+  background: #ffc83d;
+  border-radius: 5px;
+}
+
+.overview-current-view strong {
+  color: #efffff;
+  font-size: 13px;
+}
+
+.overview-current-view small {
+  color: #789c9e;
+  font-size: 11px;
+}
+
+.overview-link-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.overview-link-status b {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  color: #8aa6aa;
+  font-size: 11px;
+  border-left: 1px solid rgba(91, 143, 155, 0.18);
+}
+
+.overview-link-status i {
+  width: 7px;
+  height: 7px;
+  background: #65777b;
+  border-radius: 50%;
+}
+
+.overview-link-status b.online {
+  color: #bff8df;
+}
+
+.overview-link-status b.online i {
+  background: #35dc8d;
+  box-shadow: 0 0 8px rgba(53, 220, 141, 0.65);
+}
+
+.overview-link-status b.pose {
+  color: #56d8ff;
+}
+
+.overview-link-status b.pose i {
+  background: #35bfea;
+}
+
+.overview-hf-main {
+  grid-template-columns: minmax(0, 1.95fr) minmax(430px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.overview-hf .overview-stage-panel {
+  background: #06131c;
+  border-color: rgba(62, 161, 196, 0.32);
+}
+
+.overview-hf .overview-stage-header {
+  min-height: 60px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(7, 28, 39, 0.98), rgba(5, 20, 29, 0.96));
+  border-bottom: 1px solid rgba(71, 174, 205, 0.2);
+}
+
+.overview-hf .overview-stage-header > div:first-child {
+  min-width: 205px;
+}
+
+.overview-hf .overview-camera-tabs {
+  flex: 1;
+  min-width: 300px;
+  padding: 3px;
+}
+
+.overview-hf .overview-unity-stage,
+.overview-hf .overview-unity-stage.unity-webgl-panel {
+  height: 640px;
+  min-height: 640px;
+  margin: 10px;
+  border: 1px solid rgba(90, 198, 220, 0.28);
+}
+
+.unity-runtime-viewport {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(39, 153, 178, 0.1), transparent 48%),
+    #031017;
+}
+
+.unity-runtime-placeholder {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  gap: 9px;
+  color: #5b858b;
+  text-align: center;
+}
+
+.unity-runtime-placeholder strong {
+  color: #a8d8dd;
+  font-size: 14px;
+}
+
+.unity-runtime-placeholder span {
+  font-size: 11px;
+}
+
+.overview-hf .overview-ops-panel {
+  gap: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.overview-hf .overview-control-stack {
+  gap: 10px;
+}
+
+.overview-hf .vehicle-quick-control {
+  padding: 13px;
+}
+
+.overview-hf .vehicle-quick-control .command-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.overview-hf .vehicle-quick-control .command-grid button {
+  min-height: 68px;
+  padding: 7px 4px;
+}
+
+.overview-hf .vehicle-quick-control .command-grid small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-hf .mission-group-control .mission-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.overview-fleet-ribbon {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.overview-fleet-ribbon article {
+  min-width: 0;
+  padding: 12px;
+  color: #dff6f4;
+  cursor: pointer;
+  background: linear-gradient(145deg, rgba(7, 25, 34, 0.98), rgba(5, 16, 24, 0.98));
+  border: 1px solid rgba(255, 199, 55, 0.56);
+  border-radius: 8px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.overview-fleet-ribbon article.usv {
+  border-color: rgba(255, 92, 83, 0.58);
+}
+
+.overview-fleet-ribbon article:hover,
+.overview-fleet-ribbon article.active {
+  transform: translateY(-2px);
+  box-shadow: 0 0 18px rgba(57, 206, 227, 0.16);
+}
+
+.overview-fleet-ribbon header,
+.overview-fleet-ribbon footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.overview-fleet-ribbon header strong {
+  color: #ffc83d;
+  font-size: 13px;
+}
+
+.overview-fleet-ribbon .usv header strong {
+  color: #ff6b64;
+}
+
+.overview-fleet-ribbon header b {
+  padding: 3px 6px;
+  color: #73e6a9;
+  font-size: 9px;
+  background: rgba(57, 199, 123, 0.1);
+  border: 1px solid rgba(78, 218, 145, 0.24);
+  border-radius: 3px;
+}
+
+.overview-fleet-symbol {
+  display: inline-grid;
+  width: 78px;
+  height: 78px;
+  margin: 9px 0;
+  place-items: center;
+  vertical-align: middle;
+}
+
+.overview-fleet-ribbon .usv .overview-fleet-symbol {
+  color: #ff655e;
+}
+
+.overview-fleet-ribbon article > span {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.overview-fleet-ribbon footer {
+  padding-top: 8px;
+  color: #78a09f;
+  border-top: 1px solid rgba(101, 152, 157, 0.14);
+}
+
+@media (max-width: 1450px) {
+  .overview-hf-main { grid-template-columns: minmax(0, 1.6fr) minmax(380px, 1fr); }
+  .overview-hf .vehicle-quick-control .command-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-fleet-ribbon { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.console-table .mission-row-selected > td.el-table__cell {
+  background: rgba(64, 207, 220, 0.1) !important;
+  box-shadow: inset 0 1px rgba(114, 230, 215, 0.13), inset 0 -1px rgba(114, 230, 215, 0.13);
+}
+
 .mission-map {
   position: relative;
   height: 470px;
@@ -3823,6 +4103,320 @@ h2 {
 
 .heartbeat-pill {
   font-weight: 900;
+}
+
+/* High-fidelity mission command shell. MissionTrajectoryMap remains unchanged. */
+.mission-hf-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 62px;
+  margin-bottom: 10px;
+  padding: 9px 14px;
+  background: linear-gradient(90deg, rgba(5, 24, 34, 0.98), rgba(4, 15, 25, 0.96));
+  border: 1px solid rgba(68, 179, 211, 0.28);
+  border-radius: 8px;
+}
+
+.mission-hf-statusbar > div:first-child {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0 10px;
+  align-items: center;
+}
+
+.mission-hf-statusbar > div:first-child span {
+  grid-row: 1 / 3;
+  padding: 8px 11px;
+  color: #55d9f1;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  background: rgba(64, 192, 225, 0.08);
+  border: 1px solid rgba(68, 198, 231, 0.28);
+  border-radius: 4px;
+}
+
+.mission-hf-statusbar strong {
+  color: #c8f5ff;
+  font-size: 15px;
+}
+
+.mission-hf-statusbar small {
+  color: #7e9fa3;
+  font-size: 11px;
+}
+
+.mission-hf-status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mission-hf-status > b,
+.mission-hf-status > span {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #9ab9b9;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(99, 153, 159, 0.18);
+  border-radius: 4px;
+}
+
+.mission-hf-status > b {
+  color: #77e3a8;
+}
+
+.mission-hf-status > b i {
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 7px currentColor;
+}
+
+.mission-hf-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 430px);
+  gap: 10px;
+  align-items: start;
+}
+
+.mission-hf-layout .mission-map-panel {
+  min-height: 790px;
+  padding: 10px;
+  background: linear-gradient(180deg, rgba(5, 24, 33, 0.98), rgba(4, 15, 23, 0.98));
+  border-color: rgba(67, 173, 206, 0.32);
+  box-shadow: inset 0 0 44px rgba(34, 165, 201, 0.025), 0 0 22px rgba(3, 15, 22, 0.42);
+  position: relative;
+  overflow: hidden;
+}
+
+.mission-hf-layout .mission-map-panel::before {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 180px;
+  height: 2px;
+  content: '';
+  background: linear-gradient(90deg, #43cbe9, transparent);
+  box-shadow: 0 0 14px rgba(67, 203, 233, 0.6);
+}
+
+.mission-hf-layout .mission-map-panel > .panel-heading {
+  min-height: 50px;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid rgba(73, 167, 192, 0.17);
+}
+
+.mission-hf-layout .mission-side-stack {
+  gap: 9px;
+}
+
+.mission-current-device-card,
+.mission-command-feedback-card {
+  padding: 13px;
+  background: linear-gradient(145deg, rgba(7, 28, 38, 0.98), rgba(5, 17, 25, 0.98));
+  border: 1px solid rgba(70, 187, 218, 0.3);
+  border-radius: 9px;
+  box-shadow: inset 0 0 28px rgba(61, 195, 224, 0.025);
+}
+
+.mission-current-device-card > header,
+.mission-command-feedback-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mission-current-device-identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.mission-current-device-card > header > .vehicle-glyph {
+  width: 56px;
+  height: 56px;
+}
+
+.mission-current-device-card header span,
+.mission-current-device-card header strong,
+.mission-command-feedback-card header span,
+.mission-command-feedback-card header strong {
+  display: block;
+}
+
+.mission-current-device-card header span,
+.mission-command-feedback-card header span {
+  color: #52d7ef;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.mission-current-device-card header strong,
+.mission-command-feedback-card header strong {
+  margin-top: 3px;
+  color: #f0ffff;
+  font-size: 16px;
+}
+
+.mission-current-device-card header > b,
+.mission-command-feedback-card header > b {
+  padding: 4px 7px;
+  color: #75e4ac;
+  font-size: 10px;
+  background: rgba(67, 205, 137, 0.1);
+  border: 1px solid rgba(67, 205, 137, 0.24);
+  border-radius: 3px;
+}
+
+.mission-device-telemetry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.mission-device-telemetry div {
+  min-width: 0;
+  padding: 8px;
+  background: rgba(83, 183, 203, 0.045);
+  border: 1px solid rgba(95, 172, 183, 0.13);
+  border-radius: 4px;
+  box-shadow: inset 0 -12px 20px rgba(49, 169, 198, 0.018);
+}
+
+.mission-device-telemetry span,
+.mission-device-telemetry strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mission-device-telemetry span {
+  color: #6f9093;
+  font-size: 8px;
+}
+
+.mission-device-telemetry strong {
+  margin-top: 3px;
+  color: #d9f6f4;
+  font-size: 10px;
+}
+
+.mission-hf-layout .vehicle-quick-control {
+  padding: 11px;
+}
+
+.mission-hf-layout .vehicle-quick-control .command-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mission-hf-layout .vehicle-quick-control .command-grid button {
+  min-height: 60px;
+  padding: 6px 3px;
+}
+
+.mission-hf-layout .vehicle-quick-control .command-icon {
+  width: 23px;
+  height: 23px;
+}
+
+.mission-hf-layout .vehicle-quick-control .command-grid small {
+  display: none;
+}
+
+.mission-hf-layout .mission-group-control .mission-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mission-command-feedback-card p {
+  margin: 11px 0 0;
+  color: #66878a;
+  font-size: 10px;
+}
+
+.mission-command-feedback-list {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.mission-command-feedback-list > div {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  min-height: 29px;
+  padding: 0 7px;
+  background: rgba(73, 144, 155, 0.05);
+  border: 1px solid rgba(80, 171, 189, 0.09);
+  border-radius: 3px;
+}
+
+.mission-command-feedback-list span,
+.mission-command-feedback-list strong,
+.mission-command-feedback-list b {
+  font-size: 9px;
+}
+
+.mission-command-feedback-list span.uav { color: #ffc93e; }
+.mission-command-feedback-list span.usv { color: #ff6a61; }
+.mission-command-feedback-list strong { color: #84a4a4; }
+.mission-command-feedback-list b { color: #70e3a9; }
+.mission-command-feedback-list b.failed,
+.mission-command-feedback-list b.timeout { color: #ff6a62; }
+.mission-command-feedback-list b.pending,
+.mission-command-feedback-list b.dispatched { color: #ffd266; }
+
+.mission-plan-manager {
+  margin-top: 10px;
+  overflow: hidden;
+  background: rgba(5, 21, 28, 0.92);
+  border: 1px solid rgba(75, 170, 185, 0.18);
+  border-radius: 8px;
+}
+
+.mission-plan-manager > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 14px;
+  color: #c9eeee;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+  list-style: none;
+}
+
+.mission-plan-manager > summary::-webkit-details-marker { display: none; }
+.mission-plan-manager > summary::after { content: '展开'; color: #58d4e9; font-size: 10px; }
+.mission-plan-manager[open] > summary::after { content: '收起'; }
+.mission-plan-manager > summary b { margin-left: auto; margin-right: 14px; color: #6e9294; font-size: 10px; }
+
+.mission-plan-manager-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+  border-top: 1px solid rgba(74, 160, 174, 0.13);
+}
+
+.mission-plan-manager-body .page-metric-grid {
+  margin-top: 10px;
+}
+
+@media (max-width: 1380px) {
+  .mission-hf-layout { grid-template-columns: 1fr; }
+  .mission-hf-layout .mission-side-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .runtime-command-log-item.acknowledged,

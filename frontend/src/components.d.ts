@@ -29,10 +29,14 @@ declare module 'vue' {
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTag: typeof import('element-plus/es')['ElTag']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
+    MissionGroupControl: typeof import('./components/control/MissionGroupControl.vue')['default']
     MissionTrajectoryMap: typeof import('./components/mission/MissionTrajectoryMap.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    UnityRuntimeHost: typeof import('./components/unity/UnityRuntimeHost.vue')['default']
     UnityWebglPanel: typeof import('./components/unity/UnityWebglPanel.vue')['default']
+    VehicleGlyph: typeof import('./components/control/VehicleGlyph.vue')['default']
+    VehicleQuickControl: typeof import('./components/control/VehicleQuickControl.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

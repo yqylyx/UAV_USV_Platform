@@ -3,11 +3,15 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import MissionGroupControl from '@/components/control/MissionGroupControl.vue'
+import VehicleQuickControl from '@/components/control/VehicleQuickControl.vue'
+import VehicleGlyph from '@/components/control/VehicleGlyph.vue'
+import type { VehicleQuickCommand } from '@/components/control/VehicleQuickControl.vue'
 import { sendIntegrationHeartbeat } from '@/api/integration'
 import { issueRuntimeCommand } from '@/api/runtimeControl'
-import type { RuntimeCommandType } from '@/api/runtimeControl'
-import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
+import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useUnityBridgeStore } from '@/stores/unityBridge'
 import type { RuntimeNode } from '@/types/monitoring'
 
 type UnityMessage = {
@@ -17,21 +21,25 @@ type UnityMessage = {
   payload?: Record<string, unknown>
 }
 
-type UnityPanelExpose = {
-  selectDevice: (deviceCode: string) => void
-  focusDevice: (deviceCode: string) => void
-  switchCamera: (mode: string) => void
-  sendControlCommand: (command: string, deviceCode?: string) => void
-  sendPoseFrame: (payload: Record<string, unknown>) => void
-}
-
 const monitoringStore = useMonitoringStore()
-const unityPanel = ref<UnityPanelExpose | null>(null)
-const selectedDeviceCode = ref('USV-01')
+const unityBridgeStore = useUnityBridgeStore()
+const selectedDeviceCode = ref('uav-01')
 const selectedCameraMode = ref('overview')
 const unityConnection = ref('等待 WebGL 构建')
 const lastUnityEvent = ref('暂无 Unity 回传事件')
 const unityCommandState = ref('等待控制指令')
+const commandBusy = ref(false)
+const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
+const operationalStates = ref<Record<string, string | undefined>>({
+  'uav-01': 'GROUNDED',
+  'uav-02': 'GROUNDED',
+  'uav-03': 'GROUNDED',
+  'usv-01': 'MOORED',
+  'usv-02': 'MOORED',
+  'usv-03': 'MOORED',
+})
+type OverviewMissionStatus = 'READY' | 'RUNNING' | 'PAUSED' | 'FAILED' | 'CANCELLED' | 'COMPLETED'
+const overviewMissionStatus = ref<OverviewMissionStatus>('READY')
 let poseFrameSequence = 0
 let heartbeatTimer: number | null = null
 const unityInstanceId = `vue-webgl:${window.location.host}:${Math.random().toString(36).slice(2, 10)}`
@@ -43,20 +51,13 @@ const cameraModes = [
   { label: '灯塔视角', value: 'lighthouse' },
 ]
 
-const commandButtons = [
-  { label: '起飞', value: 'takeoff' },
-  { label: '降落', value: 'land' },
-  { label: '开始任务', value: 'startMission' },
-  { label: '停止任务', value: 'stopMission' },
-]
-
 const expectedObservationDevices = [
-  { code: 'USV-01', name: '协同无人艇 1', type: 'USV' as const },
-  { code: 'USV-02', name: '协同无人艇 2', type: 'USV' as const },
-  { code: 'USV-03', name: '协同无人艇 3', type: 'USV' as const },
-  { code: 'UAV-01', name: '协同无人机 1', type: 'UAV' as const },
-  { code: 'UAV-02', name: '协同无人机 2', type: 'UAV' as const },
-  { code: 'UAV-03', name: '协同无人机 3', type: 'UAV' as const },
+  { code: 'usv-01', name: '协同无人艇 1', type: 'USV' as const },
+  { code: 'usv-02', name: '协同无人艇 2', type: 'USV' as const },
+  { code: 'usv-03', name: '协同无人艇 3', type: 'USV' as const },
+  { code: 'uav-01', name: '协同无人机 1', type: 'UAV' as const },
+  { code: 'uav-02', name: '协同无人机 2', type: 'UAV' as const },
+  { code: 'uav-03', name: '协同无人机 3', type: 'UAV' as const },
 ]
 
 function normalizeDeviceCode(code: string) {
@@ -65,16 +66,6 @@ function normalizeDeviceCode(code: string) {
 
 function hasRuntimePosition(node: RuntimeNode) {
   return node.positionX !== null && node.positionY !== null && node.positionZ !== null
-}
-
-function formatCoordinate(value: number | null) {
-  return value === null ? '-' : value.toFixed(2)
-}
-
-function formatHeartbeat(age: number) {
-  if (age < 0) return '-'
-  if (age < 60) return `${age}s`
-  return `${Math.floor(age / 60)}m ${age % 60}s`
 }
 
 const runtimeNodeByCode = computed(() => {
@@ -113,9 +104,15 @@ const selectableDevices = computed(() => {
   })
 })
 
-const selectedNode = computed(
-  () => selectableDevices.value.find((node) => normalizeDeviceCode(node.code) === normalizeDeviceCode(selectedDeviceCode.value)) ?? null,
+const quickControlDevices = computed(() =>
+  selectableDevices.value.map((device) => ({
+    code: device.code,
+    name: device.name,
+    type: device.type as 'UAV' | 'USV',
+    status: device.status,
+  })),
 )
+
 const rosBridgeOnline = computed(() =>
   monitoringStore.nodes.some((node) => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
 )
@@ -133,32 +130,39 @@ const taskStateText = computed(() => {
   if (rosBridgeOnline.value) return '等待位姿'
   return '演示预览'
 })
-const topStatusCards = computed(() => [
-  {
-    label: 'ROS / Gazebo',
-    value: rosBridgeOnline.value ? '在线' : '离线',
-    tone: rosBridgeOnline.value ? 'online' : 'offline',
-    detail: rosBridgeOnline.value ? 'WebSocket 数据链路可用' : '等待 ROS bridge 心跳',
-  },
-  {
-    label: 'Unity WebGL',
-    value: unityReady.value ? '在线' : '等待',
-    tone: unityReady.value ? 'online' : 'warning',
-    detail: unityConnection.value,
-  },
-  {
-    label: '位姿同步',
-    value: `${realtimePoseCount.value}/6`,
-    tone: realtimePoseCount.value >= 6 ? 'online' : 'warning',
-    detail: realtimePoseCount.value > 0 ? `已同步 ${realtimePoseCount.value} 个载体` : '尚未收到实时位姿',
-  },
-  {
-    label: '最新命令',
-    value: unityCommandState.value.includes('失败') ? '异常' : '就绪',
-    tone: unityCommandState.value.includes('失败') ? 'offline' : 'online',
-    detail: unityCommandState.value,
-  },
-])
+const fleetReady = computed(() =>
+  Object.entries(operationalStates.value).every(([code, state]) =>
+    code.startsWith('uav') ? ['AIRBORNE', 'HOLDING'].includes(state ?? '') : ['SAILING', 'HOLDING'].includes(state ?? ''),
+  ),
+)
+
+const overviewFleetCards = computed(() =>
+  selectableDevices.value.map((device, index) => {
+    const code = normalizeDeviceCode(device.code)
+    const state = operationalStates.value[code] ?? (device.type === 'UAV' ? 'GROUNDED' : 'MOORED')
+    const labels: Record<string, string> = {
+      GROUNDED: '地面待命', AIRBORNE: '空中执行', HOLDING: '安全保持', RETURNING: '返航中', LANDING: '降落中',
+      MOORED: '靠泊待命', SAILING: '航行中', STOPPED: '已停止', ERROR: '异常',
+    }
+    return {
+      ...device,
+      code,
+      state,
+      stateLabel: labels[state] ?? state,
+      battery: device.type === 'UAV' ? 92 - index * 2 : 81 - index,
+      link: Math.max(1, 19 - (index % 3)),
+      feedback: commandFeedback.value[code],
+    }
+  }),
+)
+
+function operationalStateAfterCommand(commandType: RuntimeCommandType) {
+  const states: Partial<Record<RuntimeCommandType, string>> = {
+    UAV_TAKEOFF: 'AIRBORNE', UAV_HOVER: 'HOLDING', UAV_RESUME: 'AIRBORNE', UAV_RETURN: 'RETURNING', UAV_LAND: 'LANDING',
+    USV_DEPART: 'SAILING', USV_HOLD: 'HOLDING', USV_RESUME: 'SAILING', USV_RETURN: 'RETURNING', USV_STOP: 'STOPPED',
+  }
+  return states[commandType]
+}
 
 function toUnityPose(node: RuntimeNode) {
   return {
@@ -183,7 +187,7 @@ function pushPoseFrameToUnity() {
 
   if (poses.length === 0) return
 
-  unityPanel.value?.sendPoseFrame({
+  unityBridgeStore.send('poseFrame', {
     sequence: ++poseFrameSequence,
     source: 'spring-monitoring',
     timestampMs: Date.now(),
@@ -248,7 +252,7 @@ async function recordRuntimeCommand(
   payload?: Record<string, unknown>,
 ) {
   try {
-    await issueRuntimeCommand({
+    return await issueRuntimeCommand({
       commandType,
       deviceCode,
       payload: payload ? JSON.stringify(payload) : undefined,
@@ -263,40 +267,141 @@ async function recordRuntimeCommand(
 async function selectDevice(deviceCode: string) {
   selectedDeviceCode.value = deviceCode
   selectedCameraMode.value = 'device-follow'
-  unityPanel.value?.selectDevice(deviceCode)
+  unityBridgeStore.send('selectDevice', { deviceCode })
   lastUnityEvent.value = `selectDevice:${deviceCode}`
   void recordRuntimeCommand('SELECT_DEVICE', '系统总览选择协同设备', deviceCode).catch(() => undefined)
 }
 
 async function focusSelectedDevice() {
-  unityPanel.value?.focusDevice(selectedDeviceCode.value)
+  unityBridgeStore.send('focusDevice', { deviceCode: selectedDeviceCode.value })
   lastUnityEvent.value = `focusDevice:${selectedDeviceCode.value}`
   void recordRuntimeCommand('FOCUS_DEVICE', 'Unity 视角聚焦当前设备').catch(() => undefined)
 }
 
 async function switchCamera(mode: string) {
   selectedCameraMode.value = mode
-  unityPanel.value?.switchCamera(mode)
+  unityBridgeStore.send('switchCamera', { mode })
   lastUnityEvent.value = `switchCamera:${mode}`
   void recordRuntimeCommand('SWITCH_CAMERA', 'Unity 切换态势观察视角', selectedDeviceCode.value, { mode }).catch(() => undefined)
 }
 
-async function sendCommand(command: string) {
-  const commandMap: Record<string, RuntimeCommandType> = {
-    takeoff: 'TAKEOFF',
-    land: 'LAND',
-    startMission: 'START_MISSION',
-    stopMission: 'STOP_MISSION',
+function unityBridgeCommand(commandType: RuntimeCommandType) {
+  const commands: Partial<Record<RuntimeCommandType, string>> = {
+    UAV_TAKEOFF: 'uavTakeoff',
+    UAV_HOVER: 'uavHover',
+    UAV_RESUME: 'uavResume',
+    UAV_RETURN: 'uavReturn',
+    UAV_LAND: 'uavLand',
+    UAV_EMERGENCY_LAND: 'uavEmergencyLand',
+    USV_DEPART: 'usvDepart',
+    USV_HOLD: 'usvHold',
+    USV_RESUME: 'usvResume',
+    USV_RETURN: 'usvReturn',
+    USV_STOP: 'usvStop',
+    USV_EMERGENCY_STOP: 'usvEmergencyStop',
   }
-  const commandType = commandMap[command]
-  if (!commandType) {
-    ElMessage.error(`未知控制指令：${command}`)
+  return commands[commandType] ?? commandType.toLowerCase()
+}
+
+async function sendVehicleCommand(command: VehicleQuickCommand) {
+  commandBusy.value = true
+  const bridgeCommand = unityBridgeCommand(command.commandType)
+  const statuses = await Promise.all(
+      command.deviceCodes.map(async (deviceCode) => {
+        const key = normalizeDeviceCode(deviceCode)
+        commandFeedback.value = { ...commandFeedback.value, [key]: 'PENDING' }
+        try {
+          const result = await recordRuntimeCommand(
+            command.commandType,
+            `${command.label} / ${deviceCode}`,
+            key,
+            { action: bridgeCommand },
+          )
+          commandFeedback.value = { ...commandFeedback.value, [key]: result.status }
+          if (result.status === 'ACKNOWLEDGED') {
+            const state = operationalStateAfterCommand(command.commandType)
+            if (state) operationalStates.value = { ...operationalStates.value, [key]: state }
+          }
+          unityBridgeStore.sendControlCommand(bridgeCommand, key, result.commandKey)
+          return result.status
+        } catch {
+          commandFeedback.value = { ...commandFeedback.value, [key]: 'FAILED' }
+          return 'FAILED' as RuntimeCommandStatus
+        }
+      }),
+    )
+  const acknowledged = statuses.filter((status) => status === 'ACKNOWLEDGED').length
+  const failed = statuses.filter((status) => status === 'FAILED' || status === 'TIMEOUT').length
+  lastUnityEvent.value = `vehicle-command:${bridgeCommand}`
+  unityCommandState.value = `${command.label}：${acknowledged}/${statuses.length} 已确认`
+  if (failed) ElMessage.error(`${command.label}：成功 ${acknowledged}，失败 ${failed}`)
+  else ElMessage.success(`${command.label}已下发至 ${command.deviceCodes.length} 台设备`)
+  commandBusy.value = false
+  return failed === 0
+}
+
+async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | 'resume' | 'return' | 'abort') {
+  if (action === 'deploy') {
+    await Promise.all([
+      sendVehicleCommand({ commandType: 'UAV_TAKEOFF', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组起飞' }),
+      sendVehicleCommand({ commandType: 'USV_DEPART', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组离泊' }),
+    ])
     return
   }
-  unityPanel.value?.sendControlCommand(command, selectedDeviceCode.value)
-  lastUnityEvent.value = `command:${command}`
-  ElMessage.success(`已发送到 Unity：${commandType}`)
-  void recordRuntimeCommand(commandType, '系统总览快捷控制指令', selectedDeviceCode.value, { command }).catch(() => undefined)
+  if (action === 'return') {
+    await Promise.all([
+      sendVehicleCommand({ commandType: 'UAV_RETURN', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组返航' }),
+      sendVehicleCommand({ commandType: 'USV_RETURN', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组返航' }),
+    ])
+    overviewMissionStatus.value = 'CANCELLED'
+    return
+  }
+  const commandMap: Record<Exclude<typeof action, 'deploy' | 'return'>, RuntimeCommandType> = {
+    start: 'START_MISSION',
+    pause: 'PAUSE_MISSION',
+    resume: 'RESUME_MISSION',
+    abort: 'FAIL_MISSION',
+  }
+  commandBusy.value = true
+  try {
+    if (action === 'start' && !fleetReady.value) {
+      ElMessage.warning('请先完成三机三艇编组部署')
+      return
+    }
+    if (action === 'pause' || action === 'abort') {
+      await Promise.all([
+        sendVehicleCommand({ commandType: 'UAV_HOVER', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组悬停' }),
+        sendVehicleCommand({ commandType: 'USV_HOLD', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组保持' }),
+      ])
+    }
+    if (action === 'resume') {
+      await Promise.all([
+        sendVehicleCommand({ commandType: 'UAV_RESUME', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机继续任务' }),
+        sendVehicleCommand({ commandType: 'USV_RESUME', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇继续航行' }),
+      ])
+    }
+    const result = await recordRuntimeCommand(commandMap[action], `系统总览任务编组操作：${action}`, '', { action })
+    if (result.status === 'DISPATCHED' || result.status === 'PENDING') {
+      const unityActions = {
+        deploy: 'missionResume',
+        start: 'missionStart',
+        pause: 'missionPause',
+        resume: 'missionResume',
+        return: 'missionReturn',
+        abort: 'missionFail',
+      } as const
+      unityBridgeStore.sendControlCommand(unityActions[action], '', result.commandKey)
+    }
+    unityCommandState.value = `任务指令：${result.status}`
+    if (result.status === 'ACKNOWLEDGED') {
+      if (action === 'start' || action === 'resume') overviewMissionStatus.value = 'RUNNING'
+      if (action === 'pause') overviewMissionStatus.value = 'PAUSED'
+      if (action === 'abort') overviewMissionStatus.value = 'FAILED'
+    }
+    ElMessage.success('任务编组指令已记录')
+  } finally {
+    commandBusy.value = false
+  }
 }
 
 function handleUnityCommand(message: UnityMessage) {
@@ -326,6 +431,22 @@ function handleUnityMessage(message: UnityMessage) {
     const commandType = String(payload.commandType ?? 'unknown')
     const status = String(payload.status ?? 'unknown')
     const success = payload.success === true
+    const deviceCode = normalizeDeviceCode(String(payload.deviceCode ?? ''))
+    if (deviceCode) {
+      commandFeedback.value = {
+        ...commandFeedback.value,
+        [deviceCode]: success ? 'ACKNOWLEDGED' : 'FAILED',
+      }
+      if (success) {
+        const unityState = status.split(':', 1)[0]?.trim().toUpperCase()
+        if (unityState) operationalStates.value = { ...operationalStates.value, [deviceCode]: unityState }
+      }
+    } else if (success) {
+      const missionState = status.split(':', 1)[0]?.trim().toUpperCase()
+      if (['RUNNING', 'PAUSED', 'FAILED', 'CANCELLED', 'COMPLETED'].includes(missionState ?? '')) {
+        overviewMissionStatus.value = missionState as OverviewMissionStatus
+      }
+    }
     unityCommandState.value = `${success ? '已执行' : '执行失败'}：${commandType} / ${status}`
   }
 
@@ -369,34 +490,62 @@ watch(
       .join('|'),
   () => pushPoseFrameToUnity(),
 )
+
+watch(
+  () => unityBridgeStore.connected,
+  (connected) => {
+    if (connected) handleUnityReady()
+    else if (!unityBridgeStore.error) unityConnection.value = '等待 WebGL 构建'
+  },
+  { immediate: true },
+)
+
+watch(
+  () => unityBridgeStore.lastMessage,
+  (message) => {
+    if (message) handleUnityMessage(message)
+  },
+)
+
+watch(
+  () => unityBridgeStore.lastOutgoing,
+  (message) => {
+    if (message) handleUnityCommand(message)
+  },
+)
+
+watch(
+  () => unityBridgeStore.error,
+  (message) => {
+    if (message) handleUnityError(message)
+  },
+)
 </script>
 
 <template>
   <ConsoleLayout title="系统总览" eyebrow="MISSION OVERVIEW">
-    <section class="overview-console" aria-label="海空协同仿真总览">
-      <div class="overview-status-strip">
-        <article v-for="card in topStatusCards" :key="card.label" class="overview-status-card" :class="card.tone">
-          <span>{{ card.label }}</span>
-          <strong>{{ card.value }}</strong>
-          <small>{{ card.detail }}</small>
-        </article>
-      </div>
+    <section class="overview-console overview-hf" aria-label="海空协同仿真总览">
+      <header class="overview-hf-statusbar">
+        <div class="overview-current-view">
+          <span>{{ selectedDeviceCode.toUpperCase() }}</span>
+          <strong>当前观察设备</strong>
+          <small>{{ selectedCameraMode === 'device-follow' ? '设备跟随视角' : cameraModes.find((item) => item.value === selectedCameraMode)?.label }}</small>
+        </div>
+        <div class="overview-link-status">
+          <b :class="{ online: rosBridgeOnline }"><i></i>ROS {{ rosBridgeOnline ? '在线' : '离线' }}</b>
+          <b :class="{ online: unityReady }"><i></i>Unity {{ unityReady ? '在线' : '等待' }}</b>
+          <b class="pose"><i></i>{{ realtimePoseCount }}/6 位姿</b>
+          <b><i></i>{{ onlineNodeCount }}/{{ displayedNodes.length }} 节点</b>
+        </div>
+      </header>
 
-      <div class="overview-main-grid">
-        <div class="overview-left-col">
+      <div class="overview-main-grid overview-hf-main">
         <section class="overview-stage-panel">
           <div class="overview-stage-header">
             <div>
-              <h3>Unity 三维态势</h3>
-              <span>当前任务：{{ taskStateText }}</span>
+              <h3>Unity 海空协同态势</h3>
+              <span>当前任务：三机三艇协同围捕 · {{ taskStateText }}</span>
             </div>
-            <div class="overview-stage-signals">
-              <b :class="{ online: rosBridgeOnline }">ROS2 WebSocket</b>
-              <b :class="{ online: rosBridgeOnline }">Unity WebGL</b>
-            </div>
-          </div>
-
-          <div class="overview-toolbar">
             <div class="overview-camera-tabs" aria-label="Unity 视角切换">
               <button
                 v-for="mode in cameraModes"
@@ -411,120 +560,75 @@ watch(
             <button class="overview-tool-button" type="button" @click="focusSelectedDevice">重新居中</button>
           </div>
 
-          <UnityWebglPanel
-            ref="unityPanel"
-            class="overview-unity-stage"
-            @unity-ready="handleUnityReady"
-            @unity-message="handleUnityMessage"
-            @unity-error="handleUnityError"
-            @unity-command="handleUnityCommand"
-          />
+          <div class="overview-unity-stage unity-runtime-viewport" data-unity-runtime-viewport>
+            <div v-if="!unityBridgeStore.connected" class="unity-runtime-placeholder">
+              <strong>Unity WebGL 常驻实例启动中</strong>
+              <span>{{ unityBridgeStore.error || '正在加载全局运行实例，请稍候' }}</span>
+            </div>
+          </div>
         </section>
-
-        <section class="overview-live-panel">
-          <div class="overview-live-head">
-          <h3>实时节点</h3>
-          <span>状态由 ROS WebSocket 数据和 Unity 心跳共同确认。</span>
-          </div>
-          <div class="overview-node-table">
-          <div class="overview-node-row head">
-            <span>节点</span>
-            <span>类型</span>
-            <span>状态</span>
-            <span>坐标 X/Y/Z</span>
-            <span>心跳</span>
-          </div>
-          <div v-for="node in displayedNodes" :key="node.code" class="overview-node-row">
-            <strong>{{ node.code }}</strong>
-            <span>{{ node.type }}</span>
-            <b :class="node.status.toLowerCase()">{{ node.status }}</b>
-            <span>{{ formatCoordinate(node.positionX) }} / {{ formatCoordinate(node.positionY) }} / {{ formatCoordinate(node.positionZ) }}</span>
-            <span>{{ formatHeartbeat(node.heartbeatAgeSeconds) }}</span>
-          </div>
-          <div v-if="displayedNodes.length === 0" class="overview-empty-row">暂无实时节点数据</div>
-        </div>
-        </section>
-        </div>
 
         <aside class="overview-ops-panel">
-          <div class="overview-runtime-summary">
-          <strong>{{ onlineNodeCount }} / {{ displayedNodes.length }}</strong>
-          <span>实时节点在线</span>
-        </div>
-
-          <section>
-            <h3>任务与控制</h3>
-            <div class="overview-info-stack">
-              <div>
-                <span>任务状态</span>
-                <strong>{{ taskStateText }}</strong>
-              </div>
-              <div>
-                <span>Unity 通信</span>
-                <strong>{{ unityConnection }}</strong>
-                <small>{{ lastUnityEvent }}</small>
-              </div>
-              <div>
-                <span>命令状态</span>
-                <strong>{{ unityCommandState }}</strong>
-              </div>
-            </div>
-          </section>
-          <section>
-            <h3>设备控制</h3>
-            <div class="overview-device-control">
-              <div class="overview-control-device">
-                <span class="overview-device-badge">{{ selectedDeviceCode?.slice(0, 2) || '--' }}</span>
-                <div class="overview-control-meta">
-                  <strong>{{ selectedDeviceCode }}</strong>
-                  <span>{{ selectedNode?.detail ?? '等待实时状态' }}</span>
-                </div>
-                <b class="overview-control-status" :class="(selectedNode?.status ?? '').toLowerCase()">{{ selectedNode?.status || '--' }}</b>
-              </div>
-              <div class="overview-command-grid">
-                <button v-for="command in commandButtons" :key="command.value" type="button" @click="sendCommand(command.value)">
-                  {{ command.label }}
-                </button>
-              </div>
-            </div>
-          </section>
-          <section>
-            <h3>设备选择</h3>
-            <div class="overview-device-list">
-              <button
-                v-for="device in selectableDevices"
-                :key="device.code"
-                type="button"
-                :class="{ active: normalizeDeviceCode(device.code) === normalizeDeviceCode(selectedDeviceCode) }"
-                @click="selectDevice(device.code)"
-              >
-                <b>{{ device.code }}</b>
-                <span>{{ device.status }}</span>
-              </button>
-            </div>
-          </section>
-
-          <!-- <section>
-            <h3>设备控制</h3>
-            <div class="overview-device-control">
-              <div class="overview-control-device">
-                <span class="overview-device-badge">{{ selectedDeviceCode?.slice(0, 2) || '--' }}</span>
-                <div class="overview-control-meta">
-                  <strong>{{ selectedDeviceCode }}</strong>
-                  <span>{{ selectedNode?.detail ?? '等待实时状态' }}</span>
-                </div>
-                <b class="overview-control-status" :class="(selectedNode?.status ?? '').toLowerCase()">{{ selectedNode?.status || '--' }}</b>
-              </div>
-              <div class="overview-command-grid">
-                <button v-for="command in commandButtons" :key="command.value" type="button" @click="sendCommand(command.value)">
-                  {{ command.label }}
-                </button>
-              </div>
-            </div>
-          </section> -->
+          <div class="overview-control-stack">
+            <VehicleQuickControl
+              vehicle-type="UAV"
+              :devices="quickControlDevices"
+              :selected-device-code="selectedDeviceCode"
+              :feedback="commandFeedback"
+              :operational-states="operationalStates"
+              :busy="commandBusy"
+              @select="selectDevice"
+              @command="sendVehicleCommand"
+            />
+            <VehicleQuickControl
+              vehicle-type="USV"
+              :devices="quickControlDevices"
+              :selected-device-code="selectedDeviceCode"
+              :feedback="commandFeedback"
+              :operational-states="operationalStates"
+              :busy="commandBusy"
+              @select="selectDevice"
+              @command="sendVehicleCommand"
+            />
+            <MissionGroupControl
+              mission-name="三机三艇协同围捕"
+              :status="overviewMissionStatus"
+              :busy="commandBusy"
+              :progress="realtimePoseCount === 6 ? 72 : 18"
+              :can-deploy="overviewMissionStatus === 'READY' && !fleetReady"
+              :can-start="overviewMissionStatus === 'READY' && fleetReady"
+              :readiness-text="fleetReady ? '6/6 载具就绪' : '等待三机三艇部署'"
+              @action="handleMissionGroupAction"
+            />
+          </div>
         </aside>
       </div>
 
-  </section>
+      <section class="overview-fleet-ribbon" aria-label="六载具实时状态">
+        <article
+          v-for="device in overviewFleetCards"
+          :key="device.code"
+          :class="[device.type.toLowerCase(), { active: normalizeDeviceCode(selectedDeviceCode) === device.code }]"
+          @click="selectDevice(device.code)"
+        >
+          <header>
+            <strong>{{ device.code.toUpperCase() }}</strong>
+            <b :class="device.feedback?.toLowerCase()">{{ device.feedback === 'ACKNOWLEDGED' ? '已确认' : device.status }}</b>
+          </header>
+          <VehicleGlyph
+            class="overview-fleet-symbol"
+            :type="device.type === 'UAV' ? 'UAV' : 'USV'"
+            size="large"
+            :active="normalizeDeviceCode(selectedDeviceCode) === device.code"
+          />
+          <span>{{ device.stateLabel }}</span>
+          <footer>
+            <small>信号 {{ device.link }}</small>
+            <small>电量 {{ device.battery }}%</small>
+          </footer>
+        </article>
+      </section>
+
+    </section>
   </ConsoleLayout>
 </template>

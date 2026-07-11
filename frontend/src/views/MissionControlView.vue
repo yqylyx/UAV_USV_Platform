@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Eye, Pencil, Plus, RotateCcw, Search, Trash2 } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -7,10 +7,18 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { createMission, deleteMission, executeMissionAction, fetchMission, updateMission } from '@/api/mission'
 import type { MissionAction } from '@/api/mission'
 import { fetchDevices } from '@/api/device'
+import { fetchRuntimeCommandLogs, issueRuntimeCommand } from '@/api/runtimeControl'
+import type { RuntimeCommandResult, RuntimeCommandStatus } from '@/api/runtimeControl'
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import MissionGroupControl from '@/components/control/MissionGroupControl.vue'
+import VehicleQuickControl from '@/components/control/VehicleQuickControl.vue'
+import VehicleGlyph from '@/components/control/VehicleGlyph.vue'
+import type { VehicleQuickCommand } from '@/components/control/VehicleQuickControl.vue'
 import MissionTrajectoryMap from '@/components/mission/MissionTrajectoryMap.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMissionStore } from '@/stores/mission'
+import { useTrajectoryStore } from '@/stores/trajectory'
+import { useUnityBridgeStore } from '@/stores/unityBridge'
 import type { Device } from '@/types/device'
 import type {
   Mission,
@@ -25,6 +33,8 @@ import type {
 
 const authStore = useAuthStore()
 const missionStore = useMissionStore()
+const trajectoryStore = useTrajectoryStore()
+const unityBridgeStore = useUnityBridgeStore()
 const formRef = ref<FormInstance>()
 const dialogVisible = ref(false)
 const detailVisible = ref(false)
@@ -37,6 +47,12 @@ const editingId = ref<number | null>(null)
 const detail = ref<MissionDetail | null>(null)
 const deleteTarget = ref<Mission | null>(null)
 const deviceOptions = ref<Device[]>([])
+const trajectoryMap = ref<InstanceType<typeof MissionTrajectoryMap> | null>(null)
+const selectedDeviceCode = ref('uav-02')
+const selectedMissionId = ref<number | null>(null)
+const vehicleCommandBusy = ref(false)
+const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
+const operationalStates = ref<Record<string, string | undefined>>({})
 
 const filters = reactive({
   keyword: '',
@@ -114,7 +130,97 @@ const dialogTitle = computed(() => (editingId.value ? '编辑任务配置' : '�
 const runningCount = computed(() => missionStore.records.filter((item) => item.status === 'RUNNING').length)
 const readyCount = computed(() => missionStore.records.filter((item) => item.status === 'READY').length)
 const failedCount = computed(() => missionStore.records.filter((item) => item.status === 'FAILED').length)
-const currentMission = computed(() => missionStore.records.find((item) => item.status === 'RUNNING') ?? missionStore.records[0] ?? null)
+const currentMission = computed(
+  () =>
+    missionStore.records.find((item) => item.id === selectedMissionId.value) ??
+    missionStore.records.find((item) => item.status === 'RUNNING') ??
+    missionStore.records[0] ??
+    null,
+)
+const controlDevices = computed(() => {
+  const missionDetail = detail.value
+  if (missionDetail && missionDetail.mission.id === currentMission.value?.id) {
+    return missionDetail.devices
+      .filter((binding) => binding.type === 'UAV' || binding.type === 'USV')
+      .map((binding) => {
+        const device = deviceOptions.value.find((item) => item.id === binding.deviceId)
+        return {
+          code: binding.code ?? device?.code ?? '',
+          name: binding.name ?? device?.name ?? binding.code ?? '未知载具',
+          type: binding.type as 'UAV' | 'USV',
+          status: binding.status ?? device?.status ?? 'UNKNOWN',
+        }
+      })
+      .filter((device) => device.code)
+  }
+  return deviceOptions.value
+    .filter((device) => device.type === 'UAV' || device.type === 'USV')
+    .map((device) => ({
+      code: device.code,
+      name: device.name,
+      type: device.type as 'UAV' | 'USV',
+      status: device.status,
+    }))
+    .filter((device) => device.code)
+})
+const activeRunId = computed(() => {
+  const missionDetail = detail.value
+  if (!missionDetail || missionDetail.mission.id !== currentMission.value?.id) return undefined
+  return missionDetail.currentRun?.id
+})
+const requiredDeviceCodes = computed(() => {
+  const missionDetail = detail.value
+  if (missionDetail && missionDetail.mission.id === currentMission.value?.id) {
+    return missionDetail.devices
+      .filter((binding) => binding.required && (binding.type === 'UAV' || binding.type === 'USV') && binding.code)
+      .map((binding) => normalizeDeviceCode(binding.code!))
+  }
+  return controlDevices.value.map((device) => normalizeDeviceCode(device.code))
+})
+const fleetReady = computed(() =>
+  requiredDeviceCodes.value.length > 0 &&
+  requiredDeviceCodes.value.every((code) => ['AIRBORNE', 'SAILING', 'HOLDING'].includes(operationalStates.value[code] ?? '')),
+)
+const readinessText = computed(() => {
+  const ready = requiredDeviceCodes.value.filter((code) => ['AIRBORNE', 'SAILING', 'HOLDING'].includes(operationalStates.value[code] ?? '')).length
+  return `${ready}/${requiredDeviceCodes.value.length} 必要载具就绪`
+})
+const selectedControlDevice = computed(
+  () => controlDevices.value.find((device) => normalizeDeviceCode(device.code) === normalizeDeviceCode(selectedDeviceCode.value)) ?? controlDevices.value[0] ?? null,
+)
+const selectedOperationalLabel = computed(() => {
+  const code = normalizeDeviceCode(selectedControlDevice.value?.code ?? '')
+  const state = operationalStates.value[code] ?? ''
+  const labels: Record<string, string> = {
+    GROUNDED: '地面待命', AIRBORNE: '空中执行', HOLDING: '安全保持', RETURNING: '返航中', LANDING: '降落中',
+    MOORED: '靠泊待命', SAILING: '航行中', STOPPED: '已停止', ERROR: '异常',
+  }
+  return labels[state] ?? '等待状态'
+})
+const commandFeedbackRows = computed(() =>
+  controlDevices.value
+    .map((device) => ({
+      code: normalizeDeviceCode(device.code),
+      type: device.type,
+      status: commandFeedback.value[normalizeDeviceCode(device.code)],
+      state: operationalStates.value[normalizeDeviceCode(device.code)],
+    }))
+    .filter((item) => item.status)
+    .slice(0, 5),
+)
+const missionProgress = computed(() => {
+  const stage = currentMission.value?.stage
+  const progress: Partial<Record<MissionStage, number>> = {
+    PREPARE: 8,
+    TARGET_DETECTED: 24,
+    ASSIGNMENT: 38,
+    TRACKING: 56,
+    ENCIRCLEMENT: 72,
+    CAPTURED: 92,
+    EVALUATION: 100,
+  }
+  return stage ? progress[stage] ?? 0 : 0
+})
 const encirclementCount = computed(
   () => missionStore.records.filter((item) => item.type === 'COOPERATIVE_ENCIRCLEMENT').length,
 )
@@ -125,6 +231,13 @@ function typeLabel(type: MissionType) {
 
 function statusLabel(status: MissionStatus) {
   return statusOptions.find((item) => item.value === status)?.label ?? status
+}
+
+function commandStatusLabel(status?: RuntimeCommandStatus) {
+  const labels: Partial<Record<RuntimeCommandStatus, string>> = {
+    PENDING: '等待下发', DISPATCHED: '等待确认', ACKNOWLEDGED: '已确认', FAILED: '执行失败', TIMEOUT: '确认超时',
+  }
+  return status ? labels[status] ?? status : '无指令'
 }
 
 function runStatusLabel(status: MissionRunStatus) {
@@ -220,6 +333,35 @@ async function load(page = 0) {
   missionStore.type = filters.type || undefined
   missionStore.status = filters.status || undefined
   await missionStore.refresh({ page })
+  if (!selectedMissionId.value || !missionStore.records.some((item) => item.id === selectedMissionId.value)) {
+    selectedMissionId.value = missionStore.records.find((item) => item.status === 'RUNNING')?.id ?? missionStore.records[0]?.id ?? null
+  }
+  const mission = currentMission.value
+  if (mission) {
+    detail.value = await fetchMission(mission.id).catch(() => detail.value)
+    initializeOperationalStates(mission)
+  }
+}
+
+function missionRowClass({ row }: { row: Mission }) {
+  return row.id === selectedMissionId.value ? 'mission-row-selected' : ''
+}
+
+async function selectMission(row: Mission | Record<string, unknown>) {
+  const mission = row as Mission
+  const changed = selectedMissionId.value !== mission.id
+  selectedMissionId.value = mission.id
+  if (changed) commandFeedback.value = {}
+  detailLoading.value = true
+  try {
+    detail.value = await fetchMission(mission.id)
+    initializeOperationalStates(mission, changed)
+    if (!controlDevices.value.some((device) => normalizeDeviceCode(device.code) === normalizeDeviceCode(selectedDeviceCode.value))) {
+      selectedDeviceCode.value = controlDevices.value[0]?.code ?? ''
+    }
+  } finally {
+    detailLoading.value = false
+  }
 }
 
 async function resetFilters() {
@@ -237,10 +379,13 @@ async function openCreate() {
 
 async function openEdit(row: Mission | Record<string, unknown>) {
   const mission = row as Mission
+  selectedMissionId.value = mission.id
   if (deviceOptions.value.length === 0) await loadDevices()
   detailLoading.value = true
   try {
     const result = await fetchMission(mission.id)
+    detail.value = result
+    initializeOperationalStates(mission, true)
     editingId.value = mission.id
     Object.assign(form, {
       code: result.mission.code,
@@ -279,10 +424,12 @@ async function openEdit(row: Mission | Record<string, unknown>) {
 
 async function openDetail(row: Mission | Record<string, unknown>) {
   const mission = row as Mission
+  selectedMissionId.value = mission.id
   detailLoading.value = true
   detailVisible.value = true
   try {
     detail.value = await fetchMission(mission.id)
+    initializeOperationalStates(mission)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '任务详情加载失败')
   } finally {
@@ -339,16 +486,21 @@ async function runMissionAction(row: Mission | Record<string, unknown>, action: 
   actionLoadingId.value = mission.id
   try {
     const result = await executeMissionAction(mission.id, action)
+    if (result.command && (result.command.status === 'DISPATCHED' || result.command.status === 'PENDING')) {
+      unityBridgeStore.sendControlCommand(missionUnityCommand(action), '', result.command.commandKey)
+    }
     const latest = result.detail
     detail.value = detail.value?.mission.id === mission.id ? latest : detail.value
     if (result.command?.status === 'DISPATCHED' || result.command?.status === 'PENDING') {
       ElMessage.warning(`${latest.mission.name}：指令已下发，等待外部组件确认`)
+      void monitorMissionActionAcknowledgement(result.command.commandKey)
     } else if (result.command?.status === 'FAILED' || result.command?.status === 'TIMEOUT') {
       ElMessage.error(`${latest.mission.name}：${result.command.detail || '控制指令执行失败'}`)
     } else {
       ElMessage.success(`${latest.mission.name}：${statusLabel(latest.mission.status)}`)
     }
     await load(missionStore.page)
+    return latest
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '任务状态变更失败')
   } finally {
@@ -387,8 +539,339 @@ async function submit() {
   }
 }
 
+async function monitorMissionActionAcknowledgement(commandKey: string) {
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1000))
+    const logs = await fetchRuntimeCommandLogs().catch(() => [])
+    const command = logs.find((item) => item.commandKey === commandKey)
+    if (!command || command.status === 'PENDING' || command.status === 'DISPATCHED') continue
+    await load(missionStore.page)
+    if (command.status === 'ACKNOWLEDGED') ElMessage.success('Unity 已确认任务状态变更')
+    else ElMessage.error(command.detail || 'Unity 未能确认任务状态变更')
+    return
+  }
+}
+
+function missionUnityCommand(action: MissionAction) {
+  return {
+    start: 'missionStart',
+    pause: 'missionPause',
+    resume: 'missionResume',
+    complete: 'missionComplete',
+    fail: 'missionFail',
+    cancel: 'missionCancel',
+    ready: 'missionResume',
+  }[action]
+}
+
+function normalizeDeviceCode(code: string) {
+  return code.trim().toLowerCase()
+}
+
+function initializeOperationalStates(mission: Mission, force = false) {
+  const next = { ...operationalStates.value }
+  for (const device of controlDevices.value) {
+    const code = normalizeDeviceCode(device.code)
+    if (!force && mission.status === 'READY' && next[code]) continue
+    if (device.type === 'UAV') {
+      next[code] = mission.status === 'RUNNING' ? 'AIRBORNE' : mission.status === 'PAUSED' ? 'HOLDING' : 'GROUNDED'
+    } else {
+      next[code] = mission.status === 'RUNNING' ? 'SAILING' : mission.status === 'PAUSED' ? 'HOLDING' : 'MOORED'
+    }
+  }
+  operationalStates.value = next
+}
+
+function operationalStateAfterCommand(commandType: VehicleQuickCommand['commandType']) {
+  const states: Partial<Record<VehicleQuickCommand['commandType'], string>> = {
+    UAV_TAKEOFF: 'AIRBORNE',
+    UAV_HOVER: 'HOLDING',
+    UAV_RESUME: 'AIRBORNE',
+    UAV_RETURN: 'RETURNING',
+    UAV_LAND: 'LANDING',
+    UAV_EMERGENCY_LAND: 'LANDING',
+    USV_DEPART: 'SAILING',
+    USV_HOLD: 'HOLDING',
+    USV_RESUME: 'SAILING',
+    USV_RETURN: 'RETURNING',
+    USV_STOP: 'STOPPED',
+    USV_EMERGENCY_STOP: 'STOPPED',
+  }
+  return states[commandType]
+}
+
+function unityBridgeCommand(commandType: VehicleQuickCommand['commandType']) {
+  const commands: Partial<Record<VehicleQuickCommand['commandType'], string>> = {
+    UAV_TAKEOFF: 'uavTakeoff',
+    UAV_HOVER: 'uavHover',
+    UAV_RESUME: 'uavResume',
+    UAV_RETURN: 'uavReturn',
+    UAV_LAND: 'uavLand',
+    UAV_EMERGENCY_LAND: 'uavEmergencyLand',
+    USV_DEPART: 'usvDepart',
+    USV_HOLD: 'usvHold',
+    USV_RESUME: 'usvResume',
+    USV_RETURN: 'usvReturn',
+    USV_STOP: 'usvStop',
+    USV_EMERGENCY_STOP: 'usvEmergencyStop',
+  }
+  return commands[commandType] ?? commandType.toLowerCase()
+}
+
+function handleTrajectoryDeviceStateChange(deviceCode: string, state: string) {
+  operationalStates.value = { ...operationalStates.value, [normalizeDeviceCode(deviceCode)]: state }
+}
+
+async function monitorCommandAcknowledgement(
+  result: RuntimeCommandResult,
+  deviceCode: string,
+  commandType: VehicleQuickCommand['commandType'],
+) {
+  if (result.status !== 'PENDING' && result.status !== 'DISPATCHED') return
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1000))
+    const logs = await fetchRuntimeCommandLogs().catch(() => [])
+    const command = logs.find((item) => item.commandKey === result.commandKey)
+    if (!command || command.status === 'PENDING' || command.status === 'DISPATCHED') continue
+    commandFeedback.value = { ...commandFeedback.value, [deviceCode]: command.status }
+    if (command.status === 'ACKNOWLEDGED') {
+      const nextState = operationalStateAfterCommand(commandType)
+      if (nextState) operationalStates.value = { ...operationalStates.value, [deviceCode]: nextState }
+    }
+    trajectoryMap.value?.applyVehicleCommand(commandType, [deviceCode], [command.status])
+    return
+  }
+}
+
+async function restoreOperationalStatesFromCommands() {
+  const logs = await fetchRuntimeCommandLogs().catch(() => [])
+  const restored = new Set<string>()
+  for (const command of logs) {
+    if (command.status !== 'ACKNOWLEDGED' || command.deviceId == null) continue
+    const device = deviceOptions.value.find((item) => item.id === command.deviceId)
+    if (!device || (device.type !== 'UAV' && device.type !== 'USV')) continue
+    const code = normalizeDeviceCode(device.code)
+    if (restored.has(code)) continue
+    const state = operationalStateAfterCommand(command.commandType)
+    if (!state) continue
+    restored.add(code)
+    operationalStates.value = { ...operationalStates.value, [code]: state }
+    commandFeedback.value = { ...commandFeedback.value, [code]: command.status }
+    trajectoryMap.value?.applyVehicleCommand(command.commandType, [code], [command.status])
+  }
+}
+
+type VehicleBatchResult = {
+  total: number
+  acknowledged: number
+  waiting: number
+  failed: number
+  allAcknowledged: boolean
+}
+
+async function sendVehicleCommand(
+  command: VehicleQuickCommand,
+  options: { manageBusy?: boolean; notify?: boolean } = {},
+): Promise<VehicleBatchResult> {
+  const manageBusy = options.manageBusy ?? true
+  const notify = options.notify ?? true
+  if (manageBusy) vehicleCommandBusy.value = true
+  const statuses = await Promise.all(
+    command.deviceCodes.map(async (deviceCode): Promise<RuntimeCommandStatus> => {
+      const normalizedCode = normalizeDeviceCode(deviceCode)
+      commandFeedback.value = { ...commandFeedback.value, [normalizedCode]: 'PENDING' }
+      try {
+        const result = await issueRuntimeCommand({
+          commandType: command.commandType,
+          runId: activeRunId.value,
+          deviceCode: normalizedCode,
+          detail: `任务控制 / ${command.label}`,
+          payload: JSON.stringify({ source: 'mission-trajectory-map' }),
+        })
+        unityBridgeStore.sendControlCommand(unityBridgeCommand(command.commandType), normalizedCode, result.commandKey)
+        commandFeedback.value = { ...commandFeedback.value, [normalizedCode]: result.status }
+        if (result.status === 'ACKNOWLEDGED') {
+          const nextState = operationalStateAfterCommand(command.commandType)
+          if (nextState) operationalStates.value = { ...operationalStates.value, [normalizedCode]: nextState }
+        }
+        void monitorCommandAcknowledgement(result, normalizedCode, command.commandType)
+        return result.status
+      } catch (error) {
+        commandFeedback.value = { ...commandFeedback.value, [normalizedCode]: 'FAILED' }
+        return 'FAILED'
+      }
+    }),
+  )
+  trajectoryMap.value?.applyVehicleCommand(command.commandType, command.deviceCodes, statuses)
+  const result = {
+    total: statuses.length,
+    acknowledged: statuses.filter((status) => status === 'ACKNOWLEDGED').length,
+    waiting: statuses.filter((status) => status === 'PENDING' || status === 'DISPATCHED').length,
+    failed: statuses.filter((status) => status === 'FAILED' || status === 'TIMEOUT').length,
+    allAcknowledged: statuses.length === 0 || statuses.every((status) => status === 'ACKNOWLEDGED'),
+  }
+  if (notify) {
+    if (result.allAcknowledged) ElMessage.success(`${command.label}：${result.acknowledged}/${result.total} 台已确认`)
+    else if (result.failed > 0) ElMessage.error(`${command.label}：成功 ${result.acknowledged}，等待 ${result.waiting}，失败 ${result.failed}`)
+    else ElMessage.warning(`${command.label}：${result.waiting} 台等待外部组件确认`)
+  }
+  if (manageBusy) vehicleCommandBusy.value = false
+  return result
+}
+
+async function sendFleetCommand(
+  vehicleType: 'UAV' | 'USV',
+  commandType: VehicleQuickCommand['commandType'],
+  label: string,
+  options: { manageBusy?: boolean; notify?: boolean } = {},
+) {
+  const allowedStates: Partial<Record<VehicleQuickCommand['commandType'], string[]>> = {
+    UAV_TAKEOFF: ['GROUNDED'],
+    UAV_HOVER: ['AIRBORNE', 'RETURNING'],
+    UAV_RESUME: ['HOLDING'],
+    UAV_RETURN: ['AIRBORNE', 'HOLDING'],
+    UAV_LAND: ['AIRBORNE', 'HOLDING', 'RETURNING'],
+    USV_DEPART: ['MOORED', 'STOPPED'],
+    USV_HOLD: ['SAILING', 'RETURNING'],
+    USV_RESUME: ['HOLDING'],
+    USV_RETURN: ['SAILING', 'HOLDING'],
+    USV_STOP: ['SAILING', 'HOLDING', 'RETURNING'],
+  }
+  const states = allowedStates[commandType]
+  const deviceCodes = controlDevices.value
+    .filter((device) => device.type === vehicleType)
+    .filter((device) => !states || states.includes(operationalStates.value[normalizeDeviceCode(device.code)] ?? ''))
+    .map((device) => device.code)
+  return sendVehicleCommand({ commandType, deviceCodes, label }, options)
+}
+
+async function sendFleetPair(
+  uavCommand: VehicleQuickCommand['commandType'],
+  uavLabel: string,
+  usvCommand: VehicleQuickCommand['commandType'],
+  usvLabel: string,
+) {
+  vehicleCommandBusy.value = true
+  try {
+    const [uav, usv] = await Promise.all([
+      sendFleetCommand('UAV', uavCommand, uavLabel, { manageBusy: false, notify: false }),
+      sendFleetCommand('USV', usvCommand, usvLabel, { manageBusy: false, notify: false }),
+    ])
+    const result: VehicleBatchResult = {
+      total: uav.total + usv.total,
+      acknowledged: uav.acknowledged + usv.acknowledged,
+      waiting: uav.waiting + usv.waiting,
+      failed: uav.failed + usv.failed,
+      allAcknowledged: uav.allAcknowledged && usv.allAcknowledged,
+    }
+    if (result.allAcknowledged) ElMessage.success(`编组指令完成：${result.acknowledged}/${result.total} 台已确认`)
+    else if (result.failed > 0) ElMessage.error(`编组部分执行：成功 ${result.acknowledged}，等待 ${result.waiting}，失败 ${result.failed}`)
+    else ElMessage.warning(`编组指令等待确认：${result.waiting}/${result.total} 台`)
+    return result
+  } finally {
+    vehicleCommandBusy.value = false
+  }
+}
+
+async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | 'resume' | 'return' | 'abort') {
+  let mission = currentMission.value
+  if (!mission) {
+    ElMessage.warning('请先创建或选择任务')
+    return
+  }
+  if (action === 'deploy') {
+    if (mission.status === 'DRAFT') {
+      const ready = await runMissionAction(mission, 'ready')
+      if (!ready) return
+      mission = ready.mission
+    }
+    const deployed = await sendFleetPair('UAV_TAKEOFF', '无人机编组起飞', 'USV_DEPART', '无人艇编组离泊')
+    if (deployed.allAcknowledged) trajectoryMap.value?.applyMissionAction('deploy')
+    return
+  }
+  if (action === 'return') {
+    try {
+      await ElMessageBox.confirm('将向全部 UAV/USV 下发返航，并在确认后取消当前任务。是否继续？', '全体返航', {
+        confirmButtonText: '确认返航',
+        cancelButtonText: '取消',
+        type: 'warning',
+      })
+    } catch {
+      return
+    }
+    const returning = await sendFleetPair('UAV_RETURN', '无人机编组返航', 'USV_RETURN', '无人艇编组返航')
+    if (!returning.allAcknowledged) return
+    await runMissionAction(mission, 'cancel')
+    operationalStates.value = Object.fromEntries(
+      controlDevices.value.map((device) => [normalizeDeviceCode(device.code), 'RETURNING']),
+    )
+    trajectoryMap.value?.applyMissionAction('return')
+    return
+  }
+  if (action === 'pause') {
+    const held = await sendFleetPair('UAV_HOVER', '无人机编组悬停', 'USV_HOLD', '无人艇编组定点保持')
+    if (!held.allAcknowledged) return
+    await runMissionAction(mission, 'pause')
+    trajectoryMap.value?.applyMissionAction('pause')
+    return
+  }
+  if (action === 'resume') {
+    const resumed = await sendFleetPair('UAV_RESUME', '无人机继续任务', 'USV_RESUME', '无人艇继续航行')
+    if (!resumed.allAcknowledged) return
+    await runMissionAction(mission, 'resume')
+    trajectoryMap.value?.applyMissionAction('resume')
+    return
+  }
+  if (action === 'abort') {
+    try {
+      await ElMessageBox.confirm('终止后任务将标记异常；系统仍会分别记录未能安全保持的设备。是否继续？', '终止任务', {
+        confirmButtonText: '确认终止',
+        cancelButtonText: '取消',
+        type: 'error',
+      })
+    } catch {
+      return
+    }
+    await sendFleetPair('UAV_HOVER', '无人机安全悬停', 'USV_HOLD', '无人艇安全保持')
+    await runMissionAction(mission, 'fail')
+    trajectoryMap.value?.applyMissionAction('abort')
+    return
+  }
+  if (!fleetReady.value) {
+    ElMessage.warning(`编组尚未就绪：${readinessText.value}`)
+    return
+  }
+  const started = await runMissionAction(mission, 'start')
+  if (started?.mission.status === 'RUNNING') trajectoryMap.value?.applyMissionAction('start')
+}
+
+async function handleTableMissionAction(row: Mission | Record<string, unknown>, action: MissionAction) {
+  const mission = row as Mission
+  await selectMission(mission)
+  if (action === 'ready') {
+    await runMissionAction(mission, 'ready')
+    return
+  }
+  if (action === 'start') return handleMissionGroupAction('start')
+  if (action === 'pause') return handleMissionGroupAction('pause')
+  if (action === 'resume') return handleMissionGroupAction('resume')
+  if (action === 'fail') return handleMissionGroupAction('abort')
+  if (action === 'cancel') {
+    if (mission.status === 'DRAFT' || mission.status === 'READY') await runMissionAction(mission, 'cancel')
+    else await handleMissionGroupAction('return')
+    return
+  }
+  if (action === 'complete') {
+    const held = await sendFleetPair('UAV_HOVER', '无人机任务完成悬停', 'USV_HOLD', '无人艇任务完成保持')
+    if (!held.allAcknowledged) return
+    await runMissionAction(mission, 'complete')
+    trajectoryMap.value?.applyMissionAction('pause')
+  }
+}
+
 onMounted(async () => {
   await Promise.all([load(0), loadDevices()])
+  await restoreOperationalStatesFromCommands()
 })
 </script>
 
@@ -408,7 +891,20 @@ onMounted(async () => {
       class="section-alert"
     />
 
-    <section class="mission-command-layout">
+    <header class="mission-hf-statusbar">
+      <div>
+        <span>当前任务</span>
+        <strong>{{ currentMission?.code || '未选择任务' }}</strong>
+        <small>{{ currentMission?.name || '请选择或创建任务方案' }}</small>
+      </div>
+      <div class="mission-hf-status">
+        <b :class="statusClass(currentMission?.status || 'DRAFT')"><i></i>{{ currentMission ? statusLabel(currentMission.status) : '待配置' }}</b>
+        <span>{{ stageLabel(currentMission?.stage || 'PREPARE') }}</span>
+        <span>{{ readinessText }}</span>
+      </div>
+    </header>
+
+    <section class="mission-command-layout mission-hf-layout">
       <article class="console-panel mission-map-panel">
         <div class="panel-heading">
           <div>
@@ -416,54 +912,94 @@ onMounted(async () => {
             <p>按 Unity 场景的 X/Z 坐标与三角合围逻辑，在 Vue 中独立绘制定位轨迹。</p>
           </div>
           <div class="mission-map-actions">
-            <el-button v-if="currentMission" type="primary" @click="runMissionAction(currentMission, currentMission.status === 'DRAFT' ? 'ready' : 'start')">
-              下发任务
-            </el-button>
-            <el-button @click="openCreate">保存方案</el-button>
+            <el-tag type="success" effect="plain">VUE SIMULATION</el-tag>
+            <el-button v-if="currentMission" @click="openEdit(currentMission)">编辑当前方案</el-button>
+            <el-button v-else @click="openCreate">新建方案</el-button>
           </div>
         </div>
         <MissionTrajectoryMap
+          ref="trajectoryMap"
           :mission-name="currentMission?.name || '三机三艇协同围捕预演'"
           :mission-status="currentMission?.status || 'READY'"
+          :selected-device-code="selectedDeviceCode"
+          :command-feedback="commandFeedback"
+          :trajectory-frame="trajectoryStore.frame"
+          @select-device="selectedDeviceCode = $event"
+          @device-state-change="handleTrajectoryDeviceStateChange"
         />
       </article>
 
       <aside class="mission-side-stack">
-        <article class="console-panel mission-state-card">
-          <span>任务状态</span>
-          <strong>{{ currentMission ? statusLabel(currentMission.status) : '待配置' }}</strong>
-          <small>{{ currentMission?.name || '暂无可执行任务' }}</small>
-        </article>
-        <article class="console-panel mission-steps-card">
-          <h3>任务阶段</h3>
-          <div class="mission-step-row active">
-            <b>1</b>
-            <span><strong>无人机起飞</strong><small>从无人艇甲板垂直起飞</small></span>
-            <em>READY</em>
-          </div>
-          <div class="mission-step-row">
-            <b>2</b>
-            <span><strong>目标接近</strong><small>无人艇朝灯塔方向推进</small></span>
-            <em>WAIT</em>
-          </div>
-          <div class="mission-step-row">
-            <b>3</b>
-            <span><strong>协同围捕</strong><small>UAV 补盲，USV 收敛</small></span>
-            <em>WAIT</em>
+        <article class="mission-current-device-card">
+          <header>
+            <VehicleGlyph v-if="selectedControlDevice" :type="selectedControlDevice.type" size="medium" active />
+            <div class="mission-current-device-identity">
+              <span>当前设备控制</span>
+              <strong>{{ selectedControlDevice?.code.toUpperCase() || '--' }}</strong>
+            </div>
+            <b>{{ selectedOperationalLabel }}</b>
+          </header>
+          <div class="mission-device-telemetry">
+            <div><span>设备类型</span><strong>{{ selectedControlDevice?.type || '--' }}</strong></div>
+            <div><span>链路状态</span><strong>{{ selectedControlDevice?.status || '--' }}</strong></div>
+            <div><span>任务角色</span><strong>{{ selectedControlDevice?.type === 'UAV' ? '空中补盲' : '海面封控' }}</strong></div>
           </div>
         </article>
-        <article class="console-panel mission-command-card">
-          <h3>控制指令</h3>
-          <div class="mission-command-buttons">
-            <el-button type="primary" @click="currentMission && runMissionAction(currentMission, 'start')">起飞</el-button>
-            <el-button @click="currentMission && runMissionAction(currentMission, 'cancel')">返航</el-button>
-            <el-button @click="currentMission && runMissionAction(currentMission, 'pause')">暂停</el-button>
-            <el-button type="danger" @click="currentMission && runMissionAction(currentMission, 'fail')">终止</el-button>
+        <VehicleQuickControl
+          vehicle-type="UAV"
+          :devices="controlDevices"
+          :selected-device-code="selectedDeviceCode"
+          :feedback="commandFeedback"
+          :operational-states="operationalStates"
+          :busy="vehicleCommandBusy"
+          compact
+          @select="selectedDeviceCode = $event"
+          @command="sendVehicleCommand"
+        />
+        <VehicleQuickControl
+          vehicle-type="USV"
+          :devices="controlDevices"
+          :selected-device-code="selectedDeviceCode"
+          :feedback="commandFeedback"
+          :operational-states="operationalStates"
+          :busy="vehicleCommandBusy"
+          compact
+          @select="selectedDeviceCode = $event"
+          @command="sendVehicleCommand"
+        />
+        <MissionGroupControl
+          :mission-name="currentMission?.name || '三机三艇协同围捕'"
+          :status="currentMission?.status || 'READY'"
+          :busy="vehicleCommandBusy || actionLoadingId !== null"
+          :progress="missionProgress"
+          :can-deploy="(currentMission?.status === 'DRAFT' || currentMission?.status === 'READY') && !fleetReady"
+          :can-start="fleetReady"
+          :readiness-text="readinessText"
+          @action="handleMissionGroupAction"
+        />
+        <article class="mission-command-feedback-card">
+          <header>
+            <div><span>COMMAND FEEDBACK</span><strong>指令反馈</strong></div>
+            <b>{{ commandFeedbackRows.length }}</b>
+          </header>
+          <div v-if="commandFeedbackRows.length" class="mission-command-feedback-list">
+            <div v-for="item in commandFeedbackRows" :key="item.code">
+              <span :class="item.type.toLowerCase()">{{ item.code.toUpperCase() }}</span>
+              <strong>{{ item.state || '等待状态' }}</strong>
+              <b :class="item.status?.toLowerCase()">{{ commandStatusLabel(item.status) }}</b>
+            </div>
           </div>
+          <p v-else>暂无设备控制指令</p>
         </article>
       </aside>
     </section>
 
+    <details class="mission-plan-manager">
+      <summary>
+        <span>任务方案与历史记录</span>
+        <b>{{ missionStore.total }} 个任务 · 运行中 {{ runningCount }}</b>
+      </summary>
+      <div class="mission-plan-manager-body">
     <section class="page-metric-grid">
       <article class="console-stat-card">
         <span>任务总数</span>
@@ -504,7 +1040,13 @@ onMounted(async () => {
         <el-tag effect="plain">运行中 {{ runningCount }}</el-tag>
       </div>
 
-      <el-table v-loading="missionStore.loading || detailLoading" :data="missionStore.records" class="console-table">
+      <el-table
+        v-loading="missionStore.loading || detailLoading"
+        :data="missionStore.records"
+        :row-class-name="missionRowClass"
+        class="console-table"
+        @row-click="selectMission"
+      >
         <el-table-column label="任务" min-width="180">
           <template #default="{ row }">
             <div class="asset-name-cell">
@@ -533,7 +1075,7 @@ onMounted(async () => {
         <el-table-column label="操作" width="350" fixed="right">
           <template #default="{ row }">
             <span class="action-row">
-            <el-button link type="primary" :icon="Eye" @click="openDetail(row)">详情</el-button>
+            <el-button link type="primary" :icon="Eye" @click.stop="openDetail(row)">详情</el-button>
             <template v-if="canManage">
               <el-button
                 link
@@ -541,12 +1083,12 @@ onMounted(async () => {
                 :key="item.action"
                 :type="item.type"
                 :loading="actionLoadingId === row.id"
-                @click="runMissionAction(row, item.action)"
+                @click.stop="handleTableMissionAction(row, item.action)"
               >
                 {{ item.label }}
               </el-button>
-              <el-button link type="primary" :icon="Pencil" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="danger" :icon="Trash2" :loading="deletingId === row.id" @click="openDelete(row)">删除</el-button>
+              <el-button link type="primary" :icon="Pencil" @click.stop="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" :icon="Trash2" :loading="deletingId === row.id" @click.stop="openDelete(row)">删除</el-button>
             </template>
             </span>
           </template>
@@ -566,6 +1108,9 @@ onMounted(async () => {
         />
       </div>
     </section>
+
+      </div>
+    </details>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="920px" class="mission-dialog" @closed="resetForm">
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">

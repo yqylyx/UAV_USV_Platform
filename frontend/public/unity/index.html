@@ -238,11 +238,11 @@
         reportFatal('Your browser does not support WebGL or hardware acceleration is disabled. Enable hardware acceleration in Chrome/Edge and verify WebGL/WebGL2 in chrome://gpu or edge://gpu.');
       } else {
         var buildUrl = 'Build';
-        var loaderUrl = withBuildStamp(buildUrl + '/UAV_USV_WebGL.loader.js');
+        var loaderUrl = withBuildStamp(buildUrl + '/unity.loader.js');
         var config = {
-          dataUrl: withBuildStamp(buildUrl + '/UAV_USV_WebGL.data'),
-          frameworkUrl: withBuildStamp(buildUrl + '/UAV_USV_WebGL.framework.js'),
-          codeUrl: withBuildStamp(buildUrl + '/UAV_USV_WebGL.wasm'),
+          dataUrl: withBuildStamp(buildUrl + '/unity.data'),
+          frameworkUrl: withBuildStamp(buildUrl + '/unity.framework.js'),
+          codeUrl: withBuildStamp(buildUrl + '/unity.wasm'),
           streamingAssetsUrl: 'StreamingAssets',
           companyName: 'UAV-USV',
           productName: 'UAV_USV_WebGL',
