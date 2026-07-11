@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
+import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
+
 type TrackKind = 'USV' | 'UAV' | 'TARGET'
 
 type Point = {
@@ -15,6 +17,13 @@ type TrackDefinition = {
   kind: TrackKind
   color: string
   angle: number
+}
+
+type OperationalState = 'STANDBY' | 'ACTIVE' | 'HOLDING' | 'RETURNING' | 'STOPPED' | 'ERROR'
+
+type DeviceMotionState = {
+  time: number
+  state: OperationalState
 }
 
 type TrackState = TrackDefinition & {
@@ -34,12 +43,20 @@ const props = withDefaults(
   defineProps<{
     missionName?: string
     missionStatus?: string
+    selectedDeviceCode?: string
+    commandFeedback?: Record<string, RuntimeCommandStatus | undefined>
   }>(),
   {
     missionName: '三机三艇协同围捕预演',
     missionStatus: 'READY',
+    selectedDeviceCode: 'uav-02',
+    commandFeedback: () => ({}),
   },
 )
+
+const emit = defineEmits<{
+  selectDevice: [deviceCode: string]
+}>()
 
 // Exact colors used by ChaseCamera.cs.
 const unityColors = {
@@ -49,12 +66,12 @@ const unityColors = {
 }
 
 const definitions: TrackDefinition[] = [
-  { id: 'usv-1', label: 'USV-1', shortLabel: 'S1', kind: 'USV', color: unityColors.usv, angle: 0 },
-  { id: 'usv-2', label: 'USV-2', shortLabel: 'S2', kind: 'USV', color: unityColors.usv, angle: 120 },
-  { id: 'usv-3', label: 'USV-3', shortLabel: 'S3', kind: 'USV', color: unityColors.usv, angle: 240 },
-  { id: 'uav-1', label: 'UAV-1', shortLabel: 'A1', kind: 'UAV', color: unityColors.uav, angle: 60 },
-  { id: 'uav-2', label: 'UAV-2', shortLabel: 'A2', kind: 'UAV', color: unityColors.uav, angle: 180 },
-  { id: 'uav-3', label: 'UAV-3', shortLabel: 'A3', kind: 'UAV', color: unityColors.uav, angle: 300 },
+  { id: 'usv-01', label: 'USV-01', shortLabel: 'S1', kind: 'USV', color: unityColors.usv, angle: 0 },
+  { id: 'usv-02', label: 'USV-02', shortLabel: 'S2', kind: 'USV', color: unityColors.usv, angle: 120 },
+  { id: 'usv-03', label: 'USV-03', shortLabel: 'S3', kind: 'USV', color: unityColors.usv, angle: 240 },
+  { id: 'uav-01', label: 'UAV-01', shortLabel: 'A1', kind: 'UAV', color: unityColors.uav, angle: 60 },
+  { id: 'uav-02', label: 'UAV-02', shortLabel: 'A2', kind: 'UAV', color: unityColors.uav, angle: 180 },
+  { id: 'uav-03', label: 'UAV-03', shortLabel: 'A3', kind: 'UAV', color: unityColors.uav, angle: 300 },
   { id: 'target', label: 'TARGET', shortLabel: 'T', kind: 'TARGET', color: unityColors.target, angle: 0 },
 ]
 
@@ -73,6 +90,8 @@ const trajectoryDrawSegmentsPerAgent = 140
 const playing = ref(true)
 const elapsed = ref(0)
 const tracks = ref<TrackState[]>([])
+const deviceMotion = ref<Record<string, DeviceMotionState>>({})
+const localFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
 let animationFrame = 0
 let previousFrame = 0
 let sampleAccumulator = 0
@@ -138,9 +157,30 @@ function buildTracks(time = 0): TrackState[] {
   })
 }
 
-function updateTracks(time: number, sample: boolean) {
+function initializeDeviceMotion() {
+  const active = props.missionStatus === 'RUNNING'
+  deviceMotion.value = Object.fromEntries(
+    definitions
+      .filter((definition) => definition.kind !== 'TARGET')
+      .map((definition) => [definition.id, { time: active ? 18 : 0, state: active ? 'ACTIVE' : 'STANDBY' }]),
+  )
+}
+
+function feedbackFor(deviceCode: string) {
+  return localFeedback.value[deviceCode] ?? props.commandFeedback[deviceCode]
+}
+
+function updateTracks(time: number, delta: number, sample: boolean) {
   for (const track of tracks.value) {
-    const next = positionFor(track, time)
+    const motion = deviceMotion.value[track.id]
+    if (motion && playing.value) {
+      if (motion.state === 'ACTIVE') motion.time += delta
+      if (motion.state === 'RETURNING') motion.time = Math.max(0, motion.time - delta * 1.7)
+      if (motion.state === 'RETURNING' && motion.time <= 0) {
+        motion.state = track.kind === 'UAV' ? 'STANDBY' : 'STOPPED'
+      }
+    }
+    const next = positionFor(track, track.kind === 'TARGET' ? time : motion?.time ?? 0)
     track.position = next
     if (!sample) continue
 
@@ -153,6 +193,7 @@ function updateTracks(time: number, sample: boolean) {
     if (track.history.length > trajectoryMaxSamplesPerAgent) track.history.shift()
   }
   tracks.value = [...tracks.value]
+  deviceMotion.value = { ...deviceMotion.value }
 }
 
 const targetTrack = computed(() => tracks.value.find((track) => track.kind === 'TARGET'))
@@ -255,6 +296,16 @@ const viewTracks = computed(() =>
   }),
 )
 
+const formationRings = computed(() => {
+  const center = toView(targetTrack.value?.position ?? { x: 0, z: 0 })
+  const pixelsPerMeter = plotRect.width / Math.max(1, worldBounds.value.maxX - worldBounds.value.minX)
+  return {
+    center,
+    capture: captureRadius * pixelsPerMeter,
+    defense: defenseRadius * pixelsPerMeter,
+  }
+})
+
 function radialFormationReadiness(subject: Point, center: Point, radius: number, tolerance: number) {
   const radialError = Math.abs(distanceBetween(subject, center) - radius)
   return smoothstep(1 - radialError / Math.max(1, tolerance))
@@ -304,8 +355,8 @@ const usvFormationOverlay = computed(() => {
 const uavFormationOverlay = computed(() => {
   const center = targetTrack.value?.position ?? { x: 0, z: 0 }
   const drones = tracks.value.filter((track) => track.kind === 'UAV').slice(0, 3)
-  const readiness = drones.map((drone, index) => {
-    const airborne = elapsed.value >= 5 + index * 0.75
+  const readiness = drones.map((drone) => {
+    const airborne = (deviceMotion.value[drone.id]?.time ?? 0) >= 5
     return airborne ? radialFormationReadiness(drone.position, center, defenseRadius, Math.max(18, defenseRadius)) : 0
   })
   const edges = drones.map((drone, index) => {
@@ -332,9 +383,14 @@ const uavFormationOverlay = computed(() => {
 })
 
 const phase = computed(() => {
-  if (elapsed.value < 8) return 'UAV 起飞 / USV 离岸'
-  if (elapsed.value < 22) return '目标搜索与接触'
-  if (elapsed.value < 52) return '三角编队协同收敛'
+  const states = Object.values(deviceMotion.value).map((item) => item.state)
+  if (states.some((state) => state === 'ERROR')) return '载具指令异常'
+  if (states.some((state) => state === 'RETURNING')) return '编组返航'
+  if (states.length && states.every((state) => state === 'HOLDING')) return '编组安全保持'
+  const maxMotionTime = Math.max(0, ...Object.values(deviceMotion.value).map((item) => item.time))
+  if (maxMotionTime < 8) return 'UAV 起飞 / USV 离泊'
+  if (maxMotionTime < 22) return '目标搜索与接触'
+  if (maxMotionTime < 52) return '三角编队协同收敛'
   return '合围半径保持'
 })
 
@@ -343,6 +399,16 @@ const elapsedLabel = computed(() => {
   const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0')
   const seconds = (totalSeconds % 60).toString().padStart(2, '0')
   return `${minutes}:${seconds}`
+})
+
+const phaseSteps = ['编组待命', 'UAV起飞 / USV离泊', '目标搜索', '协同合围', '半径保持', '全体返航']
+const activePhaseIndex = computed(() => {
+  if (phase.value.includes('返航')) return 5
+  if (phase.value.includes('保持')) return phase.value.includes('半径') ? 4 : 3
+  if (phase.value.includes('收敛')) return 3
+  if (phase.value.includes('搜索')) return 2
+  if (phase.value.includes('起飞')) return 1
+  return 0
 })
 
 function formatDistance(distance: number) {
@@ -356,8 +422,49 @@ function togglePlayback() {
 function resetSimulation() {
   elapsed.value = 0
   sampleAccumulator = 0
+  initializeDeviceMotion()
   tracks.value = buildTracks(0)
   playing.value = true
+}
+
+function applyVehicleCommand(
+  commandType: RuntimeCommandType,
+  deviceCodes: string[],
+  statuses: RuntimeCommandStatus[],
+) {
+  deviceCodes.forEach((deviceCode, index) => {
+    const normalizedCode = deviceCode.trim().toLowerCase()
+    const status = statuses[index] ?? 'PENDING'
+    localFeedback.value = { ...localFeedback.value, [normalizedCode]: status }
+    if (status !== 'ACKNOWLEDGED') {
+      if (status === 'FAILED' || status === 'TIMEOUT') {
+        const motion = deviceMotion.value[normalizedCode]
+        if (motion) motion.state = 'ERROR'
+      }
+      return
+    }
+    const motion = deviceMotion.value[normalizedCode]
+    if (!motion) return
+    if (commandType === 'UAV_TAKEOFF' || commandType === 'UAV_RESUME' || commandType === 'USV_DEPART' || commandType === 'USV_RESUME') {
+      motion.state = 'ACTIVE'
+      playing.value = true
+    } else if (commandType === 'UAV_HOVER' || commandType === 'USV_HOLD') {
+      motion.state = 'HOLDING'
+    } else if (commandType === 'UAV_RETURN' || commandType === 'USV_RETURN') {
+      motion.state = 'RETURNING'
+      playing.value = true
+    } else if (commandType === 'UAV_LAND' || commandType === 'UAV_EMERGENCY_LAND') {
+      motion.state = 'RETURNING'
+    } else if (commandType === 'USV_STOP' || commandType === 'USV_EMERGENCY_STOP') {
+      motion.state = 'STOPPED'
+    }
+  })
+  deviceMotion.value = { ...deviceMotion.value }
+}
+
+function applyMissionAction(action: string) {
+  if (action === 'pause' || action === 'abort') playing.value = false
+  if (action === 'start' || action === 'resume' || action === 'deploy' || action === 'return') playing.value = true
 }
 
 function animate(timestamp: number) {
@@ -370,13 +477,14 @@ function animate(timestamp: number) {
     sampleAccumulator += delta
     const shouldSample = sampleAccumulator >= trajectorySampleSeconds
     if (shouldSample) sampleAccumulator = 0
-    updateTracks(elapsed.value, shouldSample)
+    updateTracks(elapsed.value, delta, shouldSample)
   }
 
   animationFrame = window.requestAnimationFrame(animate)
 }
 
 onMounted(() => {
+  initializeDeviceMotion()
   tracks.value = buildTracks(0)
   animationFrame = window.requestAnimationFrame(animate)
 })
@@ -384,6 +492,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrame)
 })
+
+defineExpose({ applyVehicleCommand, applyMissionAction })
 </script>
 
 <template>
@@ -432,6 +542,18 @@ onBeforeUnmount(() => {
         </g>
 
         <g clip-path="url(#unity-trajectory-plot-clip)">
+          <circle
+            :cx="formationRings.center.x"
+            :cy="formationRings.center.y"
+            :r="formationRings.defense"
+            class="unity-defense-ring"
+          />
+          <circle
+            :cx="formationRings.center.x"
+            :cy="formationRings.center.y"
+            :r="formationRings.capture"
+            class="unity-capture-ring"
+          />
           <path
             v-for="(item, index) in usvFormationOverlay.items"
             v-show="item.readiness > 0.01"
@@ -460,12 +582,34 @@ onBeforeUnmount(() => {
             class="unity-track-line"
           />
 
-          <g v-for="track in viewTracks" :key="track.id" class="unity-track-marker">
+          <g
+            v-for="track in viewTracks"
+            :key="track.id"
+            class="unity-track-marker"
+            :class="[
+              feedbackFor(track.id)?.toLowerCase(),
+              { selected: track.id === selectedDeviceCode.trim().toLowerCase(), selectable: track.kind !== 'TARGET' },
+            ]"
+            @click="track.kind !== 'TARGET' && emit('selectDevice', track.id)"
+          >
+            <circle
+              v-if="track.kind !== 'TARGET' && (track.id === selectedDeviceCode.trim().toLowerCase() || feedbackFor(track.id))"
+              :cx="track.view.x"
+              :cy="track.view.y"
+              :r="track.id === selectedDeviceCode.trim().toLowerCase() ? 11 : 8"
+              class="unity-command-ring"
+            />
             <rect :x="track.view.x - 3.5" :y="track.view.y - 3.5" width="7" height="7" :fill="track.color" />
             <line :x1="track.view.x" :y1="track.view.y" :x2="track.heading.tip.x" :y2="track.heading.tip.y" :stroke="track.color" />
             <line :x1="track.heading.tip.x" :y1="track.heading.tip.y" :x2="track.heading.wingA.x" :y2="track.heading.wingA.y" :stroke="track.color" />
             <line :x1="track.heading.tip.x" :y1="track.heading.tip.y" :x2="track.heading.wingB.x" :y2="track.heading.wingB.y" :stroke="track.color" />
             <text :x="track.view.x + 3" :y="track.view.y - 5" :fill="track.color" class="unity-short-label">{{ track.shortLabel }}</text>
+            <text
+              v-if="track.kind !== 'TARGET' && feedbackFor(track.id)"
+              :x="track.view.x + 8"
+              :y="track.view.y + 12"
+              class="unity-command-label"
+            >{{ feedbackFor(track.id) }}</text>
           </g>
 
           <text
@@ -496,11 +640,23 @@ onBeforeUnmount(() => {
       </svg>
     </div>
 
+    <div class="trajectory-phase-strip" aria-label="任务阶段">
+      <div
+        v-for="(step, index) in phaseSteps"
+        :key="step"
+        :class="{ completed: index < activePhaseIndex, active: index === activePhaseIndex }"
+      >
+        <b>{{ index + 1 }}</b>
+        <span>{{ step }}</span>
+      </div>
+    </div>
+
     <footer class="trajectory-footer">
       <span><i></i>{{ phase }}</span>
       <small>
         USV CIRCLE {{ Math.round(usvFormationOverlay.progress * 100) }}%
         · UAV TRIANGLE {{ Math.round(uavFormationOverlay.progress * 100) }}%
+        · {{ selectedDeviceCode.toUpperCase() }}
         · Vue 本地仿真
       </small>
     </footer>
@@ -525,6 +681,66 @@ onBeforeUnmount(() => {
   gap: 16px;
   padding: 13px 15px;
   background: rgba(10, 38, 43, 0.94);
+}
+
+.trajectory-phase-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  padding: 11px 13px;
+  background: rgba(5, 22, 28, 0.97);
+  border-top: 1px solid rgba(114, 230, 215, 0.13);
+}
+
+.trajectory-phase-strip div {
+  position: relative;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  color: #607f80;
+  font-size: 9px;
+}
+
+.trajectory-phase-strip div::after {
+  position: absolute;
+  right: -4px;
+  width: 6px;
+  height: 1px;
+  content: '';
+  background: rgba(114, 230, 215, 0.2);
+}
+
+.trajectory-phase-strip div:last-child::after {
+  display: none;
+}
+
+.trajectory-phase-strip b {
+  display: grid;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid #426466;
+  border-radius: 50%;
+}
+
+.trajectory-phase-strip .completed,
+.trajectory-phase-strip .active {
+  color: #bffaf1;
+}
+
+.trajectory-phase-strip .completed b {
+  color: #051313;
+  background: #62d99b;
+  border-color: #62d99b;
+}
+
+.trajectory-phase-strip .active b {
+  color: #061519;
+  background: #59daf1;
+  border-color: #59daf1;
+  box-shadow: 0 0 12px rgba(89, 218, 241, 0.55);
 }
 
 .trajectory-toolbar > div:first-child span,
@@ -639,6 +855,44 @@ onBeforeUnmount(() => {
   stroke-width: 2;
 }
 
+.unity-track-marker.selectable {
+  cursor: pointer;
+}
+
+.unity-command-ring {
+  fill: rgba(79, 224, 241, 0.08);
+  stroke: #5eeaff;
+  stroke-width: 1.7;
+}
+
+.unity-track-marker.dispatched .unity-command-ring,
+.unity-track-marker.pending .unity-command-ring {
+  stroke: #ffd56b;
+  stroke-dasharray: 3 2;
+  animation: trajectory-command-pulse 1.1s ease-in-out infinite;
+}
+
+.unity-track-marker.acknowledged .unity-command-ring {
+  stroke: #67eea6;
+}
+
+.unity-track-marker.failed .unity-command-ring,
+.unity-track-marker.timeout .unity-command-ring {
+  stroke: #ff5c55;
+}
+
+.unity-command-label {
+  fill: #d9fffa;
+  font-size: 8px;
+  paint-order: stroke;
+  stroke: #040c13;
+  stroke-width: 2px;
+}
+
+@keyframes trajectory-command-pulse {
+  50% { opacity: 0.36; }
+}
+
 .unity-short-label,
 .unity-formation-label,
 .unity-statistics-text {
@@ -658,6 +912,23 @@ onBeforeUnmount(() => {
   stroke: #ff2e24;
   stroke-opacity: 0.82;
   stroke-width: 1.7;
+}
+
+.unity-defense-ring,
+.unity-capture-ring {
+  fill: none;
+  stroke-width: 1.2;
+  stroke-dasharray: 5 4;
+}
+
+.unity-defense-ring {
+  stroke: #47dcec;
+  stroke-opacity: 0.52;
+}
+
+.unity-capture-ring {
+  stroke: #ff5149;
+  stroke-opacity: 0.72;
 }
 
 .unity-uav-formation {

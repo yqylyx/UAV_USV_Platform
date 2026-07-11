@@ -2,6 +2,8 @@ package com.uavusv.platform.module.runtimecontrol.service;
 
 import com.uavusv.platform.common.exception.BusinessException;
 import com.uavusv.platform.common.exception.ErrorCode;
+import com.uavusv.platform.module.device.entity.Device;
+import com.uavusv.platform.module.device.entity.DeviceType;
 import com.uavusv.platform.module.device.repository.DeviceRepository;
 import com.uavusv.platform.module.mission.repository.MissionRunRepository;
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
@@ -45,6 +47,24 @@ public class RuntimeControlService {
     private static final EnumSet<SimulationStatus> ACTIVE_STATUSES = EnumSet.of(
             SimulationStatus.STARTING, SimulationStatus.RUNNING,
             SimulationStatus.PARTIAL, SimulationStatus.STOPPING
+    );
+    private static final EnumSet<CommandType> UAV_COMMANDS = EnumSet.of(
+            CommandType.TAKEOFF,
+            CommandType.LAND,
+            CommandType.UAV_TAKEOFF,
+            CommandType.UAV_HOVER,
+            CommandType.UAV_RESUME,
+            CommandType.UAV_RETURN,
+            CommandType.UAV_LAND,
+            CommandType.UAV_EMERGENCY_LAND
+    );
+    private static final EnumSet<CommandType> USV_COMMANDS = EnumSet.of(
+            CommandType.USV_DEPART,
+            CommandType.USV_HOLD,
+            CommandType.USV_RESUME,
+            CommandType.USV_RETURN,
+            CommandType.USV_STOP,
+            CommandType.USV_EMERGENCY_STOP
     );
 
     private final RuntimeStateService runtimeStateService;
@@ -267,7 +287,9 @@ public class RuntimeControlService {
         Long sessionId = sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(ACTIVE_STATUSES)
                 .map(SimulationSession::getId)
                 .orElse(null);
-        Long deviceId = resolveDeviceId(request.deviceCode());
+        Device targetDevice = resolveDevice(request.deviceCode());
+        validateCommandTarget(request.commandType(), targetDevice);
+        Long deviceId = targetDevice == null ? null : targetDevice.getId();
         validateRun(request.runId());
         ensureNoPendingCommand(request.runId());
         ControlCommand command = commandRepository.save(new ControlCommand(
@@ -422,14 +444,30 @@ private void requestUnityStop() throws IOException {
         return detail.toString();
     }
 
-    private Long resolveDeviceId(String deviceCode) {
+    private Device resolveDevice(String deviceCode) {
         if (deviceCode == null || deviceCode.isBlank()) {
             return null;
         }
         return deviceRepository.findByCode(deviceCode)
                 .filter(device -> !device.isDeleted())
-                .map(device -> device.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.DEVICE_NOT_FOUND));
+    }
+
+    private void validateCommandTarget(CommandType commandType, Device targetDevice) {
+        boolean uavCommand = UAV_COMMANDS.contains(commandType);
+        boolean usvCommand = USV_COMMANDS.contains(commandType);
+        if (!uavCommand && !usvCommand) {
+            return;
+        }
+        if (targetDevice == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "载具控制指令必须指定目标设备");
+        }
+        if (uavCommand && targetDevice.getType() != DeviceType.UAV) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "无人机指令不能下发给非 UAV 设备");
+        }
+        if (usvCommand && targetDevice.getType() != DeviceType.USV) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "无人艇指令不能下发给非 USV 设备");
+        }
     }
 
     private void validateRun(Long runId) {

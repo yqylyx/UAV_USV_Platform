@@ -3,9 +3,12 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import MissionGroupControl from '@/components/control/MissionGroupControl.vue'
+import VehicleQuickControl from '@/components/control/VehicleQuickControl.vue'
+import type { VehicleQuickCommand } from '@/components/control/VehicleQuickControl.vue'
 import { sendIntegrationHeartbeat } from '@/api/integration'
 import { issueRuntimeCommand } from '@/api/runtimeControl'
-import type { RuntimeCommandType } from '@/api/runtimeControl'
+import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
 import { useMonitoringStore } from '@/stores/monitoring'
 import type { RuntimeNode } from '@/types/monitoring'
@@ -27,11 +30,13 @@ type UnityPanelExpose = {
 
 const monitoringStore = useMonitoringStore()
 const unityPanel = ref<UnityPanelExpose | null>(null)
-const selectedDeviceCode = ref('USV-01')
+const selectedDeviceCode = ref('uav-01')
 const selectedCameraMode = ref('overview')
 const unityConnection = ref('等待 WebGL 构建')
 const lastUnityEvent = ref('暂无 Unity 回传事件')
 const unityCommandState = ref('等待控制指令')
+const commandBusy = ref(false)
+const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
 let poseFrameSequence = 0
 let heartbeatTimer: number | null = null
 const unityInstanceId = `vue-webgl:${window.location.host}:${Math.random().toString(36).slice(2, 10)}`
@@ -43,20 +48,13 @@ const cameraModes = [
   { label: '灯塔视角', value: 'lighthouse' },
 ]
 
-const commandButtons = [
-  { label: '起飞', value: 'takeoff' },
-  { label: '降落', value: 'land' },
-  { label: '开始任务', value: 'startMission' },
-  { label: '停止任务', value: 'stopMission' },
-]
-
 const expectedObservationDevices = [
-  { code: 'USV-01', name: '协同无人艇 1', type: 'USV' as const },
-  { code: 'USV-02', name: '协同无人艇 2', type: 'USV' as const },
-  { code: 'USV-03', name: '协同无人艇 3', type: 'USV' as const },
-  { code: 'UAV-01', name: '协同无人机 1', type: 'UAV' as const },
-  { code: 'UAV-02', name: '协同无人机 2', type: 'UAV' as const },
-  { code: 'UAV-03', name: '协同无人机 3', type: 'UAV' as const },
+  { code: 'usv-01', name: '协同无人艇 1', type: 'USV' as const },
+  { code: 'usv-02', name: '协同无人艇 2', type: 'USV' as const },
+  { code: 'usv-03', name: '协同无人艇 3', type: 'USV' as const },
+  { code: 'uav-01', name: '协同无人机 1', type: 'UAV' as const },
+  { code: 'uav-02', name: '协同无人机 2', type: 'UAV' as const },
+  { code: 'uav-03', name: '协同无人机 3', type: 'UAV' as const },
 ]
 
 function normalizeDeviceCode(code: string) {
@@ -113,9 +111,15 @@ const selectableDevices = computed(() => {
   })
 })
 
-const selectedNode = computed(
-  () => selectableDevices.value.find((node) => normalizeDeviceCode(node.code) === normalizeDeviceCode(selectedDeviceCode.value)) ?? null,
+const quickControlDevices = computed(() =>
+  selectableDevices.value.map((device) => ({
+    code: device.code,
+    name: device.name,
+    type: device.type as 'UAV' | 'USV',
+    status: device.status,
+  })),
 )
+
 const rosBridgeOnline = computed(() =>
   monitoringStore.nodes.some((node) => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
 )
@@ -248,7 +252,7 @@ async function recordRuntimeCommand(
   payload?: Record<string, unknown>,
 ) {
   try {
-    await issueRuntimeCommand({
+    return await issueRuntimeCommand({
       commandType,
       deviceCode,
       payload: payload ? JSON.stringify(payload) : undefined,
@@ -281,22 +285,81 @@ async function switchCamera(mode: string) {
   void recordRuntimeCommand('SWITCH_CAMERA', 'Unity 切换态势观察视角', selectedDeviceCode.value, { mode }).catch(() => undefined)
 }
 
-async function sendCommand(command: string) {
-  const commandMap: Record<string, RuntimeCommandType> = {
-    takeoff: 'TAKEOFF',
-    land: 'LAND',
-    startMission: 'START_MISSION',
-    stopMission: 'STOP_MISSION',
+function unityBridgeCommand(commandType: RuntimeCommandType) {
+  const commands: Partial<Record<RuntimeCommandType, string>> = {
+    UAV_TAKEOFF: 'uavTakeoff',
+    UAV_HOVER: 'uavHover',
+    UAV_RESUME: 'uavResume',
+    UAV_RETURN: 'uavReturn',
+    UAV_LAND: 'uavLand',
+    UAV_EMERGENCY_LAND: 'uavEmergencyLand',
+    USV_DEPART: 'usvDepart',
+    USV_HOLD: 'usvHold',
+    USV_RESUME: 'usvResume',
+    USV_RETURN: 'usvReturn',
+    USV_STOP: 'usvStop',
+    USV_EMERGENCY_STOP: 'usvEmergencyStop',
   }
-  const commandType = commandMap[command]
-  if (!commandType) {
-    ElMessage.error(`未知控制指令：${command}`)
+  return commands[commandType] ?? commandType.toLowerCase()
+}
+
+async function sendVehicleCommand(command: VehicleQuickCommand) {
+  commandBusy.value = true
+  const bridgeCommand = unityBridgeCommand(command.commandType)
+  try {
+    const results = await Promise.all(
+      command.deviceCodes.map(async (deviceCode) => {
+        const key = normalizeDeviceCode(deviceCode)
+        commandFeedback.value = { ...commandFeedback.value, [key]: 'PENDING' }
+        const result = await recordRuntimeCommand(
+          command.commandType,
+          `${command.label} / ${deviceCode}`,
+          key,
+          { action: bridgeCommand },
+        )
+        commandFeedback.value = { ...commandFeedback.value, [key]: result.status }
+        unityPanel.value?.sendControlCommand(bridgeCommand, key)
+        return result
+      }),
+    )
+    lastUnityEvent.value = `vehicle-command:${bridgeCommand}`
+    unityCommandState.value = `${command.label}：${results.filter((item) => item.status === 'ACKNOWLEDGED').length}/${results.length} 已确认`
+    ElMessage.success(`${command.label}已下发至 ${command.deviceCodes.length} 台设备`)
+  } catch (error) {
+    command.deviceCodes.forEach((deviceCode) => {
+      commandFeedback.value = { ...commandFeedback.value, [normalizeDeviceCode(deviceCode)]: 'FAILED' }
+    })
+    ElMessage.error(error instanceof Error ? error.message : `${command.label}下发失败`)
+  } finally {
+    commandBusy.value = false
+  }
+}
+
+async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | 'resume' | 'return' | 'abort') {
+  if (action === 'deploy') {
+    await sendVehicleCommand({ commandType: 'UAV_TAKEOFF', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组起飞' })
+    await sendVehicleCommand({ commandType: 'USV_DEPART', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组离泊' })
     return
   }
-  unityPanel.value?.sendControlCommand(command, selectedDeviceCode.value)
-  lastUnityEvent.value = `command:${command}`
-  ElMessage.success(`已发送到 Unity：${commandType}`)
-  void recordRuntimeCommand(commandType, '系统总览快捷控制指令', selectedDeviceCode.value, { command }).catch(() => undefined)
+  if (action === 'return') {
+    await sendVehicleCommand({ commandType: 'UAV_RETURN', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组返航' })
+    await sendVehicleCommand({ commandType: 'USV_RETURN', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组返航' })
+    return
+  }
+  const commandMap: Record<Exclude<typeof action, 'deploy' | 'return'>, RuntimeCommandType> = {
+    start: 'START_MISSION',
+    pause: 'PAUSE_MISSION',
+    resume: 'RESUME_MISSION',
+    abort: 'FAIL_MISSION',
+  }
+  commandBusy.value = true
+  try {
+    const result = await recordRuntimeCommand(commandMap[action], `系统总览任务编组操作：${action}`, '', { action })
+    unityCommandState.value = `任务指令：${result.status}`
+    ElMessage.success('任务编组指令已记录')
+  } finally {
+    commandBusy.value = false
+  }
 }
 
 function handleUnityCommand(message: UnityMessage) {
@@ -470,58 +533,35 @@ watch(
               </div>
             </div>
           </section>
-          <section>
-            <h3>设备控制</h3>
-            <div class="overview-device-control">
-              <div class="overview-control-device">
-                <span class="overview-device-badge">{{ selectedDeviceCode?.slice(0, 2) || '--' }}</span>
-                <div class="overview-control-meta">
-                  <strong>{{ selectedDeviceCode }}</strong>
-                  <span>{{ selectedNode?.detail ?? '等待实时状态' }}</span>
-                </div>
-                <b class="overview-control-status" :class="(selectedNode?.status ?? '').toLowerCase()">{{ selectedNode?.status || '--' }}</b>
-              </div>
-              <div class="overview-command-grid">
-                <button v-for="command in commandButtons" :key="command.value" type="button" @click="sendCommand(command.value)">
-                  {{ command.label }}
-                </button>
-              </div>
-            </div>
-          </section>
-          <section>
-            <h3>设备选择</h3>
-            <div class="overview-device-list">
-              <button
-                v-for="device in selectableDevices"
-                :key="device.code"
-                type="button"
-                :class="{ active: normalizeDeviceCode(device.code) === normalizeDeviceCode(selectedDeviceCode) }"
-                @click="selectDevice(device.code)"
-              >
-                <b>{{ device.code }}</b>
-                <span>{{ device.status }}</span>
-              </button>
-            </div>
-          </section>
-
-          <!-- <section>
-            <h3>设备控制</h3>
-            <div class="overview-device-control">
-              <div class="overview-control-device">
-                <span class="overview-device-badge">{{ selectedDeviceCode?.slice(0, 2) || '--' }}</span>
-                <div class="overview-control-meta">
-                  <strong>{{ selectedDeviceCode }}</strong>
-                  <span>{{ selectedNode?.detail ?? '等待实时状态' }}</span>
-                </div>
-                <b class="overview-control-status" :class="(selectedNode?.status ?? '').toLowerCase()">{{ selectedNode?.status || '--' }}</b>
-              </div>
-              <div class="overview-command-grid">
-                <button v-for="command in commandButtons" :key="command.value" type="button" @click="sendCommand(command.value)">
-                  {{ command.label }}
-                </button>
-              </div>
-            </div>
-          </section> -->
+          <div class="overview-control-stack">
+            <VehicleQuickControl
+              vehicle-type="UAV"
+              :devices="quickControlDevices"
+              :selected-device-code="selectedDeviceCode"
+              :feedback="commandFeedback"
+              :busy="commandBusy"
+              compact
+              @select="selectDevice"
+              @command="sendVehicleCommand"
+            />
+            <VehicleQuickControl
+              vehicle-type="USV"
+              :devices="quickControlDevices"
+              :selected-device-code="selectedDeviceCode"
+              :feedback="commandFeedback"
+              :busy="commandBusy"
+              compact
+              @select="selectDevice"
+              @command="sendVehicleCommand"
+            />
+            <MissionGroupControl
+              mission-name="三机三艇协同围捕"
+              :status="taskStateText === '实时同步' ? 'RUNNING' : 'READY'"
+              :busy="commandBusy"
+              :progress="realtimePoseCount === 6 ? 72 : 18"
+              @action="handleMissionGroupAction"
+            />
+          </div>
         </aside>
       </div>
 
