@@ -99,3 +99,16 @@ export async function issueRuntimeCommand(payload: RuntimeCommandPayload): Promi
   const response = await http.post<ApiResponse<RuntimeCommandResult>>('/runtime-control/commands', payload)
   return response.data.data
 }
+
+export async function acknowledgeRuntimeCommand(
+  commandKey: string,
+  success: boolean,
+  detail: string,
+): Promise<RuntimeCommandResult> {
+  await fetchCsrfToken()
+  const response = await http.post<ApiResponse<RuntimeCommandResult>>(
+    `/runtime-control/commands/${encodeURIComponent(commandKey)}/ack`,
+    { success, detail, errorCode: success ? null : 'UNITY_EXECUTION_FAILED' },
+  )
+  return response.data.data
+}

@@ -40,7 +40,7 @@ app:
   integration:
     token: ${PLATFORM_INTEGRATION_TOKEN}
   control:
-    command-dispatch-mode: ${COMMAND_DISPATCH_MODE:mock}
+    command-dispatch-mode: ${COMMAND_DISPATCH_MODE:browser-unity}
     command-ack-timeout-seconds: ${COMMAND_ACK_TIMEOUT_SECONDS:15}
     wsl-distribution: ${WSL_DISTRIBUTION:Ubuntu22}
     ros-script: ${ROS_RUNTIME_SCRIPT:F:/UAV_USV_Platform/scripts/uav-usv-runtime.sh}

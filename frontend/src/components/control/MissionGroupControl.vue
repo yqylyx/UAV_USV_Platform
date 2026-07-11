@@ -1,16 +1,24 @@
 <script setup lang="ts">
+import { CirclePause, OctagonX, Play, RadioTower, RotateCcw, Send } from '@lucide/vue'
+
 const props = withDefaults(
   defineProps<{
     missionName?: string
     status?: string
     busy?: boolean
     progress?: number
+    canDeploy?: boolean
+    canStart?: boolean
+    readinessText?: string
   }>(),
   {
     missionName: '三机三艇协同围捕',
     status: 'READY',
     busy: false,
     progress: 0,
+    canDeploy: true,
+    canStart: false,
+    readinessText: '等待编组部署',
   },
 )
 
@@ -41,16 +49,16 @@ function statusLabel(status: string) {
       </div>
       <b>{{ statusLabel(status) }}</b>
     </header>
-    <p>{{ missionName }}</p>
+    <p>{{ missionName }} · {{ readinessText }}</p>
     <div class="progress-track"><i :style="{ width: `${Math.max(0, Math.min(100, progress))}%` }"></i></div>
     <div class="mission-actions">
-      <button type="button" :disabled="busy" @click="emit('action', 'deploy')">编组部署</button>
-      <button v-if="status === 'DRAFT' || status === 'READY'" type="button" class="primary" :disabled="busy" @click="emit('action', 'start')">开始任务</button>
-      <button v-if="status === 'RUNNING'" type="button" :disabled="busy" @click="emit('action', 'pause')">暂停任务</button>
-      <button v-if="status === 'PAUSED'" type="button" class="primary" :disabled="busy" @click="emit('action', 'resume')">继续任务</button>
-      <button type="button" :disabled="busy" @click="emit('action', 'return')">全体返航</button>
+      <button type="button" :disabled="busy || !canDeploy" @click="emit('action', 'deploy')"><Send />编组部署</button>
+      <button v-if="status === 'DRAFT' || status === 'READY'" type="button" class="primary" :disabled="busy || !canStart" @click="emit('action', 'start')"><Play />开始任务</button>
+      <button v-if="status === 'RUNNING'" type="button" :disabled="busy" @click="emit('action', 'pause')"><CirclePause />暂停任务</button>
+      <button v-if="status === 'PAUSED'" type="button" class="primary" :disabled="busy" @click="emit('action', 'resume')"><RadioTower />继续任务</button>
+      <button type="button" :disabled="busy || (status !== 'RUNNING' && status !== 'PAUSED')" @click="emit('action', 'return')"><RotateCcw />全体返航</button>
     </div>
-    <button type="button" class="abort" :disabled="busy" @click="emit('action', 'abort')">终止任务</button>
+    <button type="button" class="abort" :disabled="busy || (status !== 'RUNNING' && status !== 'PAUSED')" @click="emit('action', 'abort')"><OctagonX />终止任务</button>
   </article>
 </template>
 
@@ -60,6 +68,20 @@ function statusLabel(status: string) {
   background: linear-gradient(145deg, rgba(6, 29, 38, 0.98), rgba(7, 18, 27, 0.96));
   border: 1px solid rgba(65, 202, 239, 0.48);
   border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 0 30px rgba(75, 213, 239, 0.035);
+}
+
+.mission-group-control::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 86px;
+  height: 2px;
+  content: '';
+  background: linear-gradient(90deg, #4bd5ef, transparent);
+  box-shadow: 0 0 12px rgba(75, 213, 239, 0.6);
 }
 
 header {
@@ -113,13 +135,13 @@ p {
 
 .mission-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
   margin-top: 11px;
 }
 
 button {
-  min-height: 36px;
+  min-height: 58px;
   color: #dff8f4;
   font: inherit;
   font-size: 11px;
@@ -128,6 +150,17 @@ button {
   background: rgba(60, 184, 215, 0.08);
   border: 1px solid rgba(75, 213, 239, 0.3);
   border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+button svg {
+  width: 21px;
+  height: 21px;
+  filter: drop-shadow(0 0 5px currentColor);
 }
 
 button.primary,
@@ -143,6 +176,7 @@ button.abort {
   color: #ff817b;
   background: rgba(255, 75, 69, 0.06);
   border-color: rgba(255, 91, 84, 0.55);
+  flex-direction: row;
 }
 
 button.abort:hover:not(:disabled) {
@@ -153,5 +187,9 @@ button.abort:hover:not(:disabled) {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+@media (max-width: 1280px) {
+  .mission-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>

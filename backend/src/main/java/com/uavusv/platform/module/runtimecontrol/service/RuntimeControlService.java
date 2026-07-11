@@ -291,7 +291,7 @@ public class RuntimeControlService {
         validateCommandTarget(request.commandType(), targetDevice);
         Long deviceId = targetDevice == null ? null : targetDevice.getId();
         validateRun(request.runId());
-        ensureNoPendingCommand(request.runId());
+        ensureNoPendingCommand(request.runId(), deviceId);
         ControlCommand command = commandRepository.save(new ControlCommand(
                 sessionId,
                 request.runId(),
@@ -476,12 +476,17 @@ private void requestUnityStop() throws IOException {
         }
     }
 
-    private void ensureNoPendingCommand(Long runId) {
-        if (runId != null && commandRepository.existsByRunIdAndStatusIn(
-                runId,
-                EnumSet.of(CommandStatus.PENDING, CommandStatus.DISPATCHED)
-        )) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "当前任务批次已有等待确认的控制指令");
+    private void ensureNoPendingCommand(Long runId, Long deviceId) {
+        if (runId == null) return;
+        EnumSet<CommandStatus> pendingStatuses = EnumSet.of(CommandStatus.PENDING, CommandStatus.DISPATCHED);
+        boolean duplicated = deviceId == null
+                ? commandRepository.existsByRunIdAndDeviceIdIsNullAndStatusIn(runId, pendingStatuses)
+                : commandRepository.existsByRunIdAndDeviceIdAndStatusIn(runId, deviceId, pendingStatuses);
+        if (duplicated) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    deviceId == null ? "当前任务批次已有等待确认的任务指令" : "目标设备已有等待确认的控制指令"
+            );
         }
     }
 

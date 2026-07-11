@@ -33,7 +33,9 @@ declare module 'vue' {
     MissionTrajectoryMap: typeof import('./components/mission/MissionTrajectoryMap.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    UnityRuntimeHost: typeof import('./components/unity/UnityRuntimeHost.vue')['default']
     UnityWebglPanel: typeof import('./components/unity/UnityWebglPanel.vue')['default']
+    VehicleGlyph: typeof import('./components/control/VehicleGlyph.vue')['default']
     VehicleQuickControl: typeof import('./components/control/VehicleQuickControl.vue')['default']
   }
   export interface GlobalDirectives {

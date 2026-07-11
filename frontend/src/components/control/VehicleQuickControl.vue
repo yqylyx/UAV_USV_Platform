@@ -1,7 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import {
+  Anchor,
+  CirclePause,
+  CircleStop,
+  LocateFixed,
+  Navigation,
+  PlaneLanding,
+  PlaneTakeoff,
+  Play,
+  RotateCcw,
+  ShipWheel,
+} from '@lucide/vue'
 
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
+import VehicleGlyph from '@/components/control/VehicleGlyph.vue'
 
 export type QuickControlDevice = {
   code: string
@@ -23,12 +36,14 @@ const props = withDefaults(
     selectedDeviceCode?: string
     busy?: boolean
     feedback?: Record<string, RuntimeCommandStatus | undefined>
+    operationalStates?: Record<string, string | undefined>
     compact?: boolean
   }>(),
   {
     selectedDeviceCode: '',
     busy: false,
     feedback: () => ({}),
+    operationalStates: () => ({}),
     compact: false,
   },
 )
@@ -48,20 +63,32 @@ const selectedDevice = computed(
     null,
 )
 
-const actions = computed<Array<{ label: string; commandType: RuntimeCommandType; tone?: string }>>(() => {
+const controlledStates = computed(() => {
+  const devices = groupMode.value ? typeDevices.value : selectedDevice.value ? [selectedDevice.value] : []
+  return new Set(devices.map((device) => operationalState(device.code)))
+})
+const shouldResume = computed(() => controlledStates.value.has('HOLDING'))
+
+type QuickAction = { label: string; commandType: RuntimeCommandType; tone?: string; allowedStates: string[] }
+
+const actions = computed<QuickAction[]>(() => {
   if (props.vehicleType === 'UAV') {
     return [
-      { label: '起飞', commandType: 'UAV_TAKEOFF', tone: 'primary' },
-      { label: '悬停', commandType: 'UAV_HOVER' },
-      { label: '返航', commandType: 'UAV_RETURN' },
-      { label: '降落', commandType: 'UAV_LAND', tone: 'warning' },
+      { label: '起飞', commandType: 'UAV_TAKEOFF', tone: 'primary', allowedStates: ['GROUNDED'] },
+      shouldResume.value
+        ? { label: '继续任务', commandType: 'UAV_RESUME', tone: 'primary', allowedStates: ['HOLDING'] }
+        : { label: '悬停', commandType: 'UAV_HOVER', allowedStates: ['AIRBORNE', 'RETURNING'] },
+      { label: '返航', commandType: 'UAV_RETURN', allowedStates: ['AIRBORNE', 'HOLDING'] },
+      { label: '降落', commandType: 'UAV_LAND', tone: 'warning', allowedStates: ['AIRBORNE', 'HOLDING', 'RETURNING'] },
     ]
   }
   return [
-    { label: '离泊启动', commandType: 'USV_DEPART', tone: 'primary' },
-    { label: '定点保持', commandType: 'USV_HOLD' },
-    { label: '返航', commandType: 'USV_RETURN' },
-    { label: '停止推进', commandType: 'USV_STOP', tone: 'warning' },
+    { label: '离泊启动', commandType: 'USV_DEPART', tone: 'primary', allowedStates: ['MOORED', 'STOPPED'] },
+    shouldResume.value
+      ? { label: '继续航行', commandType: 'USV_RESUME', tone: 'primary', allowedStates: ['HOLDING'] }
+      : { label: '定点保持', commandType: 'USV_HOLD', allowedStates: ['SAILING', 'RETURNING'] },
+    { label: '返航', commandType: 'USV_RETURN', allowedStates: ['SAILING', 'HOLDING'] },
+    { label: '停止推进', commandType: 'USV_STOP', tone: 'warning', allowedStates: ['SAILING', 'HOLDING', 'RETURNING'] },
   ]
 })
 
@@ -71,6 +98,17 @@ const selectedFeedback = computed(() => {
   const code = selectedDevice.value?.code
   return code ? props.feedback[normalizeCode(code)] : undefined
 })
+const operationalStateLabels: Record<string, string> = {
+  GROUNDED: '地面待命',
+  AIRBORNE: '空中执行',
+  HOLDING: '安全保持',
+  RETURNING: '返航中',
+  LANDING: '降落中',
+  MOORED: '靠泊待命',
+  SAILING: '航行中',
+  STOPPED: '已停止',
+  ERROR: '异常',
+}
 
 watch(
   typeDevices,
@@ -100,23 +138,59 @@ function statusLabel(status?: string | null) {
   return status ? labels[status] ?? status : '等待遥测'
 }
 
-function issue(commandType: RuntimeCommandType, label: string) {
-  const deviceCodes = groupMode.value
-    ? typeDevices.value.map((device) => device.code)
-    : selectedDevice.value
-      ? [selectedDevice.value.code]
-      : []
+function operationalState(deviceCode: string) {
+  return props.operationalStates[normalizeCode(deviceCode)] ?? (props.vehicleType === 'UAV' ? 'GROUNDED' : 'MOORED')
+}
+
+function availableDevices(action: QuickAction) {
+  const candidates = groupMode.value ? typeDevices.value : selectedDevice.value ? [selectedDevice.value] : []
+  return candidates.filter((device) => action.allowedStates.includes(operationalState(device.code)))
+}
+
+function displayState() {
+  const feedback = selectedFeedback.value
+  if (feedback && feedback !== 'ACKNOWLEDGED') return statusLabel(feedback)
+  if (groupMode.value) {
+    const states = new Set(typeDevices.value.map((device) => operationalState(device.code)))
+    return states.size === 1 ? operationalStateLabels[[...states][0] ?? ''] ?? '编组待命' : '状态不一致'
+  }
+  const state = selectedDevice.value ? operationalState(selectedDevice.value.code) : ''
+  return operationalStateLabels[state] ?? statusLabel(selectedDevice.value?.status)
+}
+
+function issue(action: QuickAction) {
+  const deviceCodes = availableDevices(action).map((device) => device.code)
   if (!deviceCodes.length || props.busy) return
-  emit('command', { commandType, deviceCodes, label })
+  emit('command', { commandType: action.commandType, deviceCodes, label: action.label })
+}
+
+const actionIcons: Partial<Record<RuntimeCommandType, typeof PlaneTakeoff>> = {
+  UAV_TAKEOFF: PlaneTakeoff,
+  UAV_HOVER: LocateFixed,
+  UAV_RESUME: Play,
+  UAV_RETURN: RotateCcw,
+  UAV_LAND: PlaneLanding,
+  USV_DEPART: Navigation,
+  USV_HOLD: Anchor,
+  USV_RESUME: ShipWheel,
+  USV_RETURN: RotateCcw,
+  USV_STOP: CircleStop,
+}
+
+function actionIcon(commandType: RuntimeCommandType) {
+  return actionIcons[commandType] ?? CirclePause
 }
 </script>
 
 <template>
   <article class="vehicle-quick-control" :class="[vehicleType.toLowerCase(), { compact }]">
     <header>
-      <div>
-        <span>{{ typeLabel }}</span>
-        <strong>{{ title }}</strong>
+      <div class="control-identity">
+        <VehicleGlyph :type="vehicleType" size="small" :active="!busy" />
+        <div>
+          <span>{{ typeLabel }}</span>
+          <strong>{{ title }}</strong>
+        </div>
       </div>
       <button type="button" class="group-toggle" :class="{ active: groupMode }" @click="groupMode = !groupMode">
         {{ groupMode ? '编组控制' : '单机控制' }}
@@ -131,14 +205,15 @@ function issue(commandType: RuntimeCommandType, label: string) {
         :class="{ active: normalizeCode(device.code) === normalizeCode(selectedDevice?.code || '') }"
         @click="emit('select', device.code)"
       >
-        {{ device.code.toUpperCase() }}
+        <VehicleGlyph :type="vehicleType" size="small" :active="normalizeCode(device.code) === normalizeCode(selectedDevice?.code || '')" />
+        <span>{{ device.code.toUpperCase() }}</span>
       </button>
     </div>
 
     <div class="selected-state">
       <span>{{ groupMode ? `${typeDevices.length} 台${vehicleType === 'UAV' ? '无人机' : '无人艇'}` : selectedDevice?.name || '未选择设备' }}</span>
       <b :class="(selectedFeedback || selectedDevice?.status || 'unknown').toLowerCase()">
-        {{ statusLabel(selectedFeedback || selectedDevice?.status) }}
+        {{ displayState() }}
       </b>
     </div>
 
@@ -148,9 +223,10 @@ function issue(commandType: RuntimeCommandType, label: string) {
         :key="action.commandType"
         type="button"
         :class="action.tone"
-        :disabled="busy || typeDevices.length === 0"
-        @click="issue(action.commandType, action.label)"
+        :disabled="busy || availableDevices(action).length === 0"
+        @click="issue(action)"
       >
+        <component :is="actionIcon(action.commandType)" class="command-icon" :stroke-width="1.8" />
         <span>{{ action.label }}</span>
         <small>{{ groupMode ? `全部 ${typeLabel}` : selectedDevice?.code.toUpperCase() }}</small>
       </button>
@@ -165,8 +241,21 @@ function issue(commandType: RuntimeCommandType, label: string) {
   padding: 14px;
   background: linear-gradient(145deg, rgba(7, 24, 31, 0.97), rgba(8, 18, 26, 0.94));
   border: 1px solid rgba(var(--accent-rgb), 0.46);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: inset 0 0 28px rgba(var(--accent-rgb), 0.035);
+  position: relative;
+  overflow: hidden;
+}
+
+.vehicle-quick-control::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 72px;
+  height: 2px;
+  content: '';
+  background: linear-gradient(90deg, var(--accent), transparent);
+  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.55);
 }
 
 .vehicle-quick-control.usv {
@@ -185,6 +274,12 @@ header,
 header span,
 header strong {
   display: block;
+}
+
+.control-identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
 
 header span {
@@ -237,6 +332,18 @@ header strong {
   color: #b8cfcd;
   font-size: 11px;
   font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.device-chips :deep(.vehicle-glyph) {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .selected-state {
@@ -264,13 +371,28 @@ header strong {
 
 .command-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
 }
 
 .command-grid button {
-  min-height: 52px;
-  padding: 8px;
+  min-height: 72px;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.command-icon {
+  width: 26px;
+  height: 26px;
+  color: var(--accent);
+  filter: drop-shadow(0 0 5px rgba(var(--accent-rgb), 0.45));
 }
 
 .command-grid button:hover:not(:disabled),
@@ -278,6 +400,14 @@ header strong {
   color: #061113;
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.command-grid button:hover:not(:disabled) .command-icon,
+.command-grid button.primary .command-icon { color: #071317; filter: none; }
+
+.command-grid button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 7px 18px rgba(var(--accent-rgb), 0.18);
 }
 
 .command-grid button.warning {
@@ -295,13 +425,13 @@ header strong {
 }
 
 .command-grid span {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
 }
 
 .command-grid small {
-  margin-top: 3px;
-  font-size: 9px;
+  margin-top: 1px;
+  font-size: 8px;
   opacity: 0.68;
 }
 
@@ -310,6 +440,10 @@ header strong {
 }
 
 .compact .command-grid button {
-  min-height: 44px;
+  min-height: 62px;
+}
+
+@media (max-width: 1280px) {
+  .command-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
