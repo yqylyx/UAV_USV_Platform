@@ -21,7 +21,6 @@ type UnityPanelExpose = {
   selectDevice: (deviceCode: string) => void
   focusDevice: (deviceCode: string) => void
   switchCamera: (mode: string) => void
-  toggleTrajectory: (visible: boolean) => void
   sendControlCommand: (command: string, deviceCode?: string) => void
   sendPoseFrame: (payload: Record<string, unknown>) => void
 }
@@ -30,7 +29,6 @@ const monitoringStore = useMonitoringStore()
 const unityPanel = ref<UnityPanelExpose | null>(null)
 const selectedDeviceCode = ref('USV-01')
 const selectedCameraMode = ref('overview')
-const trajectoryVisible = ref(true)
 const unityConnection = ref('等待 WebGL 构建')
 const lastUnityEvent = ref('暂无 Unity 回传事件')
 const unityCommandState = ref('等待控制指令')
@@ -40,8 +38,8 @@ const unityInstanceId = `vue-webgl:${window.location.host}:${Math.random().toStr
 
 const cameraModes = [
   { label: '总览', value: 'overview' },
-  { label: '跟随无人艇', value: 'follow-usv' },
-  { label: '跟随无人机', value: 'follow-uav' },
+  { label: '当前设备', value: 'device-follow' },
+  { label: '行动视角', value: 'action' },
   { label: '灯塔视角', value: 'lighthouse' },
 ]
 
@@ -50,6 +48,15 @@ const commandButtons = [
   { label: '降落', value: 'land' },
   { label: '开始任务', value: 'startMission' },
   { label: '停止任务', value: 'stopMission' },
+]
+
+const expectedObservationDevices = [
+  { code: 'USV-01', name: '协同无人艇 1', type: 'USV' as const },
+  { code: 'USV-02', name: '协同无人艇 2', type: 'USV' as const },
+  { code: 'USV-03', name: '协同无人艇 3', type: 'USV' as const },
+  { code: 'UAV-01', name: '协同无人机 1', type: 'UAV' as const },
+  { code: 'UAV-02', name: '协同无人机 2', type: 'UAV' as const },
+  { code: 'UAV-03', name: '协同无人机 3', type: 'UAV' as const },
 ]
 
 function normalizeDeviceCode(code: string) {
@@ -81,14 +88,14 @@ const displayedNodes = computed(() =>
 )
 
 const selectableDevices = computed(() => {
-  const devices = displayedNodes.value.filter((node) => ['UAV', 'USV', 'LIGHTHOUSE'].includes(node.type))
-  if (devices.length > 0) return devices
-  return [
-    {
-      id: -1,
-      code: 'USV-01',
-      name: '协同无人艇',
-      type: 'USV',
+  return expectedObservationDevices.map((expected, index) => {
+    const runtime = runtimeNodeByCode.value.get(normalizeDeviceCode(expected.code))
+    if (runtime) return runtime
+    return {
+      id: -(index + 1),
+      code: expected.code,
+      name: expected.name,
+      type: expected.type,
       status: 'UNKNOWN',
       host: null,
       port: null,
@@ -96,36 +103,19 @@ const selectableDevices = computed(() => {
       rosNamespace: null,
       lastHeartbeatAt: null,
       heartbeatAgeSeconds: -1,
-      source: 'LOCAL',
+      source: 'UNITY_SCENE',
       instanceId: null,
       positionX: null,
       positionY: null,
       positionZ: null,
-      detail: '等待运行监控数据',
-    } as RuntimeNode,
-    {
-      id: -2,
-      code: 'UAV-01',
-      name: '协同无人机',
-      type: 'UAV',
-      status: 'UNKNOWN',
-      host: null,
-      port: null,
-      endpoint: '',
-      rosNamespace: null,
-      lastHeartbeatAt: null,
-      heartbeatAgeSeconds: -1,
-      source: 'LOCAL',
-      instanceId: null,
-      positionX: null,
-      positionY: null,
-      positionZ: null,
-      detail: '等待运行监控数据',
-    } as RuntimeNode,
-  ]
+      detail: 'Unity 场景可观察，等待实时遥测',
+    } as RuntimeNode
+  })
 })
 
-const selectedNode = computed(() => runtimeNodeByCode.value.get(normalizeDeviceCode(selectedDeviceCode.value)) ?? null)
+const selectedNode = computed(
+  () => selectableDevices.value.find((node) => normalizeDeviceCode(node.code) === normalizeDeviceCode(selectedDeviceCode.value)) ?? null,
+)
 const rosBridgeOnline = computed(() =>
   monitoringStore.nodes.some((node) => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
 )
@@ -158,8 +148,8 @@ const topStatusCards = computed(() => [
   },
   {
     label: '位姿同步',
-    value: `${realtimePoseCount.value}/2`,
-    tone: realtimePoseCount.value >= 2 ? 'online' : 'warning',
+    value: `${realtimePoseCount.value}/6`,
+    tone: realtimePoseCount.value >= 6 ? 'online' : 'warning',
     detail: realtimePoseCount.value > 0 ? `已同步 ${realtimePoseCount.value} 个载体` : '尚未收到实时位姿',
   },
   {
@@ -272,6 +262,7 @@ async function recordRuntimeCommand(
 
 async function selectDevice(deviceCode: string) {
   selectedDeviceCode.value = deviceCode
+  selectedCameraMode.value = 'device-follow'
   unityPanel.value?.selectDevice(deviceCode)
   lastUnityEvent.value = `selectDevice:${deviceCode}`
   void recordRuntimeCommand('SELECT_DEVICE', '系统总览选择协同设备', deviceCode).catch(() => undefined)
@@ -288,15 +279,6 @@ async function switchCamera(mode: string) {
   unityPanel.value?.switchCamera(mode)
   lastUnityEvent.value = `switchCamera:${mode}`
   void recordRuntimeCommand('SWITCH_CAMERA', 'Unity 切换态势观察视角', selectedDeviceCode.value, { mode }).catch(() => undefined)
-}
-
-async function toggleTrajectory() {
-  trajectoryVisible.value = !trajectoryVisible.value
-  unityPanel.value?.toggleTrajectory(trajectoryVisible.value)
-  lastUnityEvent.value = `toggleTrajectory:${trajectoryVisible.value ? 'show' : 'hide'}`
-  void recordRuntimeCommand('TOGGLE_TRAJECTORY', 'Unity 切换轨迹显示状态', selectedDeviceCode.value, {
-    visible: trajectoryVisible.value,
-  }).catch(() => undefined)
 }
 
 async function sendCommand(command: string) {
@@ -347,9 +329,17 @@ function handleUnityMessage(message: UnityMessage) {
     unityCommandState.value = `${success ? '已执行' : '执行失败'}：${commandType} / ${status}`
   }
 
-  if (typeof payload.deviceCode === 'string' && payload.deviceCode.trim()) selectedDeviceCode.value = payload.deviceCode
-  if (typeof payload.mode === 'string') selectedCameraMode.value = payload.mode
-  if (typeof payload.visible === 'boolean') trajectoryVisible.value = payload.visible
+  if (message.type === 'cameraChanged') {
+    const success = payload.success === true
+    const status = String(payload.status ?? (success ? '视角切换完成' : '视角切换失败'))
+    unityCommandState.value = `${success ? '已切换' : '切换失败'}：${status}`
+    if (!success) ElMessage.error(status)
+  }
+
+  if (message.type !== 'cameraChanged' || payload.success === true) {
+    if (typeof payload.deviceCode === 'string' && payload.deviceCode.trim()) selectedDeviceCode.value = payload.deviceCode
+    if (typeof payload.mode === 'string' && payload.mode.trim()) selectedCameraMode.value = payload.mode
+  }
 }
 
 function handleUnityError(message: string) {
@@ -418,10 +408,7 @@ watch(
                 {{ mode.label }}
               </button>
             </div>
-            <button class="overview-tool-button" type="button" @click="focusSelectedDevice">聚焦设备</button>
-            <button class="overview-tool-button" type="button" @click="toggleTrajectory">
-              {{ trajectoryVisible ? '隐藏轨迹' : '显示轨迹' }}
-            </button>
+            <button class="overview-tool-button" type="button" @click="focusSelectedDevice">重新居中</button>
           </div>
 
           <UnityWebglPanel

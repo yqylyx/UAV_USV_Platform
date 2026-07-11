@@ -12,6 +12,10 @@ import java.time.LocalDateTime;
 public class DeviceTelemetry extends BaseEntity {
     @Column(name = "device_id", nullable = false)
     private Long deviceId;
+    @Column(name = "run_id")
+    private Long runId;
+    @Column(name = "session_id")
+    private Long sessionId;
     @Column(name = "recorded_at", nullable = false)
     private LocalDateTime recordedAt;
     @Column(name = "sequence_no")
@@ -30,12 +34,34 @@ public class DeviceTelemetry extends BaseEntity {
     private Double orientationZ;
     @Column(name = "orientation_w")
     private Double orientationW;
+    @Column
+    private Double speed;
+    @Column
+    private Double heading;
+    @Column(name = "battery_level")
+    private Double batteryLevel;
+    @Column(nullable = false, length = 40)
+    private String source;
 
     protected DeviceTelemetry() {
     }
 
     public DeviceTelemetry(Long deviceId, LocalDateTime recordedAt, Long sequence, RuntimePose pose) {
+        this(deviceId, null, null, recordedAt, sequence, pose, "ROS");
+    }
+
+    public DeviceTelemetry(
+            Long deviceId,
+            Long runId,
+            Long sessionId,
+            LocalDateTime recordedAt,
+            Long sequence,
+            RuntimePose pose,
+            String source
+    ) {
         this.deviceId = deviceId;
+        this.runId = runId;
+        this.sessionId = sessionId;
         this.recordedAt = recordedAt;
         this.sequence = sequence;
         this.positionX = pose.positionX();
@@ -45,5 +71,6 @@ public class DeviceTelemetry extends BaseEntity {
         this.orientationY = pose.orientationY();
         this.orientationZ = pose.orientationZ();
         this.orientationW = pose.orientationW();
+        this.source = source;
     }
 }

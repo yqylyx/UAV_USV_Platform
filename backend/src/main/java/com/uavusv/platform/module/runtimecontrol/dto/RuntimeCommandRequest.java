@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 
 public record RuntimeCommandRequest(
         @NotNull CommandType commandType,
+        Long runId,
         String deviceCode,
         String payload,
         String detail

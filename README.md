@@ -86,6 +86,8 @@ com.uavusv.platform
 
 当前设备类型包括 `UAV`、`USV`、`ROS_NODE`、`UNITY_NODE`。历史迁移中保留了 `LIGHTHOUSE` 类型兼容字段，但当前设备管理页面不再展示导航灯塔登记项。
 
+演示任务的标准设备编组为三架无人机与三艘无人艇：`uav-01`～`uav-03`、`usv-01`～`usv-03`。六台载体均参与 `MT-20260624-001` 三机三艇协同围捕任务；ROS 与 Unity 节点作为基础设施单独统计。
+
 ## IntelliJ IDEA
 
 1. 用 IntelliJ IDEA 打开本目录。

@@ -35,6 +35,8 @@ export type MissionDeviceRole =
   | 'UNITY_CLIENT'
 
 export type MissionEventType = 'CONFIG' | 'STATUS' | 'DEVICE' | 'ROS' | 'UNITY' | 'ALERT' | 'NOTE'
+export type MissionRunStatus = 'PENDING' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+export type MissionEventLevel = 'INFO' | 'WARNING' | 'ERROR'
 
 export interface Mission {
   id: number
@@ -79,11 +81,28 @@ export interface MissionParameter {
 
 export interface MissionEvent {
   id: number
+  runId: number | null
   eventType: MissionEventType
+  stage: MissionStage | null
+  level: MissionEventLevel
   title: string
   message: string | null
   source: string | null
   occurredAt: string
+}
+
+export interface MissionRun {
+  id: number
+  sessionId: number | null
+  runKey: string
+  runNo: number
+  status: MissionRunStatus
+  stage: MissionStage
+  requestedBy: string | null
+  startedAt: string
+  pausedAt: string | null
+  endedAt: string | null
+  failureReason: string | null
 }
 
 export interface MissionDetail {
@@ -91,6 +110,8 @@ export interface MissionDetail {
   devices: MissionDeviceBinding[]
   parameters: MissionParameter[]
   events: MissionEvent[]
+  currentRun: MissionRun | null
+  runs: MissionRun[]
 }
 
 export interface MissionDeviceBindingPayload {

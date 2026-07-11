@@ -1,6 +1,13 @@
 package com.uavusv.platform.module.runtimecontrol.service;
 
+import com.uavusv.platform.common.exception.BusinessException;
+import com.uavusv.platform.common.exception.ErrorCode;
+import com.uavusv.platform.module.device.repository.DeviceRepository;
+import com.uavusv.platform.module.mission.repository.MissionRunRepository;
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
+import com.uavusv.platform.module.runtimecontrol.dispatch.CommandDispatchResult;
+import com.uavusv.platform.module.runtimecontrol.dispatch.RuntimeCommandDispatcher;
+import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandAckRequest;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandLogResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandResponse;
@@ -10,11 +17,13 @@ import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.ControlCommand;
 import com.uavusv.platform.module.runtimecontrol.entity.SimulationSession;
 import com.uavusv.platform.module.runtimecontrol.entity.SimulationStatus;
+import com.uavusv.platform.module.runtimecontrol.event.ControlCommandStatusChangedEvent;
 import com.uavusv.platform.module.runtimecontrol.repository.ControlCommandRepository;
 import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,33 +50,48 @@ public class RuntimeControlService {
     private final RuntimeStateService runtimeStateService;
     private final SimulationSessionRepository sessionRepository;
     private final ControlCommandRepository commandRepository;
+    private final DeviceRepository deviceRepository;
+    private final MissionRunRepository missionRunRepository;
+    private final RuntimeCommandDispatcher commandDispatcher;
+    private final ApplicationEventPublisher eventPublisher;
     private final String wslDistribution;
     private final Path rosScript;
     private final Path unityEditor;
     private final Path unityProject;
     private final String rosWebSocketUrl;
     private final String integrationToken;
+    private final long commandAckTimeoutSeconds;
 
     public RuntimeControlService(
             RuntimeStateService runtimeStateService,
             SimulationSessionRepository sessionRepository,
             ControlCommandRepository commandRepository,
+            DeviceRepository deviceRepository,
+            MissionRunRepository missionRunRepository,
+            RuntimeCommandDispatcher commandDispatcher,
+            ApplicationEventPublisher eventPublisher,
             @Value("${app.control.wsl-distribution}") String wslDistribution,
             @Value("${app.control.ros-script}") String rosScript,
             @Value("${app.control.unity-editor}") String unityEditor,
             @Value("${app.control.unity-project}") String unityProject,
             @Value("${app.runtime.ros-websocket-url}") String rosWebSocketUrl,
-            @Value("${app.integration.token}") String integrationToken
+            @Value("${app.integration.token}") String integrationToken,
+            @Value("${app.control.command-ack-timeout-seconds:15}") long commandAckTimeoutSeconds
     ) {
         this.runtimeStateService = runtimeStateService;
         this.sessionRepository = sessionRepository;
         this.commandRepository = commandRepository;
+        this.deviceRepository = deviceRepository;
+        this.missionRunRepository = missionRunRepository;
+        this.commandDispatcher = commandDispatcher;
+        this.eventPublisher = eventPublisher;
         this.wslDistribution = wslDistribution;
         this.rosScript = Path.of(rosScript);
         this.unityEditor = Path.of(unityEditor);
         this.unityProject = Path.of(unityProject);
         this.rosWebSocketUrl = rosWebSocketUrl;
         this.integrationToken = integrationToken;
+        this.commandAckTimeoutSeconds = Math.max(commandAckTimeoutSeconds, 1);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -243,11 +267,69 @@ public class RuntimeControlService {
         Long sessionId = sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(ACTIVE_STATUSES)
                 .map(SimulationSession::getId)
                 .orElse(null);
-        ControlCommand command = commandRepository.save(new ControlCommand(sessionId, request.commandType(), username));
-        String detail = buildCommandDetail(request);
-        command.succeed(detail);
+        Long deviceId = resolveDeviceId(request.deviceCode());
+        validateRun(request.runId());
+        ensureNoPendingCommand(request.runId());
+        ControlCommand command = commandRepository.save(new ControlCommand(
+                sessionId,
+                request.runId(),
+                deviceId,
+                request.commandType(),
+                request.payload(),
+                username
+        ));
+        command.dispatch(buildCommandDetail(request));
         commandRepository.save(command);
-        return new RuntimeCommandResponse(request.commandType(), CommandStatus.SUCCEEDED, detail, LocalDateTime.now());
+
+        try {
+            CommandDispatchResult dispatchResult = commandDispatcher.dispatch(command.getCommandKey(), request);
+            if (!dispatchResult.accepted()) {
+                command.fail(dispatchResult.errorCode(), dispatchResult.detail());
+            } else if (dispatchResult.acknowledged()) {
+                command.acknowledge(dispatchResult.detail());
+            } else if (dispatchResult.detail() != null && !dispatchResult.detail().isBlank()) {
+                command.dispatch(dispatchResult.detail());
+            }
+        } catch (Exception exception) {
+            command.fail("DISPATCH_EXCEPTION", exception.getMessage());
+        }
+        commandRepository.save(command);
+        publishTerminalCommandStatus(command);
+        return RuntimeCommandResponse.from(command);
+    }
+
+    @Transactional
+    public RuntimeCommandResponse acknowledgeCommand(String commandKey, RuntimeCommandAckRequest request) {
+        ControlCommand command = commandRepository.findByCommandKey(commandKey)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "控制指令不存在"));
+        if (command.getStatus() == CommandStatus.ACKNOWLEDGED
+                || command.getStatus() == CommandStatus.FAILED
+                || command.getStatus() == CommandStatus.TIMEOUT) {
+            return RuntimeCommandResponse.from(command);
+        }
+        if (Boolean.TRUE.equals(request.success())) {
+            command.acknowledge(request.detail() == null ? "外部组件已确认执行" : request.detail());
+        } else {
+            command.fail(
+                    request.errorCode() == null ? "REMOTE_EXECUTION_FAILED" : request.errorCode(),
+                    request.detail() == null ? "外部组件执行失败" : request.detail()
+            );
+        }
+        commandRepository.save(command);
+        publishTerminalCommandStatus(command);
+        return RuntimeCommandResponse.from(command);
+    }
+
+    @Scheduled(fixedDelay = 5000)
+    @Transactional
+    public void expireUnacknowledgedCommands() {
+        LocalDateTime cutoff = LocalDateTime.now().minusSeconds(commandAckTimeoutSeconds);
+        commandRepository.findAllByStatusAndDispatchedAtBefore(CommandStatus.DISPATCHED, cutoff)
+                .forEach(command -> {
+                    command.timeout("指令下发后未在规定时间内收到确认");
+                    commandRepository.save(command);
+                    publishTerminalCommandStatus(command);
+                });
     }
 
     @Scheduled(fixedDelay = 2000)
@@ -338,6 +420,48 @@ private void requestUnityStop() throws IOException {
             detail.append("，载荷=").append(request.payload());
         }
         return detail.toString();
+    }
+
+    private Long resolveDeviceId(String deviceCode) {
+        if (deviceCode == null || deviceCode.isBlank()) {
+            return null;
+        }
+        return deviceRepository.findByCode(deviceCode)
+                .filter(device -> !device.isDeleted())
+                .map(device -> device.getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.DEVICE_NOT_FOUND));
+    }
+
+    private void validateRun(Long runId) {
+        if (runId != null && !missionRunRepository.existsById(runId)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "任务执行记录不存在");
+        }
+    }
+
+    private void ensureNoPendingCommand(Long runId) {
+        if (runId != null && commandRepository.existsByRunIdAndStatusIn(
+                runId,
+                EnumSet.of(CommandStatus.PENDING, CommandStatus.DISPATCHED)
+        )) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "当前任务批次已有等待确认的控制指令");
+        }
+    }
+
+    private void publishTerminalCommandStatus(ControlCommand command) {
+        if (command.getStatus() != CommandStatus.ACKNOWLEDGED
+                && command.getStatus() != CommandStatus.FAILED
+                && command.getStatus() != CommandStatus.TIMEOUT) {
+            return;
+        }
+        eventPublisher.publishEvent(new ControlCommandStatusChangedEvent(
+                command.getId(),
+                command.getCommandKey(),
+                command.getRunId(),
+                command.getCommandType(),
+                command.getStatus(),
+                command.getDetail(),
+                command.getErrorCode()
+        ));
     }
 
     private boolean isUnityProjectOpen() {

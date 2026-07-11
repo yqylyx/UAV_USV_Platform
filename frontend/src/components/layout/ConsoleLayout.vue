@@ -40,13 +40,13 @@ async function logout() {
           <Activity :size="18" />
           系统总览
         </RouterLink>
-        <RouterLink class="nav-item" active-class="active" to="/devices">
-          <Boxes :size="18" />
-          设备管理
-        </RouterLink>
         <RouterLink class="nav-item" active-class="active" to="/missions">
           <Ship :size="18" />
           任务控制
+        </RouterLink>
+        <RouterLink class="nav-item" active-class="active" to="/devices">
+          <Boxes :size="18" />
+          设备管理
         </RouterLink>
         <RouterLink class="nav-item" active-class="active" to="/monitoring">
           <Radar :size="18" />
