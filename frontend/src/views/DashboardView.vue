@@ -11,8 +11,10 @@ import { sendIntegrationHeartbeat } from '@/api/integration'
 import { issueRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import type { RuntimeNode } from '@/types/monitoring'
+import { normalizeOperationalState } from '@/utils/runtimeOperationalState'
 
 type UnityMessage = {
   type: string
@@ -22,6 +24,7 @@ type UnityMessage = {
 }
 
 const monitoringStore = useMonitoringStore()
+const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const selectedDeviceCode = ref('uav-01')
 const selectedCameraMode = ref('overview')
@@ -132,14 +135,16 @@ const taskStateText = computed(() => {
 })
 const fleetReady = computed(() =>
   Object.entries(operationalStates.value).every(([code, state]) =>
-    code.startsWith('uav') ? ['AIRBORNE', 'HOLDING'].includes(state ?? '') : ['SAILING', 'HOLDING'].includes(state ?? ''),
+    code.startsWith('uav')
+      ? ['AIRBORNE', 'HOLDING'].includes(normalizeOperationalState(state, 'UAV'))
+      : ['SAILING', 'HOLDING'].includes(normalizeOperationalState(state, 'USV')),
   ),
 )
 
 const overviewFleetCards = computed(() =>
   selectableDevices.value.map((device, index) => {
     const code = normalizeDeviceCode(device.code)
-    const state = operationalStates.value[code] ?? (device.type === 'UAV' ? 'GROUNDED' : 'MOORED')
+    const state = normalizeOperationalState(operationalStates.value[code], device.type === 'UAV' ? 'UAV' : 'USV')
     const labels: Record<string, string> = {
       GROUNDED: '地面待命', AIRBORNE: '空中执行', HOLDING: '安全保持', RETURNING: '返航中', LANDING: '降落中',
       MOORED: '靠泊待命', SAILING: '航行中', STOPPED: '已停止', ERROR: '异常',
@@ -438,7 +443,10 @@ function handleUnityMessage(message: UnityMessage) {
         [deviceCode]: success ? 'ACKNOWLEDGED' : 'FAILED',
       }
       if (success) {
-        const unityState = status.split(':', 1)[0]?.trim().toUpperCase()
+        const unityState = normalizeOperationalState(
+          status.split(':', 1)[0]?.trim(),
+          deviceCode.startsWith('uav') ? 'UAV' : 'USV',
+        )
         if (unityState) operationalStates.value = { ...operationalStates.value, [deviceCode]: unityState }
       }
     } else if (success) {
@@ -519,6 +527,23 @@ watch(
   (message) => {
     if (message) handleUnityError(message)
   },
+)
+
+function syncOperationalStatesFromTrajectory() {
+  const frame = trajectoryStore.frame
+  if (!frame?.agents?.length) return
+
+  const next = { ...operationalStates.value }
+  for (const agent of frame.agents) {
+    if (agent.type !== 'UAV' && agent.type !== 'USV') continue
+    next[normalizeDeviceCode(agent.code)] = normalizeOperationalState(agent.state, agent.type)
+  }
+  operationalStates.value = next
+}
+
+watch(
+  () => trajectoryStore.frame?.sequence,
+  () => syncOperationalStatesFromTrajectory(),
 )
 </script>
 

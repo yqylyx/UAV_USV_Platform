@@ -80,6 +80,7 @@ public class RuntimeControlService {
     private final Path unityProject;
     private final String rosWebSocketUrl;
     private final String integrationToken;
+    private final String commandDispatchMode;
     private final long commandAckTimeoutSeconds;
 
     public RuntimeControlService(
@@ -96,6 +97,7 @@ public class RuntimeControlService {
             @Value("${app.control.unity-project}") String unityProject,
             @Value("${app.runtime.ros-websocket-url}") String rosWebSocketUrl,
             @Value("${app.integration.token}") String integrationToken,
+            @Value("${app.control.command-dispatch-mode:browser-unity}") String commandDispatchMode,
             @Value("${app.control.command-ack-timeout-seconds:15}") long commandAckTimeoutSeconds
     ) {
         this.runtimeStateService = runtimeStateService;
@@ -111,6 +113,7 @@ public class RuntimeControlService {
         this.unityProject = Path.of(unityProject);
         this.rosWebSocketUrl = rosWebSocketUrl;
         this.integrationToken = integrationToken;
+        this.commandDispatchMode = commandDispatchMode;
         this.commandAckTimeoutSeconds = Math.max(commandAckTimeoutSeconds, 1);
     }
 
@@ -324,6 +327,10 @@ public class RuntimeControlService {
     public RuntimeCommandResponse acknowledgeCommand(String commandKey, RuntimeCommandAckRequest request) {
         ControlCommand command = commandRepository.findByCommandKey(commandKey)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "控制指令不存在"));
+        if ("ros-websocket".equalsIgnoreCase(commandDispatchMode)
+                && "UNITY_WEBGL".equalsIgnoreCase(request.source())) {
+            return RuntimeCommandResponse.from(command);
+        }
         if (command.getStatus() == CommandStatus.ACKNOWLEDGED
                 || command.getStatus() == CommandStatus.FAILED
                 || command.getStatus() == CommandStatus.TIMEOUT) {

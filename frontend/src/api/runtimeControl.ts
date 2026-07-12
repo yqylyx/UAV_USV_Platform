@@ -108,7 +108,7 @@ export async function acknowledgeRuntimeCommand(
   await fetchCsrfToken()
   const response = await http.post<ApiResponse<RuntimeCommandResult>>(
     `/runtime-control/commands/${encodeURIComponent(commandKey)}/ack`,
-    { success, detail, errorCode: success ? null : 'UNITY_EXECUTION_FAILED' },
+    { success, detail, errorCode: success ? null : 'UNITY_EXECUTION_FAILED', source: 'UNITY_WEBGL' },
   )
   return response.data.data
 }

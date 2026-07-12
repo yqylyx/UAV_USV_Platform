@@ -42,8 +42,11 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
     sendControlCommand(command: string, deviceCode: string, commandKey: string) {
       return this.send('sendControlCommand', { command, deviceCode }, commandKey)
     },
-    takeNext() {
-      return this.outbox.shift() ?? null
+    peekNext() {
+      return this.outbox[0] ?? null
+    },
+    removeNext() {
+      this.outbox.shift()
     },
     async handleCommandAck(requestId: string, payload: Record<string, unknown>) {
       const commandKey = this.commandKeys[requestId]

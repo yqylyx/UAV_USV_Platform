@@ -219,17 +219,34 @@ function postToUnity(type: string, payload: Record<string, unknown> = {}) {
 }
 
 function postEnvelope(message: UnityBridgeMessage) {
-  unityBridgeStore.noteOutgoing(message)
-  emit('unityCommand', message)
-  iframeRef.value?.contentWindow?.postMessage({ source: 'vue-console', message }, window.location.origin)
+  // Pinia stores reactive Proxy instances. Window.postMessage only accepts
+  // structured-cloneable values, so send a plain envelope to the WebGL iframe.
+  const envelope: UnityBridgeMessage = {
+    type: String(message.type),
+    requestId: String(message.requestId),
+    timestamp: Number(message.timestamp),
+    payload: JSON.parse(JSON.stringify(message.payload ?? {})) as Record<string, unknown>,
+  }
+  unityBridgeStore.noteOutgoing(envelope)
+  emit('unityCommand', envelope)
+  iframeRef.value?.contentWindow?.postMessage(
+    { source: 'vue-console', message: envelope },
+    window.location.origin,
+  )
 }
 
 function flushUnityOutbox() {
   if (!unityBridgeStore.connected || !iframeRef.value?.contentWindow) return
-  let message = unityBridgeStore.takeNext()
+  let message = unityBridgeStore.peekNext()
   while (message) {
-    postEnvelope(message)
-    message = unityBridgeStore.takeNext()
+    try {
+      postEnvelope(message)
+      unityBridgeStore.removeNext()
+      message = unityBridgeStore.peekNext()
+    } catch (error) {
+      unityBridgeStore.setError(error instanceof Error ? error.message : 'Unity command bridge failed')
+      break
+    }
   }
 }
 
