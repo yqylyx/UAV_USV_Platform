@@ -20,6 +20,7 @@ import { useMissionStore } from '@/stores/mission'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import type { Device } from '@/types/device'
+import { normalizeOperationalState } from '@/utils/runtimeOperationalState'
 import type {
   Mission,
   MissionDetail,
@@ -179,10 +180,18 @@ const requiredDeviceCodes = computed(() => {
 })
 const fleetReady = computed(() =>
   requiredDeviceCodes.value.length > 0 &&
-  requiredDeviceCodes.value.every((code) => ['AIRBORNE', 'SAILING', 'HOLDING'].includes(operationalStates.value[code] ?? '')),
+  requiredDeviceCodes.value.every((code) =>
+    ['AIRBORNE', 'SAILING', 'HOLDING'].includes(
+      normalizeOperationalState(operationalStates.value[code], code.startsWith('uav') ? 'UAV' : 'USV'),
+    ),
+  ),
 )
 const readinessText = computed(() => {
-  const ready = requiredDeviceCodes.value.filter((code) => ['AIRBORNE', 'SAILING', 'HOLDING'].includes(operationalStates.value[code] ?? '')).length
+  const ready = requiredDeviceCodes.value.filter((code) =>
+    ['AIRBORNE', 'SAILING', 'HOLDING'].includes(
+      normalizeOperationalState(operationalStates.value[code], code.startsWith('uav') ? 'UAV' : 'USV'),
+    ),
+  ).length
   return `${ready}/${requiredDeviceCodes.value.length} 必要载具就绪`
 })
 const selectedControlDevice = computed(
@@ -190,7 +199,7 @@ const selectedControlDevice = computed(
 )
 const selectedOperationalLabel = computed(() => {
   const code = normalizeDeviceCode(selectedControlDevice.value?.code ?? '')
-  const state = operationalStates.value[code] ?? ''
+  const state = normalizeOperationalState(operationalStates.value[code], selectedControlDevice.value?.type)
   const labels: Record<string, string> = {
     GROUNDED: '地面待命', AIRBORNE: '空中执行', HOLDING: '安全保持', RETURNING: '返航中', LANDING: '降落中',
     MOORED: '靠泊待命', SAILING: '航行中', STOPPED: '已停止', ERROR: '异常',
@@ -740,7 +749,12 @@ async function sendFleetCommand(
   const states = allowedStates[commandType]
   const deviceCodes = controlDevices.value
     .filter((device) => device.type === vehicleType)
-    .filter((device) => !states || states.includes(operationalStates.value[normalizeDeviceCode(device.code)] ?? ''))
+    .filter((device) =>
+      !states ||
+      states.includes(
+        normalizeOperationalState(operationalStates.value[normalizeDeviceCode(device.code)], device.type),
+      ),
+    )
     .map((device) => device.code)
   return sendVehicleCommand({ commandType, deviceCodes, label }, options)
 }

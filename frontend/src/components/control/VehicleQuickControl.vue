@@ -15,6 +15,7 @@ import {
 
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import VehicleGlyph from '@/components/control/VehicleGlyph.vue'
+import { normalizeOperationalState } from '@/utils/runtimeOperationalState'
 
 export type QuickControlDevice = {
   code: string
@@ -139,7 +140,7 @@ function statusLabel(status?: string | null) {
 }
 
 function operationalState(deviceCode: string) {
-  return props.operationalStates[normalizeCode(deviceCode)] ?? (props.vehicleType === 'UAV' ? 'GROUNDED' : 'MOORED')
+  return normalizeOperationalState(props.operationalStates[normalizeCode(deviceCode)], props.vehicleType)
 }
 
 function availableDevices(action: QuickAction) {

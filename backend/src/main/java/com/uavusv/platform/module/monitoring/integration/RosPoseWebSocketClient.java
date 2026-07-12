@@ -1,13 +1,18 @@
 package com.uavusv.platform.module.monitoring.integration;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uavusv.platform.module.monitoring.dto.request.RosPoseFrame;
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
+import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
+import com.uavusv.platform.module.runtimecontrol.event.RosCommandAckReceivedEvent;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -28,6 +33,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
 
     private final ObjectMapper objectMapper;
     private final RuntimeStateService runtimeStateService;
+    private final ApplicationEventPublisher eventPublisher;
     private final URI endpoint;
     private final HttpClient httpClient;
     private final ScheduledExecutorService reconnectExecutor;
@@ -39,10 +45,12 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
     public RosPoseWebSocketClient(
             ObjectMapper objectMapper,
             RuntimeStateService runtimeStateService,
+            ApplicationEventPublisher eventPublisher,
             @Value("${app.runtime.ros-websocket-url}") String endpoint
     ) {
         this.objectMapper = objectMapper;
         this.runtimeStateService = runtimeStateService;
+        this.eventPublisher = eventPublisher;
         this.endpoint = URI.create(endpoint);
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
         this.reconnectExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -90,10 +98,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
             String payload = messageBuffer.toString();
             messageBuffer.setLength(0);
             try {
-                RosPoseFrame frame = objectMapper.readValue(payload, RosPoseFrame.class);
-                if (frame.boat() != null && frame.drone() != null) {
-                    runtimeStateService.observeRosFrame(frame);
-                }
+                handleMessage(payload);
             } catch (Exception exception) {
                 log.warn("Ignored invalid ROS pose frame: {}", exception.getMessage());
             }
@@ -111,6 +116,49 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
     @Override
     public void onError(WebSocket webSocket, Throwable error) {
         handleDisconnect("连接异常: " + error.getMessage());
+    }
+
+    public void sendControlCommand(String commandKey, RuntimeCommandRequest request) {
+        WebSocket current = socket;
+        if (current == null) {
+            throw new IllegalStateException("ROS WebSocket is not connected");
+        }
+        try {
+            ObjectNode frame = objectMapper.createObjectNode();
+            frame.put("type", "command");
+            frame.put("commandKey", commandKey);
+            frame.put("commandType", request.commandType().name());
+            if (request.deviceCode() != null && !request.deviceCode().isBlank()) {
+                frame.put("deviceCode", request.deviceCode());
+            }
+            if (request.payload() != null && !request.payload().isBlank()) {
+                frame.set("payload", objectMapper.readTree(request.payload()));
+            }
+            current.sendText(objectMapper.writeValueAsString(frame), true)
+                    .get(3, TimeUnit.SECONDS);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to send command to ROS WebSocket", exception);
+        }
+    }
+
+    private void handleMessage(String payload) throws Exception {
+        JsonNode root = objectMapper.readTree(payload);
+        String type = root.path("type").asText("pose_frame");
+        if ("command_ack".equals(type)) {
+            eventPublisher.publishEvent(new RosCommandAckReceivedEvent(
+                    root.path("commandKey").asText(),
+                    root.path("status").asInt(),
+                    root.path("message").asText(null)
+            ));
+            return;
+        }
+        if ("pose_frame".equals(type) || (root.has("boat") && root.has("drone"))) {
+            JsonNode frameNode = root.has("frame") ? root.path("frame") : root;
+            RosPoseFrame frame = objectMapper.treeToValue(frameNode, RosPoseFrame.class);
+            if (frame.boat() != null && frame.drone() != null) {
+                runtimeStateService.observeRosFrame(frame);
+            }
+        }
     }
 
     private void handleDisconnect(String detail) {
