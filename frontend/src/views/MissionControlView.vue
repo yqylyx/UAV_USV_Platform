@@ -799,10 +799,26 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
       if (!ready) return
       mission = ready.mission
     }
-    const deployed = await sendFleetPair('UAV_TAKEOFF', '无人机编组起飞', 'USV_DEPART', '无人艇编组离泊')
-    if (deployed.allAcknowledged) trajectoryMap.value?.applyMissionAction('deploy')
+
+    const deployed = await sendFleetPair(
+      'UAV_TAKEOFF',
+      '无人机编组起飞',
+      'USV_DEPART',
+      '无人艇编组离泊',
+    )
+
+    if (deployed.failed > 0) {
+      ElMessage.error(
+        `编组部署失败：有 ${deployed.failed} 台载具未能执行起飞或离泊指令`,
+      )
+      return
+    }
+
+    trajectoryMap.value?.applyMissionAction('deploy')
+    ElMessage.success('编组部署指令已下发，等待载具进入就绪状态')
     return
   }
+
   if (action === 'return') {
     try {
       await ElMessageBox.confirm('将向全部 UAV/USV 下发返航，并在确认后取消当前任务。是否继续？', '全体返航', {
@@ -836,27 +852,61 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
     trajectoryMap.value?.applyMissionAction('resume')
     return
   }
+
   if (action === 'abort') {
     try {
-      await ElMessageBox.confirm('终止后任务将标记异常；系统仍会分别记录未能安全保持的设备。是否继续？', '终止任务', {
-        confirmButtonText: '确认终止',
-        cancelButtonText: '取消',
-        type: 'error',
-      })
+      await ElMessageBox.confirm(
+        '终止任务后，将向全部无人机和无人艇下发返航指令。是否继续？',
+        '终止任务',
+        {
+          confirmButtonText: '确认终止并返航',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
+      )
     } catch {
       return
     }
-    await sendFleetPair('UAV_HOVER', '无人机安全悬停', 'USV_HOLD', '无人艇安全保持')
-    await runMissionAction(mission, 'fail')
-    trajectoryMap.value?.applyMissionAction('abort')
+
+    const returning = await sendFleetPair(
+      'UAV_RETURN',
+      '无人机编组返航',
+      'USV_RETURN',
+      '无人艇编组返航',
+    )
+
+    if (returning.failed > 0) {
+      ElMessage.error(
+        `终止失败：有 ${returning.failed} 台载具未能接收返航指令`,
+      )
+      return
+    }
+
+    await runMissionAction(mission, 'cancel')
+
+    operationalStates.value = Object.fromEntries(
+      controlDevices.value.map((device) => [
+        normalizeDeviceCode(device.code),
+        'RETURNING',
+      ]),
+    )
+
+    trajectoryMap.value?.applyMissionAction('return')
+    ElMessage.success('任务终止指令已下发，全体载具正在返航')
     return
   }
+
   if (!fleetReady.value) {
     ElMessage.warning(`编组尚未就绪：${readinessText.value}`)
     return
   }
+
   const started = await runMissionAction(mission, 'start')
-  if (started?.mission.status === 'RUNNING') trajectoryMap.value?.applyMissionAction('start')
+
+  if (started) {
+    trajectoryMap.value?.applyMissionAction('start')
+  }
+
 }
 
 async function handleTableMissionAction(row: Mission | Record<string, unknown>, action: MissionAction) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CirclePause, OctagonX, Play, RadioTower, RotateCcw, Send } from '@lucide/vue'
+import { CirclePause, OctagonX, Play, RadioTower, Send } from '@lucide/vue'
 
 const props = withDefaults(
   defineProps<{
@@ -23,7 +23,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  action: [action: 'deploy' | 'start' | 'pause' | 'resume' | 'return' | 'abort']
+  action: [action: 'deploy' | 'start' | 'pause' | 'resume' | 'abort']
 }>()
 
 function statusLabel(status: string) {
@@ -52,13 +52,54 @@ function statusLabel(status: string) {
     <p>{{ missionName }} · {{ readinessText }}</p>
     <div class="progress-track"><i :style="{ width: `${Math.max(0, Math.min(100, progress))}%` }"></i></div>
     <div class="mission-actions">
-      <button type="button" :disabled="busy || !canDeploy" @click="emit('action', 'deploy')"><Send />编组部署</button>
-      <button v-if="status === 'DRAFT' || status === 'READY'" type="button" class="primary" :disabled="busy || !canStart" @click="emit('action', 'start')"><Play />开始任务</button>
-      <button v-if="status === 'RUNNING'" type="button" :disabled="busy" @click="emit('action', 'pause')"><CirclePause />暂停任务</button>
-      <button v-if="status === 'PAUSED'" type="button" class="primary" :disabled="busy" @click="emit('action', 'resume')"><RadioTower />继续任务</button>
-      <button type="button" :disabled="busy || (status !== 'RUNNING' && status !== 'PAUSED')" @click="emit('action', 'return')"><RotateCcw />全体返航</button>
+      <button
+        type="button"
+        :disabled="busy || !canDeploy"
+        @click="emit('action', 'deploy')"
+      >
+        <Send />编组部署
+      </button>
+
+      <button
+        v-if="status === 'DRAFT' || status === 'READY'"
+        type="button"
+        class="primary"
+        :disabled="busy || !canStart"
+        @click="emit('action', 'start')"
+      >
+        <Play />开始任务
+      </button>
+
+      <button
+        v-if="status === 'RUNNING'"
+        type="button"
+        :disabled="busy"
+        @click="emit('action', 'pause')"
+      >
+        <CirclePause />暂停任务
+      </button>
+
+      <button
+        v-if="status === 'PAUSED'"
+        type="button"
+        class="primary"
+        :disabled="busy"
+        @click="emit('action', 'resume')"
+      >
+        <RadioTower />继续任务
+      </button>
+
+      <button
+        v-if="status === 'RUNNING' || status === 'PAUSED'"
+        type="button"
+        class="abort"
+        :disabled="busy"
+        @click="emit('action', 'abort')"
+      >
+        <OctagonX />终止任务
+      </button>
     </div>
-    <button type="button" class="abort" :disabled="busy || (status !== 'RUNNING' && status !== 'PAUSED')" @click="emit('action', 'abort')"><OctagonX />终止任务</button>
+    
   </article>
 </template>
 
@@ -170,13 +211,9 @@ button:hover:not(:disabled) {
 }
 
 button.abort {
-  width: 100%;
-  min-height: 32px;
-  margin-top: 7px;
   color: #ff817b;
   background: rgba(255, 75, 69, 0.06);
   border-color: rgba(255, 91, 84, 0.55);
-  flex-direction: row;
 }
 
 button.abort:hover:not(:disabled) {
