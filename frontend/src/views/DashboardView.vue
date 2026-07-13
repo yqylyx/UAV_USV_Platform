@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
@@ -361,19 +361,85 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
     overviewMissionStatus.value = 'CANCELLED'
     return
   }
+
+  if (action === 'abort') {
+    try {
+      await ElMessageBox.confirm(
+        '终止任务后，将向全部无人机和无人艇下发返航指令。是否继续？',
+        '终止任务',
+        {
+          confirmButtonText: '确认终止并返航',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
+      )
+    } catch {
+      return
+    }
+
+    commandBusy.value = true
+
+    try {
+      const returned = await Promise.all([
+        sendVehicleCommand({
+          commandType: 'UAV_RETURN',
+          deviceCodes: ['uav-01', 'uav-02', 'uav-03'],
+          label: '无人机编组返航',
+        }),
+        sendVehicleCommand({
+          commandType: 'USV_RETURN',
+          deviceCodes: ['usv-01', 'usv-02', 'usv-03'],
+          label: '无人艇编组返航',
+        }),
+      ])
+
+      if (!returned.every(Boolean)) {
+        ElMessage.error('部分载具未能接收返航指令')
+        return
+      }
+
+      const result = await recordRuntimeCommand(
+        'CANCEL_MISSION',
+        '系统总览：终止任务并全体返航',
+        '',
+        { action: 'abort' },
+      )
+
+      if (
+        result.status === 'DISPATCHED' ||
+        result.status === 'PENDING'
+      ) {
+        unityBridgeStore.sendControlCommand(
+          'missionCancel',
+          '',
+          result.commandKey,
+        )
+      }
+
+      overviewMissionStatus.value = 'CANCELLED'
+      ElMessage.success('任务已终止，全体载具正在返航')
+    } finally {
+      commandBusy.value = false
+    }
+
+    return
+  }
+
+
   const commandMap: Record<Exclude<typeof action, 'deploy' | 'return'>, RuntimeCommandType> = {
     start: 'START_MISSION',
     pause: 'PAUSE_MISSION',
     resume: 'RESUME_MISSION',
-    abort: 'FAIL_MISSION',
   }
   commandBusy.value = true
   try {
+
     if (action === 'start' && !fleetReady.value) {
       ElMessage.warning('请先完成三机三艇编组部署')
       return
     }
-    if (action === 'pause' || action === 'abort') {
+
+    if (action === 'pause') {
       await Promise.all([
         sendVehicleCommand({ commandType: 'UAV_HOVER', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组悬停' }),
         sendVehicleCommand({ commandType: 'USV_HOLD', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组保持' }),
@@ -393,7 +459,6 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
         pause: 'missionPause',
         resume: 'missionResume',
         return: 'missionReturn',
-        abort: 'missionFail',
       } as const
       unityBridgeStore.sendControlCommand(unityActions[action], '', result.commandKey)
     }
@@ -401,7 +466,6 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
     if (result.status === 'ACKNOWLEDGED') {
       if (action === 'start' || action === 'resume') overviewMissionStatus.value = 'RUNNING'
       if (action === 'pause') overviewMissionStatus.value = 'PAUSED'
-      if (action === 'abort') overviewMissionStatus.value = 'FAILED'
     }
     ElMessage.success('任务编组指令已记录')
   } finally {
