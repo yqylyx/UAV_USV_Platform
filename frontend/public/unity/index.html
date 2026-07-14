@@ -188,7 +188,7 @@
         }
 
         if (type === 'toggletrajectory') {
-          dispatchUnityKey('t', 'KeyT', 84);
+          dispatchUnityKey('v', 'KeyV', 86);
           return 'trajectory';
         }
 
@@ -301,7 +301,7 @@
             console.warn('Unity WebBridge command failed, fallback will be used.', error);
           }
         }
-        var fallback = applyUnityFallback(message);
+        var fallback = bridgeSent ? '' : applyUnityFallback(message);
         postUnityMessage('vueCommandReceived', {
           requestId: message.requestId || '',
           type: message.type,

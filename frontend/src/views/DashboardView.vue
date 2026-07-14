@@ -8,13 +8,17 @@ import VehicleQuickControl from '@/components/control/VehicleQuickControl.vue'
 import VehicleGlyph from '@/components/control/VehicleGlyph.vue'
 import type { VehicleQuickCommand } from '@/components/control/VehicleQuickControl.vue'
 import { sendIntegrationHeartbeat } from '@/api/integration'
+import { executeMissionAction, fetchMission, fetchMissions } from '@/api/mission'
+import type { MissionAction } from '@/api/mission'
 import { issueRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import type { RuntimeNode } from '@/types/monitoring'
 import { normalizeOperationalState } from '@/utils/runtimeOperationalState'
+import type { MissionDetail, MissionStatus } from '@/types/mission'
 
 type UnityMessage = {
   type: string
@@ -24,6 +28,7 @@ type UnityMessage = {
 }
 
 const monitoringStore = useMonitoringStore()
+const trajectorySessionStore = useMissionTrajectorySessionStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const selectedDeviceCode = ref('uav-01')
@@ -32,27 +37,35 @@ const unityConnection = ref('等待 WebGL 构建')
 const lastUnityEvent = ref('暂无 Unity 回传事件')
 const unityCommandState = ref('等待控制指令')
 const commandBusy = ref(false)
+const cameraCommandBusy = ref(false)
 const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
 const operationalStates = ref<Record<string, string | undefined>>({
-  'uav-01': 'GROUNDED',
-  'uav-02': 'GROUNDED',
-  'uav-03': 'GROUNDED',
-  'usv-01': 'MOORED',
-  'usv-02': 'MOORED',
-  'usv-03': 'MOORED',
+  'uav-01': 'UNKNOWN',
+  'uav-02': 'UNKNOWN',
+  'uav-03': 'UNKNOWN',
+  'usv-01': 'UNKNOWN',
+  'usv-02': 'UNKNOWN',
+  'usv-03': 'UNKNOWN',
 })
-type OverviewMissionStatus = 'READY' | 'RUNNING' | 'PAUSED' | 'FAILED' | 'CANCELLED' | 'COMPLETED'
-const overviewMissionStatus = ref<OverviewMissionStatus>('READY')
+const overviewMissionDevices = ref<Array<{ code: string; name: string; type: 'UAV' | 'USV'; status?: string | null }>>([])
+const freshnessClock = ref(Date.now())
+const overviewMissionId = ref<number | null>(null)
+const overviewMissionName = ref('三机三艇协同围捕')
+const overviewMissionStatus = ref<MissionStatus>('READY')
+const overviewMissionControlSource = ref('UNKNOWN')
+const overviewDeploymentAcknowledged = ref(false)
 let poseFrameSequence = 0
 let heartbeatTimer: number | null = null
+let freshnessTimer: number | null = null
 const unityInstanceId = `vue-webgl:${window.location.host}:${Math.random().toString(36).slice(2, 10)}`
 
 const cameraModes = [
   { label: '总览', value: 'overview' },
   { label: '当前设备', value: 'device-follow' },
   { label: '行动视角', value: 'action' },
-  { label: '灯塔视角', value: 'lighthouse' },
 ]
+
+let trajectoryToggleTimer: number | null = null
 
 const expectedObservationDevices = [
   { code: 'usv-01', name: '协同无人艇 1', type: 'USV' as const },
@@ -107,14 +120,15 @@ const selectableDevices = computed(() => {
   })
 })
 
-const quickControlDevices = computed(() =>
-  selectableDevices.value.map((device) => ({
+const quickControlDevices = computed(() => {
+  if (overviewMissionDevices.value.length) return overviewMissionDevices.value
+  return selectableDevices.value.map((device) => ({
     code: device.code,
     name: device.name,
     type: device.type as 'UAV' | 'USV',
     status: device.status,
-  })),
-)
+  }))
+})
 
 const rosBridgeOnline = computed(() =>
   monitoringStore.nodes.some((node) => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
@@ -133,12 +147,52 @@ const taskStateText = computed(() => {
   if (rosBridgeOnline.value) return '等待位姿'
   return '演示预览'
 })
+const trajectoryLive = computed(() => {
+  freshnessClock.value
+  const frame = trajectoryStore.frame
+  return unityBridgeStore.connected && !!frame && Date.now() - frame.receivedAt <= 3000
+})
+const missionControlOwnsOverviewMission = computed(() =>
+  (trajectorySessionStore.controlsMission && trajectorySessionStore.missionId === overviewMissionId.value) ||
+  (['RUNNING', 'PAUSED'].includes(overviewMissionStatus.value) && overviewMissionControlSource.value === 'MISSION_CONTROL'),
+)
 const fleetReady = computed(() =>
-  Object.entries(operationalStates.value).every(([code, state]) =>
-    code.startsWith('uav')
+  quickControlDevices.value.length > 0 && quickControlDevices.value.every(({ code }) => {
+    const state = operationalStates.value[normalizeDeviceCode(code)]
+    return code.startsWith('uav')
       ? ['AIRBORNE', 'HOLDING'].includes(normalizeOperationalState(state, 'UAV'))
-      : ['SAILING', 'HOLDING'].includes(normalizeOperationalState(state, 'USV')),
+      : ['SAILING', 'HOLDING'].includes(normalizeOperationalState(state, 'USV'))
+  }),
+)
+const fleetDeploymentAccepted = computed(() =>
+  overviewDeploymentAcknowledged.value || (
+    quickControlDevices.value.length > 0 && quickControlDevices.value.every(({ code }) => {
+      const state = operationalStates.value[normalizeDeviceCode(code)]
+      return code.startsWith('uav')
+        ? ['TAKING_OFF', 'AIRBORNE', 'HOLDING'].includes(normalizeOperationalState(state, 'UAV'))
+        : ['DEPARTING', 'SAILING', 'HOLDING'].includes(normalizeOperationalState(state, 'USV'))
+    })
   ),
+)
+const readyDeviceCount = computed(() =>
+  quickControlDevices.value.filter(({ code }) => {
+    const state = operationalStates.value[normalizeDeviceCode(code)]
+    return code.startsWith('uav')
+      ? ['AIRBORNE', 'HOLDING'].includes(normalizeOperationalState(state, 'UAV'))
+      : ['SAILING', 'HOLDING'].includes(normalizeOperationalState(state, 'USV'))
+  }).length,
+)
+const missionGroupProgress = computed(() => {
+  if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(overviewMissionStatus.value)) return 100
+  if (overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED') return 72
+  return Math.round((readyDeviceCount.value / Math.max(1, quickControlDevices.value.length)) * 48)
+})
+const missionReadinessText = computed(() =>
+  missionControlOwnsOverviewMission.value
+    ? '任务控制页面持有当前任务控制权'
+    : fleetDeploymentAccepted.value
+      ? `${quickControlDevices.value.length}/${quickControlDevices.value.length} 载具部署指令已确认`
+      : `${readyDeviceCount.value}/${quickControlDevices.value.length} 载具已确认部署`,
 )
 
 const overviewFleetCards = computed(() =>
@@ -146,8 +200,9 @@ const overviewFleetCards = computed(() =>
     const code = normalizeDeviceCode(device.code)
     const state = normalizeOperationalState(operationalStates.value[code], device.type === 'UAV' ? 'UAV' : 'USV')
     const labels: Record<string, string> = {
-      GROUNDED: '地面待命', AIRBORNE: '空中执行', HOLDING: '安全保持', RETURNING: '返航中', LANDING: '降落中',
-      MOORED: '靠泊待命', SAILING: '航行中', STOPPED: '已停止', ERROR: '异常',
+      UNKNOWN: '等待遥测', GROUNDED: '地面待命', TAKING_OFF: '起飞中', AIRBORNE: '空中执行',
+      HOLDING: '安全保持', RETURNING: '返航中', LANDING: '降落中', MOORED: '靠泊待命',
+      DEPARTING: '离泊中', SAILING: '航行中', STOPPED: '已停止', ERROR: '异常',
     }
     return {
       ...device,
@@ -250,6 +305,92 @@ function stopUnityHeartbeat() {
   void sendUnityHeartbeat('STOPPED')
 }
 
+function applyOverviewMissionDetail(detail: MissionDetail) {
+  const missionChanged = overviewMissionId.value !== null && overviewMissionId.value !== detail.mission.id
+  if (missionChanged || ['DRAFT', 'COMPLETED', 'FAILED', 'CANCELLED'].includes(detail.mission.status)) {
+    overviewDeploymentAcknowledged.value = false
+  }
+  overviewMissionId.value = detail.mission.id
+  overviewMissionName.value = detail.mission.name
+  overviewMissionStatus.value = detail.mission.status
+  const currentRunId = detail.currentRun?.id
+  const latestControlEvent = detail.events.find((event) =>
+    event.runId === currentRunId && /^(MISSION_CONTROL|SYSTEM_OVERVIEW):/.test(event.source ?? ''),
+  )
+  overviewMissionControlSource.value = latestControlEvent?.source?.split(':', 1)[0] ?? 'UNKNOWN'
+  const bindings = detail.devices.filter((item) => item.type === 'UAV' || item.type === 'USV')
+  const requiredBindings = bindings.some((item) => item.required) ? bindings.filter((item) => item.required) : bindings
+  overviewMissionDevices.value = requiredBindings
+    .filter((item) => item.code)
+    .map((item) => ({
+      code: normalizeDeviceCode(item.code!),
+      name: item.name || item.code!.toUpperCase(),
+      type: item.type as 'UAV' | 'USV',
+      status: item.status,
+    }))
+}
+
+async function loadOverviewMission() {
+  const result = await fetchMissions({
+    type: 'COOPERATIVE_ENCIRCLEMENT',
+    page: 0,
+    size: 50,
+  })
+  const priority: MissionStatus[] = ['RUNNING', 'PAUSED', 'READY', 'DRAFT', 'CANCELLED', 'FAILED', 'COMPLETED']
+  const mission = priority
+    .map((status) => result.records.find((item) => item.status === status))
+    .find(Boolean) ?? result.records[0]
+  if (!mission) {
+    overviewMissionId.value = null
+    return null
+  }
+  const detail = await fetchMission(mission.id)
+  applyOverviewMissionDetail(detail)
+  return detail
+}
+
+function missionUnityCommand(action: MissionAction) {
+  return {
+    start: 'missionStart',
+    pause: 'missionPause',
+    resume: 'missionResume',
+    complete: 'missionComplete',
+    fail: 'missionFail',
+    cancel: 'missionCancel',
+    ready: 'missionResume',
+  }[action]
+}
+
+async function runOverviewMissionAction(action: MissionAction) {
+  if (!overviewMissionId.value) {
+    await loadOverviewMission()
+  }
+  if (!overviewMissionId.value) throw new Error('未找到三机三艇协同围捕任务')
+
+  const missionId = overviewMissionId.value
+  const result = await executeMissionAction(missionId, action, 'SYSTEM_OVERVIEW')
+  applyOverviewMissionDetail(result.detail)
+
+  if (result.command) {
+    if (result.command.status === 'FAILED' || result.command.status === 'TIMEOUT') {
+      throw new Error(result.command.detail || '任务指令未能下发')
+    }
+    if (!unityBridgeStore.connected) throw new Error('Unity WebGL 尚未连接，无法确认任务指令')
+    const acknowledgement = await unityBridgeStore.sendControlCommandAndWait(
+      missionUnityCommand(action),
+      '',
+      result.command.commandKey,
+    )
+    if (!acknowledgement.success) {
+      throw new Error(acknowledgement.status || 'Unity 未确认任务指令')
+    }
+  }
+
+  const confirmed = await fetchMission(missionId)
+  applyOverviewMissionDetail(confirmed)
+  return confirmed
+}
+
 async function recordRuntimeCommand(
   commandType: RuntimeCommandType,
   detail: string,
@@ -260,7 +401,7 @@ async function recordRuntimeCommand(
     return await issueRuntimeCommand({
       commandType,
       deviceCode,
-      payload: payload ? JSON.stringify(payload) : undefined,
+      payload: JSON.stringify({ source: 'SYSTEM_OVERVIEW', ...(payload ?? {}) }),
       detail,
     })
   } catch (error) {
@@ -269,25 +410,91 @@ async function recordRuntimeCommand(
   }
 }
 
+async function sendTrackedUnityCommand(
+  commandType: RuntimeCommandType,
+  detail: string,
+  bridgeType: string,
+  payload: Record<string, unknown>,
+  deviceCode = selectedDeviceCode.value,
+) {
+  if (cameraCommandBusy.value) throw new Error('上一条视角指令仍在确认中')
+  if (!unityBridgeStore.connected) throw new Error('Unity WebGL 尚未连接')
+  cameraCommandBusy.value = true
+  try {
+    const result = await recordRuntimeCommand(commandType, detail, deviceCode, payload)
+    if (result.status === 'FAILED' || result.status === 'TIMEOUT') {
+      throw new Error(result.detail || '后端未能创建 Unity 指令')
+    }
+    const acknowledgement = await unityBridgeStore.sendAndWait(
+      bridgeType,
+      payload,
+      result.commandKey,
+    )
+    if (!acknowledgement.success) throw new Error(acknowledgement.status || 'Unity 未确认指令')
+    return acknowledgement
+  } finally {
+    cameraCommandBusy.value = false
+  }
+}
+
 async function selectDevice(deviceCode: string) {
-  selectedDeviceCode.value = deviceCode
-  selectedCameraMode.value = 'device-follow'
-  unityBridgeStore.send('selectDevice', { deviceCode })
-  lastUnityEvent.value = `selectDevice:${deviceCode}`
-  void recordRuntimeCommand('SELECT_DEVICE', '系统总览选择协同设备', deviceCode).catch(() => undefined)
+  try {
+    await sendTrackedUnityCommand('SELECT_DEVICE', '系统总览选择协同设备', 'selectDevice', { deviceCode }, deviceCode)
+    selectedDeviceCode.value = deviceCode
+    selectedCameraMode.value = 'device-follow'
+    lastUnityEvent.value = `selectDevice:${deviceCode}`
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '设备视角切换失败')
+  }
 }
 
 async function focusSelectedDevice() {
-  unityBridgeStore.send('focusDevice', { deviceCode: selectedDeviceCode.value })
-  lastUnityEvent.value = `focusDevice:${selectedDeviceCode.value}`
-  void recordRuntimeCommand('FOCUS_DEVICE', 'Unity 视角聚焦当前设备').catch(() => undefined)
+  try {
+    await sendTrackedUnityCommand(
+      'FOCUS_DEVICE',
+      'Unity 视角聚焦当前设备',
+      'focusDevice',
+      { deviceCode: selectedDeviceCode.value },
+    )
+    lastUnityEvent.value = `focusDevice:${selectedDeviceCode.value}`
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '视角重新居中失败')
+  }
 }
 
 async function switchCamera(mode: string) {
-  selectedCameraMode.value = mode
-  unityBridgeStore.send('switchCamera', { mode })
-  lastUnityEvent.value = `switchCamera:${mode}`
-  void recordRuntimeCommand('SWITCH_CAMERA', 'Unity 切换态势观察视角', selectedDeviceCode.value, { mode }).catch(() => undefined)
+  try {
+    await sendTrackedUnityCommand('SWITCH_CAMERA', 'Unity 切换态势观察视角', 'switchCamera', { mode })
+    selectedCameraMode.value = mode
+    lastUnityEvent.value = `switchCamera:${mode}`
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'Unity 视角切换失败')
+  }
+}
+
+async function toggleUnityTrajectory() {
+  if (!unityBridgeStore.connected || unityBridgeStore.trajectoryTogglePending) return
+  const visible = !unityBridgeStore.trajectoryVisible
+  unityBridgeStore.setTrajectoryTogglePending(true)
+  try {
+    const result = await recordRuntimeCommand(
+      'TOGGLE_TRAJECTORY',
+      visible ? 'Unity 显示现有轨迹' : 'Unity 隐藏现有轨迹',
+      '',
+      { visible },
+    )
+    unityBridgeStore.send('toggleTrajectory', { visible }, result.commandKey)
+    lastUnityEvent.value = `toggleTrajectory:${visible ? 'show' : 'hide'}`
+    if (trajectoryToggleTimer !== null) window.clearTimeout(trajectoryToggleTimer)
+    trajectoryToggleTimer = window.setTimeout(() => {
+      trajectoryToggleTimer = null
+      if (!unityBridgeStore.trajectoryTogglePending) return
+      unityBridgeStore.setTrajectoryTogglePending(false)
+      ElMessage.error('Unity 轨迹显示指令未返回确认')
+    }, 6000)
+  } catch {
+    unityBridgeStore.setTrajectoryTogglePending(false)
+  }
 }
 
 function unityBridgeCommand(commandType: RuntimeCommandType) {
@@ -308,11 +515,42 @@ function unityBridgeCommand(commandType: RuntimeCommandType) {
   return commands[commandType] ?? commandType.toLowerCase()
 }
 
-async function sendVehicleCommand(command: VehicleQuickCommand) {
-  commandBusy.value = true
+type VehicleBatchResult = {
+  total: number
+  acknowledged: number
+  failed: number
+  allAcknowledged: boolean
+}
+
+async function sendVehicleCommand(
+  command: VehicleQuickCommand,
+  options: { manageBusy?: boolean; notify?: boolean } = {},
+): Promise<VehicleBatchResult> {
+  const manageBusy = options.manageBusy ?? true
+  const notify = options.notify ?? true
+  if (!command.deviceCodes.length) {
+    return { total: 0, acknowledged: 0, failed: 0, allAcknowledged: false }
+  }
+  if (!unityBridgeStore.connected || !trajectoryLive.value) {
+    const feedback = { ...commandFeedback.value }
+    for (const deviceCode of command.deviceCodes) feedback[normalizeDeviceCode(deviceCode)] = 'FAILED'
+    commandFeedback.value = feedback
+    if (notify) ElMessage.error(`${command.label}：${unityBridgeStore.connected ? 'Unity 实时遥测已中断' : 'Unity WebGL 尚未连接'}，未创建后端控制指令`)
+    return {
+      total: command.deviceCodes.length,
+      acknowledged: 0,
+      failed: command.deviceCodes.length,
+      allAcknowledged: false,
+    }
+  }
+  if (manageBusy) commandBusy.value = true
   const bridgeCommand = unityBridgeCommand(command.commandType)
-  const statuses = await Promise.all(
-      command.deviceCodes.map(async (deviceCode) => {
+  try {
+    const statuses: RuntimeCommandStatus[] = []
+    // Unity WebGL exposes a single command bridge. Keep the request/ACK pairs
+    // ordered so a six-device deployment cannot lose one three-device group.
+    for (const deviceCode of command.deviceCodes) {
+      const status = await (async (): Promise<RuntimeCommandStatus> => {
         const key = normalizeDeviceCode(deviceCode)
         commandFeedback.value = { ...commandFeedback.value, [key]: 'PENDING' }
         try {
@@ -322,152 +560,218 @@ async function sendVehicleCommand(command: VehicleQuickCommand) {
             key,
             { action: bridgeCommand },
           )
-          commandFeedback.value = { ...commandFeedback.value, [key]: result.status }
-          if (result.status === 'ACKNOWLEDGED') {
-            const state = operationalStateAfterCommand(command.commandType)
+          if (result.status === 'FAILED' || result.status === 'TIMEOUT') {
+            commandFeedback.value = { ...commandFeedback.value, [key]: result.status }
+            return result.status
+          }
+          if (!unityBridgeStore.connected) throw new Error('Unity WebGL 尚未连接')
+
+          const acknowledgement = await unityBridgeStore.sendControlCommandAndWait(
+            bridgeCommand,
+            key,
+            result.commandKey,
+          )
+          const status: RuntimeCommandStatus = acknowledgement.success ? 'ACKNOWLEDGED' : 'FAILED'
+          commandFeedback.value = { ...commandFeedback.value, [key]: status }
+          if (acknowledgement.success) {
+            const reportedState = normalizeOperationalState(
+              acknowledgement.status.split(':', 1)[0]?.trim(),
+              key.startsWith('uav') ? 'UAV' : 'USV',
+            )
+            const state = reportedState || operationalStateAfterCommand(command.commandType)
             if (state) operationalStates.value = { ...operationalStates.value, [key]: state }
           }
-          unityBridgeStore.sendControlCommand(bridgeCommand, key, result.commandKey)
-          return result.status
-        } catch {
-          commandFeedback.value = { ...commandFeedback.value, [key]: 'FAILED' }
-          return 'FAILED' as RuntimeCommandStatus
+          return status
+        } catch (error) {
+          const status: RuntimeCommandStatus = error instanceof Error && error.message.includes('超时') ? 'TIMEOUT' : 'FAILED'
+          commandFeedback.value = { ...commandFeedback.value, [key]: status }
+          return status
         }
-      }),
-    )
-  const acknowledged = statuses.filter((status) => status === 'ACKNOWLEDGED').length
-  const failed = statuses.filter((status) => status === 'FAILED' || status === 'TIMEOUT').length
-  lastUnityEvent.value = `vehicle-command:${bridgeCommand}`
-  unityCommandState.value = `${command.label}：${acknowledged}/${statuses.length} 已确认`
-  if (failed) ElMessage.error(`${command.label}：成功 ${acknowledged}，失败 ${failed}`)
-  else ElMessage.success(`${command.label}已下发至 ${command.deviceCodes.length} 台设备`)
-  commandBusy.value = false
-  return failed === 0
+      })()
+      statuses.push(status)
+    }
+    const acknowledged = statuses.filter((status) => status === 'ACKNOWLEDGED').length
+    const failed = statuses.length - acknowledged
+    const result = {
+      total: statuses.length,
+      acknowledged,
+      failed,
+      allAcknowledged: statuses.length > 0 && acknowledged === statuses.length,
+    }
+    lastUnityEvent.value = `vehicle-command:${bridgeCommand}`
+    unityCommandState.value = `${command.label}：${acknowledged}/${statuses.length} 已确认`
+    if (notify) {
+      if (result.allAcknowledged) ElMessage.success(`${command.label}：${acknowledged}/${statuses.length} 台已确认`)
+      else ElMessage.error(`${command.label}：成功 ${acknowledged}，失败 ${failed}`)
+    }
+    return result
+  } finally {
+    if (manageBusy) commandBusy.value = false
+  }
+}
+
+async function sendFleetPair(
+  uavCommand: VehicleQuickCommand['commandType'],
+  uavLabel: string,
+  usvCommand: VehicleQuickCommand['commandType'],
+  usvLabel: string,
+) {
+  const uav = await sendOverviewFleetCommand('UAV', uavCommand, uavLabel)
+  const usv = await sendOverviewFleetCommand('USV', usvCommand, usvLabel)
+  return {
+    total: uav.total + usv.total,
+    acknowledged: uav.acknowledged + usv.acknowledged,
+    failed: uav.failed + usv.failed,
+    allAcknowledged: uav.allAcknowledged && usv.allAcknowledged,
+  }
+}
+
+async function sendOverviewFleetCommand(
+  vehicleType: 'UAV' | 'USV',
+  commandType: VehicleQuickCommand['commandType'],
+  label: string,
+): Promise<VehicleBatchResult> {
+  const allowedStates: Partial<Record<VehicleQuickCommand['commandType'], string[]>> = {
+    UAV_TAKEOFF: ['GROUNDED'], UAV_HOVER: ['AIRBORNE', 'RETURNING'], UAV_RESUME: ['HOLDING'],
+    UAV_RETURN: ['AIRBORNE', 'HOLDING'], UAV_LAND: ['AIRBORNE', 'HOLDING', 'RETURNING'],
+    USV_DEPART: ['MOORED', 'STOPPED'], USV_HOLD: ['SAILING', 'RETURNING'], USV_RESUME: ['HOLDING'],
+    USV_RETURN: ['SAILING', 'HOLDING'], USV_STOP: ['SAILING', 'HOLDING', 'RETURNING'],
+  }
+  const desiredStates: Partial<Record<VehicleQuickCommand['commandType'], string[]>> = {
+    UAV_TAKEOFF: ['TAKING_OFF', 'AIRBORNE', 'HOLDING'], UAV_HOVER: ['HOLDING'], UAV_RESUME: ['AIRBORNE'],
+    UAV_RETURN: ['RETURNING'], UAV_LAND: ['LANDING', 'GROUNDED'],
+    USV_DEPART: ['DEPARTING', 'SAILING', 'HOLDING'], USV_HOLD: ['HOLDING'], USV_RESUME: ['SAILING'],
+    USV_RETURN: ['RETURNING'], USV_STOP: ['STOPPED', 'MOORED'],
+  }
+  const devices = quickControlDevices.value.filter((device) => device.type === vehicleType)
+  const isDeploymentCommand = commandType === 'UAV_TAKEOFF' || commandType === 'USV_DEPART'
+  const eligible: string[] = []
+  let alreadySatisfied = 0
+  let invalid = 0
+  for (const device of devices) {
+    const state = normalizeOperationalState(operationalStates.value[normalizeDeviceCode(device.code)], vehicleType)
+    if ((desiredStates[commandType] ?? []).includes(state)) alreadySatisfied += 1
+    else if (isDeploymentCommand || (allowedStates[commandType] ?? []).includes(state)) eligible.push(device.code)
+    else invalid += 1
+  }
+  if (invalid > 0) return { total: devices.length, acknowledged: alreadySatisfied, failed: invalid, allAcknowledged: false }
+  if (!eligible.length) {
+    return {
+      total: devices.length,
+      acknowledged: alreadySatisfied,
+      failed: 0,
+      allAcknowledged: devices.length > 0 && alreadySatisfied === devices.length,
+    }
+  }
+  const issued = await sendVehicleCommand(
+    { commandType, deviceCodes: eligible, label },
+    { manageBusy: false, notify: false },
+  )
+  return {
+    total: devices.length,
+    acknowledged: alreadySatisfied + issued.acknowledged,
+    failed: invalid + issued.failed,
+    allAcknowledged: alreadySatisfied + issued.acknowledged === devices.length && issued.failed === 0,
+  }
+}
+
+async function confirmReturn(action: 'return' | 'abort') {
+  const abort = action === 'abort'
+  await ElMessageBox.confirm(
+    abort
+      ? '终止任务后，将向全部无人机和无人艇下发返航指令。是否继续？'
+      : '将向全部无人机和无人艇下发返航，并在确认后结束当前任务。是否继续？',
+    abort ? '终止任务' : '全体返航',
+    {
+      confirmButtonText: abort ? '确认终止并返航' : '确认全体返航',
+      cancelButtonText: '取消',
+      type: 'warning',
+      customClass: 'mission-confirm-message-box',
+      center: true,
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+      distinguishCancelAndClose: true,
+    },
+  )
 }
 
 async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | 'resume' | 'return' | 'abort') {
-  if (action === 'deploy') {
-    await Promise.all([
-      sendVehicleCommand({ commandType: 'UAV_TAKEOFF', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组起飞' }),
-      sendVehicleCommand({ commandType: 'USV_DEPART', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组离泊' }),
-    ])
+  if (commandBusy.value) return
+  if (!trajectoryLive.value) {
+    ElMessage.error('Unity 实时遥测已中断，任务指令未下发')
     return
   }
-  if (action === 'return') {
-    await Promise.all([
-      sendVehicleCommand({ commandType: 'UAV_RETURN', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组返航' }),
-      sendVehicleCommand({ commandType: 'USV_RETURN', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组返航' }),
-    ])
-    overviewMissionStatus.value = 'CANCELLED'
-    return
-  }
-
-  if (action === 'abort') {
+  if (action === 'return' || action === 'abort') {
     try {
-      await ElMessageBox.confirm(
-        '终止任务后，将向全部无人机和无人艇下发返航指令。是否继续？',
-        '终止任务',
-        {
-          confirmButtonText: '确认终止并返航',
-          cancelButtonText: '取消',
-          type: 'warning',
-        },
-      )
+      await confirmReturn(action)
     } catch {
       return
     }
-
-    commandBusy.value = true
-
-    try {
-      const returned = await Promise.all([
-        sendVehicleCommand({
-          commandType: 'UAV_RETURN',
-          deviceCodes: ['uav-01', 'uav-02', 'uav-03'],
-          label: '无人机编组返航',
-        }),
-        sendVehicleCommand({
-          commandType: 'USV_RETURN',
-          deviceCodes: ['usv-01', 'usv-02', 'usv-03'],
-          label: '无人艇编组返航',
-        }),
-      ])
-
-      if (!returned.every(Boolean)) {
-        ElMessage.error('部分载具未能接收返航指令')
-        return
-      }
-
-      const result = await recordRuntimeCommand(
-        'CANCEL_MISSION',
-        '系统总览：终止任务并全体返航',
-        '',
-        { action: 'abort' },
-      )
-
-      if (
-        result.status === 'DISPATCHED' ||
-        result.status === 'PENDING'
-      ) {
-        unityBridgeStore.sendControlCommand(
-          'missionCancel',
-          '',
-          result.commandKey,
-        )
-      }
-
-      overviewMissionStatus.value = 'CANCELLED'
-      ElMessage.success('任务已终止，全体载具正在返航')
-    } finally {
-      commandBusy.value = false
-    }
-
-    return
   }
 
-
-  const commandMap: Record<Exclude<typeof action, 'deploy' | 'return'>, RuntimeCommandType> = {
-    start: 'START_MISSION',
-    pause: 'PAUSE_MISSION',
-    resume: 'RESUME_MISSION',
-  }
   commandBusy.value = true
   try {
+    if (!overviewMissionId.value) await loadOverviewMission()
+    if (!overviewMissionId.value) throw new Error('未找到三机三艇协同围捕任务')
 
-    if (action === 'start' && !fleetReady.value) {
-      ElMessage.warning('请先完成三机三艇编组部署')
+    if (action === 'abort') {
+      await runOverviewMissionAction('cancel')
+      ElMessage.success('任务已终止，Unity 正在执行编组安全返航')
+      return
+    }
+
+    if (action === 'deploy') {
+      if (overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED') {
+        ElMessage.success('编组已经部署并处于任务状态，无需重复部署')
+        return
+      }
+      if (['DRAFT', 'COMPLETED', 'FAILED', 'CANCELLED'].includes(overviewMissionStatus.value)) {
+        await runOverviewMissionAction('ready')
+      }
+      if (overviewMissionStatus.value !== 'READY') throw new Error('当前任务状态不允许重新部署')
+      const deployed = await sendFleetPair('UAV_TAKEOFF', '无人机编组起飞', 'USV_DEPART', '无人艇编组离泊')
+      if (!deployed.allAcknowledged) throw new Error(`编组部署失败：${deployed.failed} 台载具未确认执行`)
+      overviewDeploymentAcknowledged.value = true
+      ElMessage.success(`编组部署完成：${deployed.acknowledged}/${deployed.total} 台载具已确认`)
+      return
+    }
+
+    if (action === 'start') {
+      if (!fleetDeploymentAccepted.value) {
+        if (['DRAFT', 'COMPLETED', 'FAILED', 'CANCELLED'].includes(overviewMissionStatus.value)) {
+          await runOverviewMissionAction('ready')
+        }
+        const deployed = await sendFleetPair('UAV_TAKEOFF', '无人机编组起飞', 'USV_DEPART', '无人艇编组离泊')
+        if (!deployed.allAcknowledged) throw new Error(`无法开始任务：${deployed.failed} 台载具未确认部署`)
+        overviewDeploymentAcknowledged.value = true
+      }
+      await runOverviewMissionAction('start')
+      ElMessage.success('任务已启动，Unity 与后端状态均已确认')
       return
     }
 
     if (action === 'pause') {
-      await Promise.all([
-        sendVehicleCommand({ commandType: 'UAV_HOVER', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机编组悬停' }),
-        sendVehicleCommand({ commandType: 'USV_HOLD', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇编组保持' }),
-      ])
+      const held = await sendFleetPair('UAV_HOVER', '无人机编组悬停', 'USV_HOLD', '无人艇编组定点保持')
+      if (!held.allAcknowledged) throw new Error(`暂停失败：${held.failed} 台载具未确认保持`)
+      await runOverviewMissionAction('pause')
+      ElMessage.success('任务已暂停，三机三艇均已进入保持状态')
+      return
     }
+
     if (action === 'resume') {
-      await Promise.all([
-        sendVehicleCommand({ commandType: 'UAV_RESUME', deviceCodes: ['uav-01', 'uav-02', 'uav-03'], label: '无人机继续任务' }),
-        sendVehicleCommand({ commandType: 'USV_RESUME', deviceCodes: ['usv-01', 'usv-02', 'usv-03'], label: '无人艇继续航行' }),
-      ])
+      const resumed = await sendFleetPair('UAV_RESUME', '无人机继续任务', 'USV_RESUME', '无人艇继续航行')
+      if (!resumed.allAcknowledged) throw new Error(`继续任务失败：${resumed.failed} 台载具未确认恢复`)
+      await runOverviewMissionAction('resume')
+      ElMessage.success('任务已继续，Unity 与后端状态均已确认')
+      return
     }
-    const result = await recordRuntimeCommand(commandMap[action], `系统总览任务编组操作：${action}`, '', { action })
-    if (result.status === 'DISPATCHED' || result.status === 'PENDING') {
-      const unityActions = {
-        deploy: 'missionResume',
-        start: 'missionStart',
-        pause: 'missionPause',
-        resume: 'missionResume',
-        return: 'missionReturn',
-      } as const
-      unityBridgeStore.sendControlCommand(unityActions[action], '', result.commandKey)
-    }
-    unityCommandState.value = `任务指令：${result.status}`
-    if (result.status === 'ACKNOWLEDGED') {
-      if (action === 'start' || action === 'resume') overviewMissionStatus.value = 'RUNNING'
-      if (action === 'pause') overviewMissionStatus.value = 'PAUSED'
-    }
-    ElMessage.success('任务编组指令已记录')
+
+    const returning = await sendFleetPair('UAV_RETURN', '无人机编组返航', 'USV_RETURN', '无人艇编组返航')
+    if (!returning.allAcknowledged) throw new Error(`返航失败：${returning.failed} 台载具未确认返航`)
+    await runOverviewMissionAction('cancel')
+    ElMessage.success('全体返航已确认，当前任务已结束')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '任务编组操作失败')
   } finally {
     commandBusy.value = false
   }
@@ -516,7 +820,7 @@ function handleUnityMessage(message: UnityMessage) {
     } else if (success) {
       const missionState = status.split(':', 1)[0]?.trim().toUpperCase()
       if (['RUNNING', 'PAUSED', 'FAILED', 'CANCELLED', 'COMPLETED'].includes(missionState ?? '')) {
-        overviewMissionStatus.value = missionState as OverviewMissionStatus
+        overviewMissionStatus.value = missionState as MissionStatus
       }
     }
     unityCommandState.value = `${success ? '已执行' : '执行失败'}：${commandType} / ${status}`
@@ -527,6 +831,20 @@ function handleUnityMessage(message: UnityMessage) {
     const status = String(payload.status ?? (success ? '视角切换完成' : '视角切换失败'))
     unityCommandState.value = `${success ? '已切换' : '切换失败'}：${status}`
     if (!success) ElMessage.error(status)
+  }
+
+  if (message.type === 'trajectoryVisibilityChanged') {
+    const success = payload.success === true
+    const visible = payload.visible !== false
+    const status = String(payload.status ?? (visible ? 'Unity 轨迹已显示' : 'Unity 轨迹已隐藏'))
+    if (trajectoryToggleTimer !== null) {
+      window.clearTimeout(trajectoryToggleTimer)
+      trajectoryToggleTimer = null
+    }
+    unityBridgeStore.setTrajectoryTogglePending(false)
+    if (success) unityBridgeStore.setTrajectoryVisibility(visible)
+    else ElMessage.error(status)
+    unityCommandState.value = `${success ? '已执行' : '执行失败'}：${status}`
   }
 
   if (message.type !== 'cameraChanged' || payload.success === true) {
@@ -543,11 +861,17 @@ function handleUnityError(message: string) {
 }
 
 onMounted(() => {
+  freshnessTimer = window.setInterval(() => { freshnessClock.value = Date.now() }, 500)
   void monitoringStore.refresh({}, true).then(pushPoseFrameToUnity)
   monitoringStore.connectEvents()
+  void loadOverviewMission().catch((error) => {
+    console.warn('Overview mission load failed', error)
+  })
 })
 
 onBeforeUnmount(() => {
+  if (freshnessTimer !== null) window.clearInterval(freshnessTimer)
+  if (trajectoryToggleTimer !== null) window.clearTimeout(trajectoryToggleTimer)
   stopUnityHeartbeat()
   monitoringStore.disconnectEvents()
 })
@@ -641,12 +965,22 @@ watch(
                 :key="mode.value"
                 type="button"
                 :class="{ active: selectedCameraMode === mode.value }"
+                :disabled="cameraCommandBusy || !unityBridgeStore.connected"
                 @click="switchCamera(mode.value)"
               >
                 {{ mode.label }}
               </button>
+              <button
+                type="button"
+                :class="{ active: !unityBridgeStore.trajectoryVisible }"
+                :disabled="!unityBridgeStore.connected || unityBridgeStore.trajectoryTogglePending"
+                :aria-pressed="!unityBridgeStore.trajectoryVisible"
+                @click="toggleUnityTrajectory"
+              >
+                {{ unityBridgeStore.trajectoryVisible ? '隐藏轨迹' : '显示轨迹' }}
+              </button>
             </div>
-            <button class="overview-tool-button" type="button" @click="focusSelectedDevice">重新居中</button>
+            <button class="overview-tool-button" type="button" :disabled="cameraCommandBusy || !unityBridgeStore.connected" @click="focusSelectedDevice">重新居中</button>
           </div>
 
           <div class="overview-unity-stage unity-runtime-viewport" data-unity-runtime-viewport>
@@ -665,7 +999,7 @@ watch(
               :selected-device-code="selectedDeviceCode"
               :feedback="commandFeedback"
               :operational-states="operationalStates"
-              :busy="commandBusy"
+              :busy="commandBusy || !trajectoryLive || missionControlOwnsOverviewMission"
               @select="selectDevice"
               @command="sendVehicleCommand"
             />
@@ -675,18 +1009,18 @@ watch(
               :selected-device-code="selectedDeviceCode"
               :feedback="commandFeedback"
               :operational-states="operationalStates"
-              :busy="commandBusy"
+              :busy="commandBusy || !trajectoryLive || missionControlOwnsOverviewMission"
               @select="selectDevice"
               @command="sendVehicleCommand"
             />
             <MissionGroupControl
-              mission-name="三机三艇协同围捕"
+              :mission-name="overviewMissionName"
               :status="overviewMissionStatus"
               :busy="commandBusy"
-              :progress="realtimePoseCount === 6 ? 72 : 18"
-              :can-deploy="overviewMissionStatus === 'READY' && !fleetReady"
-              :can-start="overviewMissionStatus === 'READY' && fleetReady"
-              :readiness-text="fleetReady ? '6/6 载具就绪' : '等待三机三艇部署'"
+              :progress="missionGroupProgress"
+              :can-deploy="!!overviewMissionId && trajectoryLive && !missionControlOwnsOverviewMission && ['DRAFT', 'READY', 'COMPLETED', 'FAILED', 'CANCELLED'].includes(overviewMissionStatus) && !fleetReady"
+              :can-start="!!overviewMissionId && trajectoryLive && !missionControlOwnsOverviewMission && overviewMissionStatus === 'READY' && fleetDeploymentAccepted"
+              :readiness-text="missionReadinessText"
               @action="handleMissionGroupAction"
             />
           </div>

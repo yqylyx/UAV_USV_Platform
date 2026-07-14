@@ -69,25 +69,47 @@ const controlledStates = computed(() => {
   return new Set(devices.map((device) => operationalState(device.code)))
 })
 const shouldResume = computed(() => controlledStates.value.has('HOLDING'))
+const hasActiveDevices = computed(() =>
+  props.vehicleType === 'UAV'
+    ? controlledStates.value.has('AIRBORNE') || controlledStates.value.has('RETURNING')
+    : controlledStates.value.has('SAILING') || controlledStates.value.has('RETURNING'),
+)
+const mixedHoldAndActive = computed(() => groupMode.value && shouldResume.value && hasActiveDevices.value)
 
 type QuickAction = { label: string; commandType: RuntimeCommandType; tone?: string; allowedStates: string[] }
 
 const actions = computed<QuickAction[]>(() => {
   if (props.vehicleType === 'UAV') {
+    const motionActions: QuickAction[] = mixedHoldAndActive.value
+      ? [
+          { label: '悬停', commandType: 'UAV_HOVER', allowedStates: ['AIRBORNE', 'RETURNING'] },
+          { label: '继续任务', commandType: 'UAV_RESUME', tone: 'primary', allowedStates: ['HOLDING'] },
+        ]
+      : [
+          shouldResume.value
+            ? { label: '继续任务', commandType: 'UAV_RESUME', tone: 'primary', allowedStates: ['HOLDING'] }
+            : { label: '悬停', commandType: 'UAV_HOVER', allowedStates: ['AIRBORNE', 'RETURNING'] },
+        ]
     return [
       { label: '起飞', commandType: 'UAV_TAKEOFF', tone: 'primary', allowedStates: ['GROUNDED'] },
-      shouldResume.value
-        ? { label: '继续任务', commandType: 'UAV_RESUME', tone: 'primary', allowedStates: ['HOLDING'] }
-        : { label: '悬停', commandType: 'UAV_HOVER', allowedStates: ['AIRBORNE', 'RETURNING'] },
+      ...motionActions,
       { label: '返航', commandType: 'UAV_RETURN', allowedStates: ['AIRBORNE', 'HOLDING'] },
       { label: '降落', commandType: 'UAV_LAND', tone: 'warning', allowedStates: ['AIRBORNE', 'HOLDING', 'RETURNING'] },
     ]
   }
+  const motionActions: QuickAction[] = mixedHoldAndActive.value
+    ? [
+        { label: '定点保持', commandType: 'USV_HOLD', allowedStates: ['SAILING', 'RETURNING'] },
+        { label: '继续航行', commandType: 'USV_RESUME', tone: 'primary', allowedStates: ['HOLDING'] },
+      ]
+    : [
+        shouldResume.value
+          ? { label: '继续航行', commandType: 'USV_RESUME', tone: 'primary', allowedStates: ['HOLDING'] }
+          : { label: '定点保持', commandType: 'USV_HOLD', allowedStates: ['SAILING', 'RETURNING'] },
+      ]
   return [
     { label: '离泊启动', commandType: 'USV_DEPART', tone: 'primary', allowedStates: ['MOORED', 'STOPPED'] },
-    shouldResume.value
-      ? { label: '继续航行', commandType: 'USV_RESUME', tone: 'primary', allowedStates: ['HOLDING'] }
-      : { label: '定点保持', commandType: 'USV_HOLD', allowedStates: ['SAILING', 'RETURNING'] },
+    ...motionActions,
     { label: '返航', commandType: 'USV_RETURN', allowedStates: ['SAILING', 'HOLDING'] },
     { label: '停止推进', commandType: 'USV_STOP', tone: 'warning', allowedStates: ['SAILING', 'HOLDING', 'RETURNING'] },
   ]
@@ -100,12 +122,15 @@ const selectedFeedback = computed(() => {
   return code ? props.feedback[normalizeCode(code)] : undefined
 })
 const operationalStateLabels: Record<string, string> = {
+  UNKNOWN: '等待遥测',
   GROUNDED: '地面待命',
+  TAKING_OFF: '起飞中',
   AIRBORNE: '空中执行',
   HOLDING: '安全保持',
   RETURNING: '返航中',
   LANDING: '降落中',
   MOORED: '靠泊待命',
+  DEPARTING: '离泊中',
   SAILING: '航行中',
   STOPPED: '已停止',
   ERROR: '异常',
@@ -193,7 +218,7 @@ function actionIcon(commandType: RuntimeCommandType) {
           <strong>{{ title }}</strong>
         </div>
       </div>
-      <button type="button" class="group-toggle" :class="{ active: groupMode }" @click="groupMode = !groupMode">
+      <button type="button" class="group-toggle" :class="{ active: groupMode }" :disabled="busy" @click="groupMode = !groupMode">
         {{ groupMode ? '编组控制' : '单机控制' }}
       </button>
     </header>
@@ -204,6 +229,7 @@ function actionIcon(commandType: RuntimeCommandType) {
         :key="device.code"
         type="button"
         :class="{ active: normalizeCode(device.code) === normalizeCode(selectedDevice?.code || '') }"
+        :disabled="busy"
         @click="emit('select', device.code)"
       >
         <VehicleGlyph :type="vehicleType" size="small" :active="normalizeCode(device.code) === normalizeCode(selectedDevice?.code || '')" />
@@ -229,7 +255,7 @@ function actionIcon(commandType: RuntimeCommandType) {
       >
         <component :is="actionIcon(action.commandType)" class="command-icon" :stroke-width="1.8" />
         <span>{{ action.label }}</span>
-        <small>{{ groupMode ? `全部 ${typeLabel}` : selectedDevice?.code.toUpperCase() }}</small>
+        <small>{{ groupMode ? `${availableDevices(action).length}/${typeDevices.length} 台可执行` : selectedDevice?.code.toUpperCase() }}</small>
       </button>
     </div>
   </article>
@@ -241,7 +267,7 @@ function actionIcon(commandType: RuntimeCommandType) {
   --accent-rgb: 255, 202, 58;
   padding: 14px;
   background: linear-gradient(145deg, rgba(7, 24, 31, 0.97), rgba(8, 18, 26, 0.94));
-  border: 1px solid rgba(var(--accent-rgb), 0.46);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
   border-radius: 8px;
   box-shadow: inset 0 0 28px rgba(var(--accent-rgb), 0.035);
   position: relative;
@@ -316,9 +342,9 @@ header strong {
 
 .group-toggle.active,
 .device-chips button.active {
-  color: #071317;
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.58);
 }
 
 .device-chips {
@@ -398,13 +424,18 @@ header strong {
 
 .command-grid button:hover:not(:disabled),
 .command-grid button.primary {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.58);
+}
+
+.command-grid button:hover:not(:disabled) {
   color: #061113;
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.command-grid button:hover:not(:disabled) .command-icon,
-.command-grid button.primary .command-icon { color: #071317; filter: none; }
+.command-grid button:hover:not(:disabled) .command-icon { color: #071317; filter: none; }
 
 .command-grid button:hover:not(:disabled) {
   transform: translateY(-2px);
@@ -417,7 +448,16 @@ header strong {
 
 .command-grid button:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  color: #628083;
+  background: rgba(255, 255, 255, 0.018);
+  border-color: rgba(125, 171, 174, 0.13);
+  opacity: 0.62;
+  box-shadow: none;
+}
+
+.command-grid button:disabled .command-icon {
+  color: #557174;
+  filter: none;
 }
 
 .command-grid span,

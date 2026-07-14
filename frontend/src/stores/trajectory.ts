@@ -46,6 +46,11 @@ export const useTrajectoryStore = defineStore('trajectory', {
   actions: {
     ingest(payload: Record<string, unknown>) {
       const sequence = finite(payload.sequence)
+      const sequenceRestarted = sequence > 0 && sequence <= 3 && sequence < this.lastSequence
+      if (sequenceRestarted) {
+        this.frame = null
+        this.lastSequence = 0
+      }
       if (sequence <= this.lastSequence) return
       const mission = (payload.mission ?? {}) as Record<string, unknown>
       const agents = Array.isArray(payload.agents) ? payload.agents : []

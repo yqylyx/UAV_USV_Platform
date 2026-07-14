@@ -3,6 +3,7 @@ package com.uavusv.platform.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uavusv.platform.common.api.ApiResponse;
 import com.uavusv.platform.common.exception.ErrorCode;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,6 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -42,6 +44,11 @@ public class SecurityConfig {
                         .securityContextRepository(securityContextRepository)
                 )
                 .authorizeHttpRequests(authorize -> authorize
+                        // SSE responses are authenticated on the initial REQUEST. Tomcat
+                        // later performs ASYNC/ERROR redispatches after the response has
+                        // already been committed; authorizing those again loses the
+                        // request security context and produces a false Access Denied.
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers(
                                 "/api/auth/csrf",
                                 "/api/auth/login",
@@ -56,7 +63,13 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, exception) ->
                                 writeError(response, objectMapper, ErrorCode.UNAUTHORIZED))
                         .accessDeniedHandler((request, response, exception) ->
-                                writeError(response, objectMapper, ErrorCode.FORBIDDEN))
+                                writeError(
+                                        response,
+                                        objectMapper,
+                                        exception instanceof CsrfException
+                                                ? ErrorCode.CSRF_INVALID
+                                                : ErrorCode.FORBIDDEN
+                                ))
                 )
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())

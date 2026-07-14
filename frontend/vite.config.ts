@@ -6,6 +6,9 @@ import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
+const devPort = Number(process.env.VITE_DEV_PORT ?? 5174)
+const backendTarget = process.env.VITE_BACKEND_TARGET ?? 'http://127.0.0.1:8081'
+
 function unityWebglHeaders(): Plugin {
   const unityAssetPattern = /^\/unity\/.*\.(?:wasm|data|js|symbols\.json)$/i
   return {
@@ -59,11 +62,11 @@ export default defineConfig({
   },
   server: {
     host: '127.0.0.1',
-    port: 5174,
+    port: Number.isFinite(devPort) ? devPort : 5174,
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8081',
+        target: backendTarget,
         changeOrigin: true,
       },
     },

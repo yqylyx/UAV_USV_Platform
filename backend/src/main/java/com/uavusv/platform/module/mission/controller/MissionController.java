@@ -72,43 +72,43 @@ public class MissionController {
 
     @PostMapping("/{id}/ready")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<MissionActionResponse> markReady(@PathVariable Long id, Authentication authentication) {
-        return ApiResponse.success(missionService.markReady(id, authentication.getName()));
+    public ApiResponse<MissionActionResponse> markReady(@PathVariable Long id, @RequestParam(defaultValue = "UNKNOWN") String source, Authentication authentication) {
+        return ApiResponse.success(missionService.markReady(id, authentication.getName(), source));
     }
 
     @PostMapping("/{id}/start")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<MissionActionResponse> startMission(@PathVariable Long id, Authentication authentication) {
-        return ApiResponse.success(missionService.startMission(id, authentication.getName()));
+    public ApiResponse<MissionActionResponse> startMission(@PathVariable Long id, @RequestParam(defaultValue = "UNKNOWN") String source, Authentication authentication) {
+        return ApiResponse.success(missionService.startMission(id, authentication.getName(), source));
     }
 
     @PostMapping("/{id}/pause")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<MissionActionResponse> pauseMission(@PathVariable Long id, Authentication authentication) {
-        return ApiResponse.success(missionService.pauseMission(id, authentication.getName()));
+    public ApiResponse<MissionActionResponse> pauseMission(@PathVariable Long id, @RequestParam(defaultValue = "UNKNOWN") String source, Authentication authentication) {
+        return ApiResponse.success(missionService.pauseMission(id, authentication.getName(), source));
     }
 
     @PostMapping("/{id}/resume")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<MissionActionResponse> resumeMission(@PathVariable Long id, Authentication authentication) {
-        return ApiResponse.success(missionService.resumeMission(id, authentication.getName()));
+    public ApiResponse<MissionActionResponse> resumeMission(@PathVariable Long id, @RequestParam(defaultValue = "UNKNOWN") String source, Authentication authentication) {
+        return ApiResponse.success(missionService.resumeMission(id, authentication.getName(), source));
     }
 
     @PostMapping("/{id}/complete")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<MissionActionResponse> completeMission(@PathVariable Long id, Authentication authentication) {
-        return ApiResponse.success(missionService.completeMission(id, authentication.getName()));
+    public ApiResponse<MissionActionResponse> completeMission(@PathVariable Long id, @RequestParam(defaultValue = "UNKNOWN") String source, Authentication authentication) {
+        return ApiResponse.success(missionService.completeMission(id, authentication.getName(), source));
     }
 
     @PostMapping("/{id}/fail")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<MissionActionResponse> failMission(@PathVariable Long id, Authentication authentication) {
-        return ApiResponse.success(missionService.failMission(id, authentication.getName()));
+    public ApiResponse<MissionActionResponse> failMission(@PathVariable Long id, @RequestParam(defaultValue = "UNKNOWN") String source, Authentication authentication) {
+        return ApiResponse.success(missionService.failMission(id, authentication.getName(), source));
     }
 
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<MissionActionResponse> cancelMission(@PathVariable Long id, Authentication authentication) {
-        return ApiResponse.success(missionService.cancelMission(id, authentication.getName()));
+    public ApiResponse<MissionActionResponse> cancelMission(@PathVariable Long id, @RequestParam(defaultValue = "UNKNOWN") String source, Authentication authentication) {
+        return ApiResponse.success(missionService.cancelMission(id, authentication.getName(), source));
     }
 }

@@ -46,10 +46,15 @@ export interface MissionActionResult {
   command: RuntimeCommandResult | null
 }
 
-export async function executeMissionAction(id: number, action: MissionAction): Promise<MissionActionResult> {
+export async function executeMissionAction(
+  id: number,
+  action: MissionAction,
+  source: 'MISSION_CONTROL' | 'SYSTEM_OVERVIEW' = 'MISSION_CONTROL',
+): Promise<MissionActionResult> {
   const csrf = await fetchCsrfToken()
   const response = await http.post<ApiResponse<MissionActionResult>>(`/missions/${id}/${action}`, undefined, {
     headers: { [csrf.headerName]: csrf.token },
+    params: { source },
   })
   return response.data.data
 }

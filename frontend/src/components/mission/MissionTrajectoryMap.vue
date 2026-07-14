@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { Radio, Trash2 } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
+import type { MissionTrajectorySessionState } from '@/stores/missionTrajectorySession'
 import type { UnityTrajectoryFrame } from '@/stores/trajectory'
+import { normalizeOperationalState } from '@/utils/runtimeOperationalState'
 
 type TrackKind = 'USV' | 'UAV' | 'TARGET'
 
@@ -49,6 +52,10 @@ const props = withDefaults(
     selectedDeviceCode?: string
     commandFeedback?: Record<string, RuntimeCommandStatus | undefined>
     trajectoryFrame?: UnityTrajectoryFrame | null
+    sessionState?: MissionTrajectorySessionState
+    sessionStartSequence?: number | null
+    sessionRevision?: number
+    externalActivity?: boolean
   }>(),
   {
     missionName: '三机三艇协同围捕预演',
@@ -56,6 +63,10 @@ const props = withDefaults(
     selectedDeviceCode: 'uav-02',
     commandFeedback: () => ({}),
     trajectoryFrame: null,
+    sessionState: 'IDLE',
+    sessionStartSequence: null,
+    sessionRevision: 0,
+    externalActivity: false,
   },
 )
 
@@ -92,13 +103,13 @@ const trajectoryMinSampleDistance = 0.25
 const trajectoryMaxSamplesPerAgent = 900
 const trajectoryDrawSegmentsPerAgent = 140
 
-const playing = ref(true)
 const elapsed = ref(0)
 const tracks = ref<TrackState[]>([])
 const deviceMotion = ref<Record<string, DeviceMotionState>>({})
 const localFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
 const freshnessClock = ref(Date.now())
 let freshnessTimer: number | null = null
+let lastRecordedReceivedAt: number | null = null
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value))
@@ -136,8 +147,33 @@ function applyTrajectoryFrame(frame: UnityTrajectoryFrame | null) {
   if (!frame) return
   captureRadius = frame.mission.captureRadius
   defenseRadius = frame.mission.defenseRadius
-  elapsed.value = frame.mission.elapsed
-  playing.value = true
+
+  const recording = props.sessionState === 'RUNNING' || props.sessionState === 'RETURNING'
+  const afterStart = props.sessionStartSequence === null || frame.sequence >= props.sessionStartSequence
+  const frozen = props.sessionState === 'PAUSED' || props.sessionState === 'STOPPED'
+
+  // Device state feedback always follows the real Unity frame, even while this page is not recording.
+  for (const agent of frame.agents) {
+    if (agent.type === 'TARGET') continue
+    const code = agent.code.trim().toLowerCase()
+    deviceMotion.value[code] = { time: agent.y, state: stateFromUnity(agent.state) }
+    emit('deviceStateChange', code, operationalStateFromUnity(agent.state, agent.type))
+  }
+  deviceMotion.value = { ...deviceMotion.value }
+
+  if (frozen) {
+    lastRecordedReceivedAt = null
+    return
+  }
+
+  if (recording && afterStart) {
+    if (lastRecordedReceivedAt !== null) {
+      elapsed.value += Math.max(0, Math.min(2, (frame.receivedAt - lastRecordedReceivedAt) / 1000))
+    }
+    lastRecordedReceivedAt = frame.receivedAt
+  } else {
+    lastRecordedReceivedAt = null
+  }
 
   const previousByCode = new Map(tracks.value.map((track) => [track.id, track]))
   tracks.value = frame.agents.map((agent) => {
@@ -145,8 +181,8 @@ function applyTrajectoryFrame(frame: UnityTrajectoryFrame | null) {
     const definition = definitionFor(code, agent.type)
     const previous = previousByCode.get(code)
     const position = { x: agent.x, z: agent.z }
-    const history = previous ? [...previous.history] : []
-    let distance = previous?.distance ?? 0
+    const history = recording && afterStart && previous ? [...previous.history] : []
+    let distance = recording && afterStart ? previous?.distance ?? 0 : 0
     const last = history[history.length - 1]
     const moved = last ? distanceBetween(last, position) : Number.POSITIVE_INFINITY
     if (moved >= trajectoryMinSampleDistance) {
@@ -155,13 +191,8 @@ function applyTrajectoryFrame(frame: UnityTrajectoryFrame | null) {
       if (history.length > trajectoryMaxSamplesPerAgent) history.shift()
     }
     if (!history.length) history.push({ ...position })
-    if (agent.type !== 'TARGET') {
-      deviceMotion.value[code] = { time: agent.y, state: stateFromUnity(agent.state) }
-      emit('deviceStateChange', code, operationalStateFromUnity(agent.state, agent.type))
-    }
     return { ...definition, position, altitude: agent.y, state: agent.state, history, distance }
   })
-  deviceMotion.value = { ...deviceMotion.value }
 }
 
 function stateFromUnity(state: string): OperationalState {
@@ -175,16 +206,7 @@ function stateFromUnity(state: string): OperationalState {
 }
 
 function operationalStateFromUnity(state: string, type: TrackKind) {
-  const normalized = state.toUpperCase()
-  if (normalized === 'TAKING_OFF') return 'AIRBORNE'
-  if (normalized === 'GROUNDED') return 'GROUNDED'
-  if (normalized === 'AIRBORNE') return 'AIRBORNE'
-  if (normalized === 'SAILING') return 'SAILING'
-  if (normalized === 'HOLDING') return 'HOLDING'
-  if (normalized === 'RETURNING') return 'RETURNING'
-  if (normalized === 'LANDING') return 'LANDING'
-  if (normalized === 'STOPPED') return 'STOPPED'
-  return type === 'UAV' ? 'GROUNDED' : 'MOORED'
+  return normalizeOperationalState(state, type === 'UAV' ? 'UAV' : type === 'USV' ? 'USV' : undefined) || 'UNKNOWN'
 }
 
 const targetTrack = computed(() => tracks.value.find((track) => track.kind === 'TARGET'))
@@ -364,8 +386,32 @@ const uavFormationOverlay = computed(() => {
   }
 })
 
+const formationVisible = computed(() => props.sessionState === 'RUNNING' || props.sessionState === 'RETURNING')
+
+const sessionStatusLabel = computed(() => {
+  if (props.externalActivity && props.sessionState === 'IDLE') return '外部任务运行中 · 本页未记录'
+  const labels: Record<MissionTrajectorySessionState, string> = {
+    IDLE: '实时位置监视 · 未记录',
+    DEPLOYING: '编组部署中 · 轨迹已清零',
+    READY: '编组已就绪 · 等待开始',
+    RUNNING: '任务控制记录中',
+    PAUSED: '本页轨迹已暂停',
+    RETURNING: '返航轨迹记录中',
+    STOPPED: '本页轨迹已停止',
+  }
+  return labels[props.sessionState]
+})
+
 const phase = computed(() => {
-  if (props.trajectoryFrame?.mission.phase) return props.trajectoryFrame.mission.phase
+  if (props.trajectoryFrame && !isFrameLive.value) return '轨迹数据已中断，保持最后位置'
+  if (props.externalActivity && props.sessionState === 'IDLE') return '系统总览任务运行中，本页未开始轨迹记录'
+  if (props.sessionState === 'IDLE') return '实时位置监视，等待本页编组部署'
+  if (props.sessionState === 'DEPLOYING') return '任务控制正在部署编组'
+  if (props.sessionState === 'READY') return '编组就绪，等待本页开始任务'
+  if (props.sessionState === 'PAUSED') return '任务控制轨迹记录已暂停'
+  if (props.sessionState === 'STOPPED') return '任务控制轨迹记录已停止'
+  if (props.sessionState === 'RETURNING') return '任务控制编组返航'
+  if (props.sessionState === 'RUNNING' && props.trajectoryFrame?.mission.phase) return props.trajectoryFrame.mission.phase
   const states = Object.values(deviceMotion.value).map((item) => item.state)
   if (states.some((state) => state === 'ERROR')) return '载具指令异常'
   if (states.some((state) => state === 'LANDING')) return 'UAV 编组降落'
@@ -404,6 +450,25 @@ function formatDistance(distance: number) {
   return distance >= 1000 ? `${(distance / 1000).toFixed(2)}km` : `${Math.round(distance)}m`
 }
 
+function trajectoryStateLabel(state: string, kind: TrackKind) {
+  if (kind === 'TARGET') return '目标'
+  const labels: Record<string, string> = {
+    GROUNDED: '待命',
+    TAKING_OFF: '起飞',
+    AIRBORNE: '飞行',
+    HOVERING: '悬停',
+    HOLDING: '保持',
+    RETURNING: '返航',
+    LANDING: '降落',
+    MOORED: '靠泊',
+    DEPARTING: '离泊',
+    SAILING: '航行',
+    STOPPED: '停止',
+    UNKNOWN: '等待遥测',
+  }
+  return labels[state.toUpperCase()] ?? '同步中'
+}
+
 function clearHistory() {
   tracks.value = tracks.value.map((track) => ({ ...track, history: [{ ...track.position }], distance: 0 }))
 }
@@ -428,25 +493,17 @@ function applyVehicleCommand(
     if (!motion) return
     if (commandType === 'UAV_TAKEOFF' || commandType === 'UAV_RESUME' || commandType === 'USV_DEPART' || commandType === 'USV_RESUME') {
       motion.state = 'ACTIVE'
-      playing.value = true
     } else if (commandType === 'UAV_HOVER' || commandType === 'USV_HOLD') {
       motion.state = 'HOLDING'
     } else if (commandType === 'UAV_RETURN' || commandType === 'USV_RETURN') {
       motion.state = 'RETURNING'
-      playing.value = true
     } else if (commandType === 'UAV_LAND' || commandType === 'UAV_EMERGENCY_LAND') {
       motion.state = 'LANDING'
-      playing.value = true
     } else if (commandType === 'USV_STOP' || commandType === 'USV_EMERGENCY_STOP') {
       motion.state = 'STOPPED'
     }
   })
   deviceMotion.value = { ...deviceMotion.value }
-}
-
-function applyMissionAction(action: string) {
-  if (action === 'pause' || action === 'abort') playing.value = false
-  if (action === 'start' || action === 'resume' || action === 'deploy' || action === 'return') playing.value = true
 }
 
 onMounted(() => {
@@ -464,7 +521,19 @@ watch(
   { deep: false },
 )
 
-defineExpose({ applyVehicleCommand, applyMissionAction })
+watch(
+  () => [props.sessionState, props.sessionRevision] as const,
+  ([state], [previousState]) => {
+    lastRecordedReceivedAt = null
+    if (state === 'IDLE' || state === 'DEPLOYING' || state === 'READY' || (state === 'RUNNING' && previousState !== 'PAUSED')) {
+      elapsed.value = 0
+      clearHistory()
+    }
+    applyTrajectoryFrame(props.trajectoryFrame)
+  },
+)
+
+defineExpose({ applyVehicleCommand })
 </script>
 
 <template>
@@ -476,8 +545,15 @@ defineExpose({ applyVehicleCommand, applyMissionAction })
         <small>读取 Unity WebGL 同场景 Transform · Unity X/Z 坐标系</small>
       </div>
       <div class="trajectory-toolbar-actions">
-        <em :class="{ stale: !isFrameLive }">{{ sourceLabel }}</em>
-        <button type="button" :disabled="!tracks.length" @click="clearHistory">清空历史轨迹</button>
+        <span class="trajectory-source-status" :class="{ stale: !isFrameLive }">
+          <Radio :size="14" aria-hidden="true" />
+          <span><strong>{{ isFrameLive ? '轨迹在线' : '数据已冻结' }}</strong><small>{{ sourceLabel }}</small></span>
+        </span>
+        <span class="trajectory-session-status" :class="sessionState.toLowerCase()">{{ sessionStatusLabel }}</span>
+        <button type="button" title="清空当前页面累计的轨迹历史" :disabled="!tracks.length" @click="clearHistory">
+          <Trash2 :size="14" aria-hidden="true" />
+          <span>清空轨迹</span>
+        </button>
       </div>
     </header>
 
@@ -515,7 +591,7 @@ defineExpose({ applyVehicleCommand, applyMissionAction })
           <text v-if="!viewTracks.length" x="292" y="250" class="unity-no-data">WAITING FOR UNITY TRAJECTORY DATA</text>
           <path
             v-for="(item, index) in usvFormationOverlay.items"
-            v-show="item.readiness > 0.01"
+            v-show="formationVisible && item.readiness > 0.01"
             :key="`usv-arc-${index}`"
             :d="item.path"
             class="unity-usv-formation"
@@ -523,7 +599,7 @@ defineExpose({ applyVehicleCommand, applyMissionAction })
 
           <line
             v-for="(edge, index) in uavFormationOverlay.edges"
-            v-show="edge.progress > 0.01"
+            v-show="formationVisible && edge.progress > 0.01"
             :key="`uav-edge-${index}`"
             :x1="edge.from.x"
             :y1="edge.from.y"
@@ -572,13 +648,13 @@ defineExpose({ applyVehicleCommand, applyMissionAction })
           </g>
 
           <text
-            v-if="usvFormationOverlay.progress > 0.01"
+            v-if="formationVisible && usvFormationOverlay.progress > 0.01"
             :x="usvFormationOverlay.labelPoint.x + 4"
             :y="usvFormationOverlay.labelPoint.y"
             class="unity-formation-label unity-usv-label"
           >USV CIRCLE {{ Math.round(usvFormationOverlay.progress * 100) }}%</text>
           <text
-            v-if="uavFormationOverlay.progress > 0.01"
+            v-if="formationVisible && uavFormationOverlay.progress > 0.01"
             :x="uavFormationOverlay.labelPoint.x - 126"
             :y="uavFormationOverlay.labelPoint.y"
             class="unity-formation-label unity-uav-label"
@@ -593,7 +669,7 @@ defineExpose({ applyVehicleCommand, applyMissionAction })
             :transform="`translate(0 ${statisticsRect.y + 29 + index * 18})`"
           >
             <rect :x="statisticsRect.x + 7" y="5" width="12" height="3" :fill="track.color" />
-            <text :x="statisticsRect.x + 22" y="10">{{ track.label }}&nbsp;&nbsp;{{ formatDistance(track.distance) }}</text>
+            <text :x="statisticsRect.x + 22" y="10">{{ track.label }} {{ formatDistance(track.distance) }} · {{ trajectoryStateLabel(track.state, track.kind) }}</text>
           </g>
         </g>
       </svg>
@@ -613,8 +689,8 @@ defineExpose({ applyVehicleCommand, applyMissionAction })
     <footer class="trajectory-footer">
       <span><i></i>{{ phase }}</span>
       <small>
-        USV CIRCLE {{ Math.round(usvFormationOverlay.progress * 100) }}%
-        · UAV TRIANGLE {{ Math.round(uavFormationOverlay.progress * 100) }}%
+        USV CIRCLE {{ formationVisible ? Math.round(usvFormationOverlay.progress * 100) : 0 }}%
+        · UAV TRIANGLE {{ formationVisible ? Math.round(uavFormationOverlay.progress * 100) : 0 }}%
         · {{ selectedDeviceCode.toUpperCase() }}
         · {{ sourceLabel }}
       </small>
@@ -733,21 +809,75 @@ defineExpose({ applyVehicleCommand, applyMissionAction })
   gap: 8px;
 }
 
-.trajectory-toolbar-actions em,
+.trajectory-source-status,
+.trajectory-session-status,
 .trajectory-toolbar-actions button {
-  min-height: 31px;
-  padding: 0 11px;
+  min-height: 34px;
   color: #dff8f4;
   font: inherit;
   font-size: 11px;
   font-style: normal;
   font-weight: 800;
-  background: rgba(114, 230, 215, 0.08);
+  background: rgba(114, 230, 215, 0.07);
   border: 1px solid rgba(114, 230, 215, 0.24);
   border-radius: 4px;
 }
 
+.trajectory-session-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  color: #8fb1b0;
+}
+
+.trajectory-session-status.running,
+.trajectory-session-status.returning {
+  color: #69e6a1;
+  border-color: rgba(105, 230, 161, 0.42);
+}
+
+.trajectory-session-status.paused,
+.trajectory-session-status.deploying {
+  color: #ffc71f;
+  border-color: rgba(255, 199, 31, 0.42);
+}
+
+.trajectory-source-status {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 0 10px;
+  color: #72e6d7;
+}
+
+.trajectory-source-status > span {
+  display: grid;
+  gap: 1px;
+}
+
+.trajectory-source-status strong,
+.trajectory-source-status small {
+  margin: 0;
+  line-height: 1.05;
+}
+
+.trajectory-source-status strong {
+  color: #e8fffb;
+  font-size: 10px;
+}
+
+.trajectory-source-status small {
+  color: #72e6d7;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+}
+
 .trajectory-toolbar-actions button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 0 11px;
   cursor: pointer;
 }
 
@@ -872,9 +1002,14 @@ defineExpose({ applyVehicleCommand, applyMissionAction })
   letter-spacing: 0.08em;
 }
 
-.trajectory-toolbar-actions em.stale {
+.trajectory-source-status.stale {
   color: #ff746c;
   border-color: rgba(255, 96, 88, 0.42);
+}
+
+.trajectory-source-status.stale strong,
+.trajectory-source-status.stale small {
+  color: #ff948e;
 }
 
 .unity-usv-formation {

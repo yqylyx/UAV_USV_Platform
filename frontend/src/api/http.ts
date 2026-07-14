@@ -18,6 +18,9 @@ export const http = axios.create({
   baseURL: '/api',
   timeout: 5000,
   withCredentials: true,
+  // Protected write APIs attach the token returned by /auth/csrf explicitly.
+  // Do not let Axios replace that encoded token with the raw cookie value.
+  withXSRFToken: false,
   xsrfCookieName: 'XSRF-TOKEN',
   xsrfHeaderName: 'X-XSRF-TOKEN',
   headers: {
@@ -28,7 +31,9 @@ export const http = axios.create({
 http.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiErrorResponse>) => {
-    const message = error.response?.data?.message ?? '无法连接后端服务'
+    const message =
+      error.response?.data?.message ??
+      (error.response ? `后端请求失败（HTTP ${error.response.status}）` : '无法连接后端服务')
     return Promise.reject(
       new ApiClientError(message, error.response?.status, error.response?.data?.code),
     )

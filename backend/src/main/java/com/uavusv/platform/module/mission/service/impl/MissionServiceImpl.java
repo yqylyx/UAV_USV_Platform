@@ -179,18 +179,18 @@ public class MissionServiceImpl implements MissionService {
 
     @Override
     @Transactional
-    public MissionActionResponse markReady(Long id, String operator) {
+    public MissionActionResponse markReady(Long id, String operator, String source) {
         MissionTask mission = findMission(id);
         ensureStatus(mission, "进入待执行", MissionStatus.DRAFT, MissionStatus.COMPLETED,
                 MissionStatus.FAILED, MissionStatus.CANCELLED);
         mission.prepareForRun();
-        recordStatusEvent(mission, "任务进入待执行", "任务配置已确认，可以进入协同围捕启动链路。", operator);
+        recordStatusEvent(mission, "任务进入待执行", "任务配置已确认，可以进入协同围捕启动链路。", actionSource(source, operator));
         return new MissionActionResponse(buildDetail(mission), null);
     }
 
     @Override
     @Transactional
-    public MissionActionResponse startMission(Long id, String operator) {
+    public MissionActionResponse startMission(Long id, String operator, String source) {
         MissionTask mission = findMission(id);
         ensureStatus(mission, "启动任务", MissionStatus.READY);
         ensureNoOpenRun(mission.getId());
@@ -203,68 +203,68 @@ public class MissionServiceImpl implements MissionService {
                 stage,
                 operator
         ));
-        recordStatusEvent(mission, run, "任务启动请求已提交", "已创建第 " + run.getRunNo() + " 次执行批次，等待控制指令确认。", operator);
-        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.START_MISSION, operator, "启动任务：" + mission.getName());
+        recordStatusEvent(mission, run, "任务启动请求已提交", "已创建第 " + run.getRunNo() + " 次执行批次，等待控制指令确认。", actionSource(source, operator));
+        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.START_MISSION, operator, source, "启动任务：" + mission.getName());
         return new MissionActionResponse(buildDetail(mission), command);
     }
 
     @Override
     @Transactional
-    public MissionActionResponse pauseMission(Long id, String operator) {
+    public MissionActionResponse pauseMission(Long id, String operator, String source) {
         MissionTask mission = findMission(id);
         ensureStatus(mission, "暂停任务", MissionStatus.RUNNING);
         MissionRun run = findActiveRun(mission.getId(), MissionRunStatus.RUNNING);
-        recordStatusEvent(mission, run, "暂停请求已提交", "等待控制指令确认，确认前任务保持运行状态。", operator);
-        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.PAUSE_MISSION, operator, "暂停任务：" + mission.getName());
+        recordStatusEvent(mission, run, "暂停请求已提交", "等待控制指令确认，确认前任务保持运行状态。", actionSource(source, operator));
+        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.PAUSE_MISSION, operator, source, "暂停任务：" + mission.getName());
         return new MissionActionResponse(buildDetail(mission), command);
     }
 
     @Override
     @Transactional
-    public MissionActionResponse resumeMission(Long id, String operator) {
+    public MissionActionResponse resumeMission(Long id, String operator, String source) {
         MissionTask mission = findMission(id);
         ensureStatus(mission, "恢复任务", MissionStatus.PAUSED);
         MissionRun run = findActiveRun(mission.getId(), MissionRunStatus.PAUSED);
-        recordStatusEvent(mission, run, "恢复请求已提交", "等待控制指令确认，确认前任务保持暂停状态。", operator);
-        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.RESUME_MISSION, operator, "恢复任务：" + mission.getName());
+        recordStatusEvent(mission, run, "恢复请求已提交", "等待控制指令确认，确认前任务保持暂停状态。", actionSource(source, operator));
+        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.RESUME_MISSION, operator, source, "恢复任务：" + mission.getName());
         return new MissionActionResponse(buildDetail(mission), command);
     }
 
     @Override
     @Transactional
-    public MissionActionResponse completeMission(Long id, String operator) {
+    public MissionActionResponse completeMission(Long id, String operator, String source) {
         MissionTask mission = findMission(id);
         ensureStatus(mission, "完成任务", MissionStatus.RUNNING, MissionStatus.PAUSED);
         MissionRun run = findActiveRun(mission.getId(), MissionRunStatus.RUNNING, MissionRunStatus.PAUSED);
-        recordStatusEvent(mission, run, "完成请求已提交", "等待控制指令确认后进入评估阶段。", operator);
-        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.COMPLETE_MISSION, operator, "完成任务：" + mission.getName());
+        recordStatusEvent(mission, run, "完成请求已提交", "等待控制指令确认后进入评估阶段。", actionSource(source, operator));
+        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.COMPLETE_MISSION, operator, source, "完成任务：" + mission.getName());
         return new MissionActionResponse(buildDetail(mission), command);
     }
 
     @Override
     @Transactional
-    public MissionActionResponse failMission(Long id, String operator) {
+    public MissionActionResponse failMission(Long id, String operator, String source) {
         MissionTask mission = findMission(id);
         ensureStatus(mission, "标记异常", MissionStatus.RUNNING, MissionStatus.PAUSED);
         MissionRun run = findActiveRun(mission.getId(), MissionRunStatus.RUNNING, MissionRunStatus.PAUSED);
-        recordStatusEvent(mission, run, MissionEventLevel.WARNING, "异常终止请求已提交", "等待控制指令确认后标记任务异常。", operator);
-        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.FAIL_MISSION, operator, "异常终止任务：" + mission.getName());
+        recordStatusEvent(mission, run, MissionEventLevel.WARNING, "异常终止请求已提交", "等待控制指令确认后标记任务异常。", actionSource(source, operator));
+        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.FAIL_MISSION, operator, source, "异常终止任务：" + mission.getName());
         return new MissionActionResponse(buildDetail(mission), command);
     }
 
     @Override
     @Transactional
-    public MissionActionResponse cancelMission(Long id, String operator) {
+    public MissionActionResponse cancelMission(Long id, String operator, String source) {
         MissionTask mission = findMission(id);
         ensureNotTerminal(mission, "取消任务");
         MissionRun run = findOptionalActiveRun(mission.getId());
         if (run == null) {
             mission.updateStatus(MissionStatus.CANCELLED, MissionStage.EVALUATION);
-            recordStatusEvent(mission, "任务已取消", "任务尚未开始，无需向外部组件下发停止指令。", operator);
+            recordStatusEvent(mission, "任务已取消", "任务尚未开始，无需向外部组件下发停止指令。", actionSource(source, operator));
             return new MissionActionResponse(buildDetail(mission), null);
         }
-        recordStatusEvent(mission, run, "取消请求已提交", "等待控制指令确认后取消当前任务。", operator);
-        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.CANCEL_MISSION, operator, "取消任务：" + mission.getName());
+        recordStatusEvent(mission, run, "取消请求已提交", "等待控制指令确认后取消当前任务。", actionSource(source, operator));
+        RuntimeCommandResponse command = issueMissionCommand(run, CommandType.CANCEL_MISSION, operator, source, "取消任务：" + mission.getName());
         return new MissionActionResponse(buildDetail(mission), command);
     }
 
@@ -419,12 +419,25 @@ public class MissionServiceImpl implements MissionService {
             MissionRun run,
             CommandType commandType,
             String operator,
+            String source,
             String detail
     ) {
+        String normalizedSource = normalizeActionSource(source);
         return runtimeControlService.issueCommand(
-                new RuntimeCommandRequest(commandType, run.getId(), null, null, detail),
+                new RuntimeCommandRequest(commandType, run.getId(), null, "{\"source\":\"" + normalizedSource + "\"}", detail),
                 operator
         );
+    }
+
+    private String normalizeActionSource(String source) {
+        if ("MISSION_CONTROL".equalsIgnoreCase(source)) return "MISSION_CONTROL";
+        if ("SYSTEM_OVERVIEW".equalsIgnoreCase(source)) return "SYSTEM_OVERVIEW";
+        return "UNKNOWN";
+    }
+
+    private String actionSource(String source, String operator) {
+        String normalizedOperator = StringUtils.hasText(operator) ? operator : "platform";
+        return normalizeActionSource(source) + ":" + normalizedOperator;
     }
 
     private Long currentSimulationSessionId() {

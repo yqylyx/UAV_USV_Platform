@@ -26,17 +26,17 @@ public interface MissionService {
 
     void deleteMission(Long id);
 
-    MissionActionResponse markReady(Long id, String operator);
+    MissionActionResponse markReady(Long id, String operator, String source);
 
-    MissionActionResponse startMission(Long id, String operator);
+    MissionActionResponse startMission(Long id, String operator, String source);
 
-    MissionActionResponse pauseMission(Long id, String operator);
+    MissionActionResponse pauseMission(Long id, String operator, String source);
 
-    MissionActionResponse resumeMission(Long id, String operator);
+    MissionActionResponse resumeMission(Long id, String operator, String source);
 
-    MissionActionResponse completeMission(Long id, String operator);
+    MissionActionResponse completeMission(Long id, String operator, String source);
 
-    MissionActionResponse failMission(Long id, String operator);
+    MissionActionResponse failMission(Long id, String operator, String source);
 
-    MissionActionResponse cancelMission(Long id, String operator);
+    MissionActionResponse cancelMission(Long id, String operator, String source);
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CirclePause, OctagonX, Play, RadioTower, Send } from '@lucide/vue'
+import { OctagonX, Play, Send } from '@lucide/vue'
 
 const props = withDefaults(
   defineProps<{
@@ -23,7 +23,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  action: [action: 'deploy' | 'start' | 'pause' | 'resume' | 'abort']
+  action: [action: 'deploy' | 'start' | 'abort']
 }>()
 
 function statusLabel(status: string) {
@@ -54,7 +54,7 @@ function statusLabel(status: string) {
     <div class="mission-actions">
       <button
         type="button"
-        :disabled="busy || !canDeploy"
+        :disabled="busy"
         @click="emit('action', 'deploy')"
       >
         <Send />编组部署
@@ -64,29 +64,10 @@ function statusLabel(status: string) {
         v-if="status === 'DRAFT' || status === 'READY'"
         type="button"
         class="primary"
-        :disabled="busy || !canStart"
+        :disabled="busy"
         @click="emit('action', 'start')"
       >
         <Play />开始任务
-      </button>
-
-      <button
-        v-if="status === 'RUNNING'"
-        type="button"
-        :disabled="busy"
-        @click="emit('action', 'pause')"
-      >
-        <CirclePause />暂停任务
-      </button>
-
-      <button
-        v-if="status === 'PAUSED'"
-        type="button"
-        class="primary"
-        :disabled="busy"
-        @click="emit('action', 'resume')"
-      >
-        <RadioTower />继续任务
       </button>
 
       <button
@@ -176,7 +157,7 @@ p {
 
 .mission-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
   margin-top: 11px;
 }

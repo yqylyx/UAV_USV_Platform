@@ -108,7 +108,10 @@ function handleWindowMessage(event: MessageEvent) {
     trajectoryStore.ingest(message.payload)
   }
 
-  if (message.type === 'commandAck' && message.payload) {
+  if (
+    (message.type === 'commandAck' || message.type === 'cameraChanged' || message.type === 'trajectoryVisibilityChanged') &&
+    message.payload
+  ) {
     void unityBridgeStore.handleCommandAck(message.requestId ?? '', message.payload)
   }
 
@@ -182,6 +185,7 @@ function startIframeProbe() {
 }
 
 function handleIframeLoad() {
+  trajectoryStore.clear()
   loading.value = true
   ready.value = false
   readyEmitted = false
