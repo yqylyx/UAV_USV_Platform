@@ -1,6 +1,7 @@
 package com.uavusv.platform.module.mission.dto.request;
 
 import com.uavusv.platform.module.mission.entity.MissionStage;
+import com.uavusv.platform.module.mission.entity.MissionExecutionMode;
 import com.uavusv.platform.module.mission.entity.MissionStatus;
 import com.uavusv.platform.module.mission.entity.MissionType;
 import jakarta.validation.Valid;
@@ -24,6 +25,9 @@ public record MissionSaveRequest(
 
         @NotNull(message = "任务类型不能为空")
         MissionType type,
+
+        @NotNull(message = "任务运行模式不能为空")
+        MissionExecutionMode executionMode,
 
         @NotNull(message = "任务状态不能为空")
         MissionStatus status,

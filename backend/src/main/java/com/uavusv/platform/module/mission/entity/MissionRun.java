@@ -48,11 +48,30 @@ public class MissionRun extends BaseEntity {
 
     @Column(name = "failure_reason", length = 1000)
     private String failureReason;
+    @Column(name = "runtime_instance_id", length = 128)
+    private String runtimeInstanceId;
+    @Column(name = "algorithm_code", length = 64)
+    private String algorithmCode;
+    @Column(name = "algorithm_version", length = 64)
+    private String algorithmVersion;
 
     protected MissionRun() {
     }
 
     public MissionRun(Long missionId, Long sessionId, Integer runNo, MissionStage stage, String requestedBy) {
+        this(missionId, sessionId, runNo, stage, requestedBy, null, "default", "1.0");
+    }
+
+    public MissionRun(
+            Long missionId,
+            Long sessionId,
+            Integer runNo,
+            MissionStage stage,
+            String requestedBy,
+            String runtimeInstanceId,
+            String algorithmCode,
+            String algorithmVersion
+    ) {
         this.missionId = missionId;
         this.sessionId = sessionId;
         this.runKey = UUID.randomUUID().toString();
@@ -60,6 +79,9 @@ public class MissionRun extends BaseEntity {
         this.status = MissionRunStatus.PENDING;
         this.stage = stage;
         this.requestedBy = requestedBy;
+        this.runtimeInstanceId = runtimeInstanceId;
+        this.algorithmCode = algorithmCode;
+        this.algorithmVersion = algorithmVersion;
         this.startedAt = LocalDateTime.now();
     }
 
@@ -110,4 +132,7 @@ public class MissionRun extends BaseEntity {
     public LocalDateTime getPausedAt() { return pausedAt; }
     public LocalDateTime getEndedAt() { return endedAt; }
     public String getFailureReason() { return failureReason; }
+    public String getRuntimeInstanceId() { return runtimeInstanceId; }
+    public String getAlgorithmCode() { return algorithmCode; }
+    public String getAlgorithmVersion() { return algorithmVersion; }
 }

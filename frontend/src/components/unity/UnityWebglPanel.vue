@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { sendIntegrationHeartbeat } from '@/api/integration'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
-import type { UnityBridgeMessage } from '@/stores/unityBridge'
+import type { UnityBridgeMessage, UnityRuntimeScope } from '@/stores/unityBridge'
 
 type UnityMessage = {
   type: string
@@ -14,9 +15,15 @@ type UnityMessage = {
 const props = withDefaults(
   defineProps<{
     iframeSrc?: string
+    runtimeScope?: UnityRuntimeScope
+    runtimeInstanceId?: string
+    missionId?: number
+    runId?: number
   }>(),
   {
     iframeSrc: '/unity/index.html?embedded=1',
+    runtimeScope: 'SYSTEM_OVERVIEW',
+    runtimeInstanceId: 'overview-unity-01',
   },
 )
 
@@ -32,16 +39,25 @@ const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const loading = ref(true)
 const ready = ref(false)
+const controlsReady = ref(false)
 const errorMessage = ref('')
 const loadHint = ref('正在加载真实 Unity WebGL 构建包')
 const buildStamp = Date.now()
 
 let probeTimer: number | null = null
+let heartbeatTimer: number | null = null
 let readyEmitted = false
+let lastRuntimeReportAt = 0
 
 const iframeUrl = computed(() => {
   const separator = props.iframeSrc.includes('?') ? '&' : '?'
-  return `${props.iframeSrc}${separator}v=${buildStamp}`
+  const params = new URLSearchParams({
+    v: String(buildStamp),
+    scope: props.runtimeScope,
+    instanceId: props.runtimeInstanceId,
+  })
+  if (props.missionId) params.set('missionId', String(props.missionId))
+  return `${props.iframeSrc}${separator}${params.toString()}`
 })
 const statusText = computed(() => (ready.value ? 'UNITY WEBGL ONLINE' : 'WAITING FOR WEBGL'))
 
@@ -50,7 +66,8 @@ function markReady() {
   ready.value = true
   errorMessage.value = ''
   loadHint.value = 'Unity WebGL 已加载'
-  unityBridgeStore.setConnected(true)
+  unityBridgeStore.setConnectedFor(props.runtimeScope, true)
+  void reportHeartbeat('ONLINE', `${props.runtimeScope} Unity WebGL 已连接`)
   flushUnityOutbox()
   if (!readyEmitted) {
     readyEmitted = true
@@ -62,8 +79,9 @@ function markError(message: string) {
   loading.value = false
   ready.value = false
   errorMessage.value = message
-  unityBridgeStore.setConnected(false)
-  unityBridgeStore.setError(message)
+  unityBridgeStore.setConnectedFor(props.runtimeScope, false)
+  unityBridgeStore.setErrorFor(props.runtimeScope, message)
+  void reportHeartbeat('FAILED', message)
   emit('unityError', message)
 }
 
@@ -105,17 +123,24 @@ function handleWindowMessage(event: MessageEvent) {
   }
 
   if (message.type === 'trajectoryFrame' && message.payload) {
-    trajectoryStore.ingest(message.payload)
+    trajectoryStore.ingestFor(props.runtimeScope, message.payload)
+    reportRuntimeSnapshot()
+  }
+
+  if (message.type === 'bridgeReady') {
+    controlsReady.value = message.payload?.controlsReady === true
+    unityBridgeStore.setControlsReadyFor(props.runtimeScope, controlsReady.value)
+    reportRuntimeSnapshot(true)
   }
 
   if (
     (message.type === 'commandAck' || message.type === 'cameraChanged' || message.type === 'trajectoryVisibilityChanged') &&
     message.payload
   ) {
-    void unityBridgeStore.handleCommandAck(message.requestId ?? '', message.payload)
+    void unityBridgeStore.handleCommandAckFor(props.runtimeScope, message.requestId ?? '', message.payload)
   }
 
-  unityBridgeStore.noteMessage({
+  unityBridgeStore.noteMessageFor(props.runtimeScope, {
     type: message.type,
     requestId: message.requestId ?? '',
     timestamp: message.timestamp ?? Date.now(),
@@ -185,10 +210,12 @@ function startIframeProbe() {
 }
 
 function handleIframeLoad() {
-  trajectoryStore.clear()
+  trajectoryStore.clearFor(props.runtimeScope)
   loading.value = true
   ready.value = false
   readyEmitted = false
+  controlsReady.value = false
+  unityBridgeStore.setControlsReadyFor(props.runtimeScope, false)
   errorMessage.value = ''
   loadHint.value = '正在加载真实 Unity WebGL 构建包'
   startIframeProbe()
@@ -205,7 +232,7 @@ function postToUnity(type: string, payload: Record<string, unknown> = {}) {
     timestamp: Date.now(),
     payload,
   }
-  unityBridgeStore.noteOutgoing({
+  unityBridgeStore.noteOutgoingFor(props.runtimeScope, {
     type: message.type,
     requestId: message.requestId ?? '',
     timestamp: message.timestamp ?? Date.now(),
@@ -215,6 +242,8 @@ function postToUnity(type: string, payload: Record<string, unknown> = {}) {
   iframeRef.value?.contentWindow?.postMessage(
     {
       source: 'vue-console',
+      runtimeScope: props.runtimeScope,
+      runtimeInstanceId: props.runtimeInstanceId,
       message,
     },
     window.location.origin,
@@ -231,24 +260,33 @@ function postEnvelope(message: UnityBridgeMessage) {
     timestamp: Number(message.timestamp),
     payload: JSON.parse(JSON.stringify(message.payload ?? {})) as Record<string, unknown>,
   }
-  unityBridgeStore.noteOutgoing(envelope)
+  unityBridgeStore.noteOutgoingFor(props.runtimeScope, envelope)
   emit('unityCommand', envelope)
   iframeRef.value?.contentWindow?.postMessage(
-    { source: 'vue-console', message: envelope },
+    {
+      source: 'vue-console',
+      runtimeScope: props.runtimeScope,
+      runtimeInstanceId: props.runtimeInstanceId,
+      message: envelope,
+    },
     window.location.origin,
   )
 }
 
 function flushUnityOutbox() {
-  if (!unityBridgeStore.connected || !iframeRef.value?.contentWindow) return
-  let message = unityBridgeStore.peekNext()
+  const channel = unityBridgeStore.channels[props.runtimeScope]
+  if (!channel.connected || !iframeRef.value?.contentWindow) return
+  let message = unityBridgeStore.peekNextFor(props.runtimeScope)
   while (message) {
     try {
       postEnvelope(message)
-      unityBridgeStore.removeNext()
-      message = unityBridgeStore.peekNext()
+      unityBridgeStore.removeNextFor(props.runtimeScope)
+      message = unityBridgeStore.peekNextFor(props.runtimeScope)
     } catch (error) {
-      unityBridgeStore.setError(error instanceof Error ? error.message : 'Unity command bridge failed')
+      unityBridgeStore.setErrorFor(
+        props.runtimeScope,
+        error instanceof Error ? error.message : 'Unity command bridge failed',
+      )
       break
     }
   }
@@ -278,6 +316,38 @@ function sendPoseFrame(payload: Record<string, unknown>) {
   postToUnity('poseFrame', payload)
 }
 
+async function reportHeartbeat(
+  state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED',
+  detail: string,
+) {
+  try {
+    await sendIntegrationHeartbeat({
+      componentCode: 'unity-client-01',
+      instanceId: props.runtimeInstanceId,
+      state,
+      detail,
+      rosConnectionStatus: 'UNKNOWN',
+      runtimeScope: props.runtimeScope,
+      missionId: props.missionId,
+      runId: props.runId,
+      controlsReady: controlsReady.value,
+      deviceCodes: trajectoryStore.channels[props.runtimeScope].frame?.agents
+        .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
+        .map(agent => agent.code.toLowerCase()) ?? [],
+      trajectorySequence: trajectoryStore.channels[props.runtimeScope].frame?.sequence,
+    })
+  } catch {
+    // Heartbeat failure must not interrupt the local WebGL runtime.
+  }
+}
+
+function reportRuntimeSnapshot(force = false) {
+  const now = Date.now()
+  if (!force && now - lastRuntimeReportAt < 1000) return
+  lastRuntimeReportAt = now
+  void reportHeartbeat('ONLINE', `${props.runtimeScope} Unity WebGL 运行态同步`)
+}
+
 defineExpose({
   postToUnity,
   selectDevice,
@@ -290,14 +360,26 @@ defineExpose({
 
 onMounted(() => {
   window.addEventListener('message', handleWindowMessage)
+  heartbeatTimer = window.setInterval(() => {
+    const state = unityBridgeStore.channels[props.runtimeScope].connected ? 'ONLINE' : 'OFFLINE'
+    void reportHeartbeat(state, `${props.runtimeScope} Unity WebGL 心跳`)
+  }, 5000)
 })
 
-watch(() => [unityBridgeStore.connected, unityBridgeStore.outbox.length], flushUnityOutbox)
+watch(
+  () => [
+    unityBridgeStore.channels[props.runtimeScope].connected,
+    unityBridgeStore.channels[props.runtimeScope].outbox.length,
+  ],
+  flushUnityOutbox,
+)
 
 onBeforeUnmount(() => {
-  unityBridgeStore.setConnected(false)
+  unityBridgeStore.setConnectedFor(props.runtimeScope, false)
+  void reportHeartbeat('OFFLINE', `${props.runtimeScope} Unity WebGL 已卸载`)
   window.removeEventListener('message', handleWindowMessage)
   if (probeTimer !== null) window.clearInterval(probeTimer)
+  if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer)
 })
 </script>
 

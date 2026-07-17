@@ -1,7 +1,7 @@
 import { fetchCsrfToken } from './auth'
 import { http } from './http'
 import type { ApiResponse, PageResponse } from '@/types/api'
-import type { Mission, MissionDetail, MissionQuery, MissionSavePayload } from '@/types/mission'
+import type { Mission, MissionDetail, MissionEvent, MissionEventLevel, MissionPreflight, MissionQuery, MissionSavePayload, MissionSummary } from '@/types/mission'
 import type { RuntimeCommandResult } from '@/api/runtimeControl'
 
 export async function fetchMissions(query: MissionQuery): Promise<PageResponse<Mission>> {
@@ -13,6 +13,23 @@ export async function fetchMissions(query: MissionQuery): Promise<PageResponse<M
 
 export async function fetchMission(id: number): Promise<MissionDetail> {
   const response = await http.get<ApiResponse<MissionDetail>>(`/missions/${id}`)
+  return response.data.data
+}
+
+export async function fetchMissionSummary(): Promise<MissionSummary> {
+  const response = await http.get<ApiResponse<MissionSummary>>('/missions/summary')
+  return response.data.data
+}
+
+export async function fetchMissionPreflight(id: number, runtimeInstanceId?: string): Promise<MissionPreflight> {
+  const response = await http.get<ApiResponse<MissionPreflight>>(`/missions/${id}/preflight`, {
+    params: { runtimeInstanceId },
+  })
+  return response.data.data
+}
+
+export async function fetchMissionEvents(id: number, params: { runId?: number; level?: MissionEventLevel; limit?: number } = {}): Promise<MissionEvent[]> {
+  const response = await http.get<ApiResponse<MissionEvent[]>>(`/missions/${id}/events`, { params })
   return response.data.data
 }
 
@@ -50,11 +67,12 @@ export async function executeMissionAction(
   id: number,
   action: MissionAction,
   source: 'MISSION_CONTROL' | 'SYSTEM_OVERVIEW' = 'MISSION_CONTROL',
+  runtimeInstanceId?: string,
 ): Promise<MissionActionResult> {
   const csrf = await fetchCsrfToken()
   const response = await http.post<ApiResponse<MissionActionResult>>(`/missions/${id}/${action}`, undefined, {
     headers: { [csrf.headerName]: csrf.token },
-    params: { source },
+    params: { source, runtimeInstanceId },
   })
   return response.data.data
 }

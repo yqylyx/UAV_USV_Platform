@@ -8,6 +8,12 @@ import com.uavusv.platform.module.mission.dto.response.MissionActionResponse;
 import com.uavusv.platform.module.mission.dto.response.MissionResponse;
 import com.uavusv.platform.module.mission.entity.MissionStatus;
 import com.uavusv.platform.module.mission.entity.MissionType;
+import com.uavusv.platform.module.mission.entity.MissionExecutionMode;
+import com.uavusv.platform.module.mission.entity.MissionEventLevel;
+import com.uavusv.platform.module.mission.dto.response.MissionSummaryResponse;
+import com.uavusv.platform.module.mission.dto.response.MissionPreflightResponse;
+import com.uavusv.platform.module.mission.dto.response.MissionEventResponse;
+import java.util.List;
 import com.uavusv.platform.module.mission.service.MissionService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -37,15 +43,39 @@ public class MissionController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) MissionType type,
             @RequestParam(required = false) MissionStatus status,
+            @RequestParam(required = false) MissionExecutionMode executionMode,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        return ApiResponse.success(missionService.listMissions(keyword, type, status, page, size));
+        return ApiResponse.success(missionService.listMissions(keyword, type, status, executionMode, page, size));
+    }
+
+    @GetMapping("/summary")
+    public ApiResponse<MissionSummaryResponse> summary() {
+        return ApiResponse.success(missionService.getSummary());
     }
 
     @GetMapping("/{id}")
     public ApiResponse<MissionDetailResponse> getMission(@PathVariable Long id) {
         return ApiResponse.success(missionService.getMission(id));
+    }
+
+    @GetMapping("/{id}/preflight")
+    public ApiResponse<MissionPreflightResponse> preflight(
+            @PathVariable Long id,
+            @RequestParam(required = false) String runtimeInstanceId
+    ) {
+        return ApiResponse.success(missionService.preflight(id, runtimeInstanceId));
+    }
+
+    @GetMapping("/{id}/events")
+    public ApiResponse<List<MissionEventResponse>> events(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long runId,
+            @RequestParam(required = false) MissionEventLevel level,
+            @RequestParam(defaultValue = "20") int limit
+    ) {
+        return ApiResponse.success(missionService.getEvents(id, runId, level, limit));
     }
 
     @PostMapping
@@ -78,8 +108,13 @@ public class MissionController {
 
     @PostMapping("/{id}/start")
     @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<MissionActionResponse> startMission(@PathVariable Long id, @RequestParam(defaultValue = "UNKNOWN") String source, Authentication authentication) {
-        return ApiResponse.success(missionService.startMission(id, authentication.getName(), source));
+    public ApiResponse<MissionActionResponse> startMission(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "UNKNOWN") String source,
+            @RequestParam(required = false) String runtimeInstanceId,
+            Authentication authentication
+    ) {
+        return ApiResponse.success(missionService.startMission(id, authentication.getName(), source, runtimeInstanceId));
     }
 
     @PostMapping("/{id}/pause")

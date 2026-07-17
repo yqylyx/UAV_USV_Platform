@@ -19,6 +19,11 @@ public class ControlCommand extends BaseEntity {
     private Long runId;
     @Column(name = "device_id")
     private Long deviceId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "runtime_scope", nullable = false, length = 32)
+    private RuntimeScope runtimeScope;
+    @Column(name = "runtime_instance_id", length = 128)
+    private String runtimeInstanceId;
     @Column(name = "command_key", nullable = false, unique = true, length = 64)
     private String commandKey;
     @Column(name = "payload_json", columnDefinition = "TEXT")
@@ -48,7 +53,7 @@ public class ControlCommand extends BaseEntity {
     }
 
     public ControlCommand(Long sessionId, CommandType commandType, String requestedBy) {
-        this(sessionId, null, null, commandType, null, requestedBy);
+        this(sessionId, null, null, commandType, null, requestedBy, RuntimeScope.SYSTEM_OVERVIEW, null);
     }
 
     public ControlCommand(
@@ -59,9 +64,35 @@ public class ControlCommand extends BaseEntity {
             String payload,
             String requestedBy
     ) {
+        this(
+                sessionId,
+                runId,
+                deviceId,
+                commandType,
+                payload,
+                requestedBy,
+                runId == null ? RuntimeScope.SYSTEM_OVERVIEW : RuntimeScope.MISSION_CENTER,
+                null
+        );
+    }
+
+    public ControlCommand(
+            Long sessionId,
+            Long runId,
+            Long deviceId,
+            CommandType commandType,
+            String payload,
+            String requestedBy,
+            RuntimeScope runtimeScope,
+            String runtimeInstanceId
+    ) {
         this.sessionId = sessionId;
         this.runId = runId;
         this.deviceId = deviceId;
+        this.runtimeScope = runtimeScope == null
+                ? (runId == null ? RuntimeScope.SYSTEM_OVERVIEW : RuntimeScope.MISSION_CENTER)
+                : runtimeScope;
+        this.runtimeInstanceId = runtimeInstanceId;
         this.commandKey = UUID.randomUUID().toString();
         this.commandType = commandType;
         this.payload = payload;
@@ -111,6 +142,8 @@ public class ControlCommand extends BaseEntity {
 
     public Long getRunId() { return runId; }
     public Long getDeviceId() { return deviceId; }
+    public RuntimeScope getRuntimeScope() { return runtimeScope; }
+    public String getRuntimeInstanceId() { return runtimeInstanceId; }
     public String getCommandKey() { return commandKey; }
     public String getPayload() { return payload; }
 

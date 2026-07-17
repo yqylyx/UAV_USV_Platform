@@ -25,6 +25,13 @@ import com.uavusv.platform.module.mission.entity.MissionTask;
 import com.uavusv.platform.module.mission.entity.MissionTaskDevice;
 import com.uavusv.platform.module.mission.entity.MissionTaskParameter;
 import com.uavusv.platform.module.mission.entity.MissionType;
+import com.uavusv.platform.module.mission.entity.MissionExecutionMode;
+import com.uavusv.platform.module.mission.dto.response.MissionSummaryResponse;
+import com.uavusv.platform.module.mission.dto.response.MissionPreflightResponse;
+import com.uavusv.platform.module.mission.dto.response.MissionPreflightIssueResponse;
+import com.uavusv.platform.module.monitoring.repository.RuntimeDeviceStatusRepository;
+import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
+import com.uavusv.platform.module.device.entity.DeviceStatus;
 import com.uavusv.platform.module.mission.repository.MissionEventRepository;
 import com.uavusv.platform.module.mission.repository.MissionRunRepository;
 import com.uavusv.platform.module.mission.repository.MissionTaskDeviceRepository;
@@ -32,6 +39,7 @@ import com.uavusv.platform.module.mission.repository.MissionTaskParameterReposit
 import com.uavusv.platform.module.mission.repository.MissionTaskRepository;
 import com.uavusv.platform.module.mission.service.MissionService;
 import com.uavusv.platform.module.runtimecontrol.entity.SimulationStatus;
+import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandResponse;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
@@ -68,6 +76,8 @@ public class MissionServiceImpl implements MissionService {
     private final DeviceRepository deviceRepository;
     private final SimulationSessionRepository simulationSessionRepository;
     private final RuntimeControlService runtimeControlService;
+    private final RuntimeDeviceStatusRepository runtimeDeviceStatusRepository;
+    private final RuntimeStateService runtimeStateService;
 
     public MissionServiceImpl(
             MissionTaskRepository missionTaskRepository,
@@ -77,7 +87,9 @@ public class MissionServiceImpl implements MissionService {
             MissionRunRepository missionRunRepository,
             DeviceRepository deviceRepository,
             SimulationSessionRepository simulationSessionRepository,
-            RuntimeControlService runtimeControlService
+            RuntimeControlService runtimeControlService,
+            RuntimeDeviceStatusRepository runtimeDeviceStatusRepository,
+            RuntimeStateService runtimeStateService
     ) {
         this.missionTaskRepository = missionTaskRepository;
         this.missionTaskDeviceRepository = missionTaskDeviceRepository;
@@ -87,6 +99,8 @@ public class MissionServiceImpl implements MissionService {
         this.deviceRepository = deviceRepository;
         this.simulationSessionRepository = simulationSessionRepository;
         this.runtimeControlService = runtimeControlService;
+        this.runtimeDeviceStatusRepository = runtimeDeviceStatusRepository;
+        this.runtimeStateService = runtimeStateService;
     }
 
     @Override
@@ -94,6 +108,7 @@ public class MissionServiceImpl implements MissionService {
             String keyword,
             MissionType type,
             MissionStatus status,
+            MissionExecutionMode executionMode,
             int page,
             int size
     ) {
@@ -103,7 +118,7 @@ public class MissionServiceImpl implements MissionService {
                 Sort.by(Sort.Direction.DESC, "updatedAt")
         );
         Page<MissionResponse> responsePage = missionTaskRepository
-                .findAll(buildSpecification(keyword, type, status), pageable)
+                .findAll(buildSpecification(keyword, type, status, executionMode), pageable)
                 .map(mission -> MissionResponse.from(
                         mission,
                         Math.toIntExact(missionTaskDeviceRepository.countByMissionId(mission.getId()))
@@ -117,12 +132,97 @@ public class MissionServiceImpl implements MissionService {
     }
 
     @Override
+    public MissionSummaryResponse getSummary() {
+        return new MissionSummaryResponse(
+                missionTaskRepository.countByDeletedFalse(),
+                missionTaskRepository.countByDeletedFalseAndStatus(MissionStatus.READY),
+                missionTaskRepository.countByDeletedFalseAndStatusIn(EnumSet.of(MissionStatus.RUNNING, MissionStatus.PAUSED)),
+                missionTaskRepository.countByDeletedFalseAndStatusIn(EnumSet.of(MissionStatus.FAILED, MissionStatus.CANCELLED))
+        );
+    }
+
+    @Override
+    public MissionPreflightResponse preflight(Long id, String runtimeInstanceId) {
+        MissionTask mission = findMission(id);
+        List<MissionTaskDevice> bindings = missionTaskDeviceRepository.findAllByMissionIdOrderByAssignedAtAsc(id);
+        Map<Long, Device> devices = loadDevices(bindings);
+        List<MissionTaskDevice> required = bindings.stream().filter(MissionTaskDevice::isRequired).toList();
+        boolean rosOnline = runtimeStateService.isOnline(RuntimeStateService.ROS_CODE);
+        boolean unityOnline = runtimeStateService.isUnityOnline(RuntimeScope.MISSION_CENTER, runtimeInstanceId);
+        RuntimeStateService.UnityRuntimeSnapshot unityRuntime = runtimeStateService.getUnityRuntimeSnapshot(
+                RuntimeScope.MISSION_CENTER,
+                runtimeInstanceId
+        );
+        boolean unityControlsReady = unityRuntime != null && unityRuntime.controlsReady();
+        int unityRecognizedDeviceCount = unityRuntime == null ? 0 : unityRuntime.deviceCodes().size();
+        Long unityTrajectorySequence = unityRuntime == null ? null : unityRuntime.trajectorySequence();
+        List<String> offlineCodes;
+        if (mission.getExecutionMode() == MissionExecutionMode.UNITY_STANDALONE) {
+            offlineCodes = required.stream()
+                    .map(binding -> devices.get(binding.getDeviceId()))
+                    .filter(java.util.Objects::nonNull)
+                    .map(Device::getCode)
+                    .filter(code -> unityRuntime == null || !unityRuntime.deviceCodes().contains(code.toLowerCase()))
+                    .toList();
+        } else {
+            Map<Long, DeviceStatus> runtimeStatuses = new HashMap<>();
+            runtimeDeviceStatusRepository.findAllByDeviceIdIn(required.stream().map(MissionTaskDevice::getDeviceId).toList())
+                    .forEach(status -> runtimeStatuses.put(status.getDeviceId(), status.getStatus()));
+            offlineCodes = required.stream()
+                    .filter(binding -> runtimeStatuses.getOrDefault(binding.getDeviceId(), DeviceStatus.UNKNOWN) != DeviceStatus.ONLINE)
+                    .map(binding -> devices.get(binding.getDeviceId()))
+                    .filter(java.util.Objects::nonNull)
+                    .map(Device::getCode)
+                    .toList();
+        }
+        boolean hasOpenRun = findOptionalActiveRun(id) != null;
+        boolean configurationComplete = mission.getExecutionMode() != null && !bindings.isEmpty();
+        List<MissionPreflightIssueResponse> issues = new ArrayList<>();
+        if (!configurationComplete) issues.add(new MissionPreflightIssueResponse("CONFIG_INCOMPLETE", "ERROR", "任务配置或设备编组不完整"));
+        if (mission.getStatus() != MissionStatus.READY) issues.add(new MissionPreflightIssueResponse("STATUS_NOT_READY", "ERROR", "当前任务状态不允许启动"));
+        if (!offlineCodes.isEmpty()) issues.add(new MissionPreflightIssueResponse(
+                mission.getExecutionMode() == MissionExecutionMode.UNITY_STANDALONE ? "UNITY_FLEET_INCOMPLETE" : "REQUIRED_DEVICE_OFFLINE",
+                "ERROR",
+                mission.getExecutionMode() == MissionExecutionMode.UNITY_STANDALONE
+                        ? "任务中心 Unity 尚未识别载具：" + String.join(", ", offlineCodes)
+                        : "必要设备离线：" + String.join(", ", offlineCodes)
+        ));
+        if (hasOpenRun) issues.add(new MissionPreflightIssueResponse("OPEN_RUN_EXISTS", "ERROR", "任务已存在开放的执行批次"));
+        if (mission.getExecutionMode() == MissionExecutionMode.ROS_GAZEBO && !rosOnline) issues.add(new MissionPreflightIssueResponse("ROS_OFFLINE", "ERROR", "ROS 未在线"));
+        if (mission.getExecutionMode() == MissionExecutionMode.UNITY_STANDALONE && !unityOnline) issues.add(new MissionPreflightIssueResponse("UNITY_OFFLINE", "ERROR", "任务中心 Unity 未在线"));
+        if (mission.getExecutionMode() == MissionExecutionMode.UNITY_STANDALONE && !unityControlsReady) issues.add(new MissionPreflightIssueResponse("UNITY_CONTROLS_NOT_READY", "ERROR", "任务中心 Unity 指令桥尚未就绪"));
+        if (mission.getExecutionMode() == MissionExecutionMode.HYBRID_MIRROR) {
+            if (!rosOnline) issues.add(new MissionPreflightIssueResponse("ROS_OFFLINE", "ERROR", "ROS 未在线"));
+            if (!unityOnline) issues.add(new MissionPreflightIssueResponse("UNITY_OFFLINE", "ERROR", "Unity 未在线"));
+            if (!unityControlsReady) issues.add(new MissionPreflightIssueResponse("UNITY_CONTROLS_NOT_READY", "ERROR", "Unity 指令桥尚未就绪"));
+        }
+        boolean canStart = issues.stream().noneMatch(issue -> "ERROR".equals(issue.level()));
+        return new MissionPreflightResponse(id, mission.getStatus(), mission.getExecutionMode(), configurationComplete,
+                required.size(), required.size() - offlineCodes.size(), offlineCodes, rosOnline, unityOnline,
+                unityControlsReady, unityRecognizedDeviceCount, unityTrajectorySequence,
+                hasOpenRun, canStart, issues, java.time.LocalDateTime.now());
+    }
+
+    @Override
+    public List<MissionEventResponse> getEvents(Long id, Long runId, MissionEventLevel level, int limit) {
+        findMission(id);
+        Pageable pageable = PageRequest.of(0, Math.min(Math.max(limit, 1), 100));
+        List<MissionEvent> events;
+        if (runId != null && level != null) events = missionEventRepository.findByMissionIdAndRunIdAndLevelOrderByOccurredAtDesc(id, runId, level, pageable);
+        else if (runId != null) events = missionEventRepository.findByMissionIdAndRunIdOrderByOccurredAtDesc(id, runId, pageable);
+        else if (level != null) events = missionEventRepository.findByMissionIdAndLevelOrderByOccurredAtDesc(id, level, pageable);
+        else events = missionEventRepository.findByMissionIdOrderByOccurredAtDesc(id, pageable);
+        return events.stream().map(MissionEventResponse::from).toList();
+    }
+
+    @Override
     @Transactional
     public MissionDetailResponse createMission(MissionSaveRequest request) {
         if (missionTaskRepository.existsByCode(request.code())) {
             throw new BusinessException(ErrorCode.DEVICE_CODE_EXISTS, "任务编号已存在");
         }
         ensureConfigurableStatus(request.status());
+        validateReadyComposition(request);
         MissionTask mission = new MissionTask(request.code());
         applyMissionFields(mission, request);
         MissionTask saved = missionTaskRepository.save(mission);
@@ -145,6 +245,7 @@ public class MissionServiceImpl implements MissionService {
         ensureStatus(mission, "编辑任务", MissionStatus.DRAFT, MissionStatus.READY,
                 MissionStatus.COMPLETED, MissionStatus.FAILED, MissionStatus.CANCELLED);
         ensureConfigurableStatus(request.status());
+        validateReadyComposition(request);
         if (missionTaskRepository.existsByCodeAndIdNot(request.code(), id)) {
             throw new BusinessException(ErrorCode.DEVICE_CODE_EXISTS, "任务编号已存在");
         }
@@ -190,7 +291,7 @@ public class MissionServiceImpl implements MissionService {
 
     @Override
     @Transactional
-    public MissionActionResponse startMission(Long id, String operator, String source) {
+    public MissionActionResponse startMission(Long id, String operator, String source, String runtimeInstanceId) {
         MissionTask mission = findMission(id);
         ensureStatus(mission, "启动任务", MissionStatus.READY);
         ensureNoOpenRun(mission.getId());
@@ -201,7 +302,10 @@ public class MissionServiceImpl implements MissionService {
                 sessionId,
                 missionRunRepository.findMaxRunNo(mission.getId()) + 1,
                 stage,
-                operator
+                operator,
+                runtimeInstanceId,
+                "default",
+                "1.0"
         ));
         recordStatusEvent(mission, run, "任务启动请求已提交", "已创建第 " + run.getRunNo() + " 次执行批次，等待控制指令确认。", actionSource(source, operator));
         RuntimeCommandResponse command = issueMissionCommand(run, CommandType.START_MISSION, operator, source, "启动任务：" + mission.getName());
@@ -273,6 +377,7 @@ public class MissionServiceImpl implements MissionService {
                 request.code(),
                 request.name(),
                 request.type(),
+                request.executionMode(),
                 request.status(),
                 MissionStage.PREPARE,
                 request.priority() == null ? 3 : request.priority(),
@@ -424,9 +529,27 @@ public class MissionServiceImpl implements MissionService {
     ) {
         String normalizedSource = normalizeActionSource(source);
         return runtimeControlService.issueCommand(
-                new RuntimeCommandRequest(commandType, run.getId(), null, "{\"source\":\"" + normalizedSource + "\"}", detail),
+                new RuntimeCommandRequest(
+                        commandType,
+                        run.getId(),
+                        null,
+                        "{\"source\":\"" + normalizedSource + "\"}",
+                        detail,
+                        RuntimeScope.MISSION_CENTER,
+                        run.getRuntimeInstanceId()
+                ),
                 operator
         );
+    }
+
+    private void validateReadyComposition(MissionSaveRequest request) {
+        if (request.status() != MissionStatus.READY || request.type() != MissionType.COOPERATIVE_ENCIRCLEMENT) return;
+        List<Long> ids = request.devices() == null ? List.of() : request.devices().stream()
+                .map(MissionDeviceBindingRequest::deviceId).distinct().toList();
+        List<Device> devices = deviceRepository.findAllById(ids);
+        long uavCount = devices.stream().filter(device -> device.getType() == com.uavusv.platform.module.device.entity.DeviceType.UAV).count();
+        long usvCount = devices.stream().filter(device -> device.getType() == com.uavusv.platform.module.device.entity.DeviceType.USV).count();
+        if (uavCount < 3 || usvCount < 3) throw new BusinessException(ErrorCode.BAD_REQUEST, "简单围捕任务需要绑定 3 台 UAV 和 3 台 USV");
     }
 
     private String normalizeActionSource(String source) {
@@ -487,7 +610,7 @@ public class MissionServiceImpl implements MissionService {
         return result;
     }
 
-    private Specification<MissionTask> buildSpecification(String keyword, MissionType type, MissionStatus status) {
+    private Specification<MissionTask> buildSpecification(String keyword, MissionType type, MissionStatus status, MissionExecutionMode executionMode) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(criteriaBuilder.isFalse(root.get("deleted")));
@@ -508,6 +631,10 @@ public class MissionServiceImpl implements MissionService {
 
             if (status != null) {
                 predicates.add(criteriaBuilder.equal(root.get("status"), status));
+            }
+
+            if (executionMode != null) {
+                predicates.add(criteriaBuilder.equal(root.get("executionMode"), executionMode));
             }
 
             return criteriaBuilder.and(predicates.toArray(Predicate[]::new));

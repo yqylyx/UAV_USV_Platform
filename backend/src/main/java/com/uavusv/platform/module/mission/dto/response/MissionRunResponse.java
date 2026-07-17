@@ -17,7 +17,10 @@ public record MissionRunResponse(
         LocalDateTime startedAt,
         LocalDateTime pausedAt,
         LocalDateTime endedAt,
-        String failureReason
+        String failureReason,
+        String runtimeInstanceId,
+        String algorithmCode,
+        String algorithmVersion
 ) {
     public static MissionRunResponse from(MissionRun run) {
         return new MissionRunResponse(
@@ -31,7 +34,10 @@ public record MissionRunResponse(
                 run.getStartedAt(),
                 run.getPausedAt(),
                 run.getEndedAt(),
-                run.getFailureReason()
+                run.getFailureReason(),
+                run.getRuntimeInstanceId(),
+                run.getAlgorithmCode(),
+                run.getAlgorithmVersion()
         );
     }
 }

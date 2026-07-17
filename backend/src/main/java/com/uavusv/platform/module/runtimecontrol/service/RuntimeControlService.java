@@ -19,6 +19,7 @@ import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.ControlCommand;
 import com.uavusv.platform.module.runtimecontrol.entity.SimulationSession;
 import com.uavusv.platform.module.runtimecontrol.entity.SimulationStatus;
+import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
 import com.uavusv.platform.module.runtimecontrol.event.ControlCommandStatusChangedEvent;
 import com.uavusv.platform.module.runtimecontrol.repository.ControlCommandRepository;
 import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
@@ -146,8 +147,12 @@ public class RuntimeControlService {
     }
 
     @Transactional(readOnly = true)
-    public List<RuntimeCommandLogResponse> recentCommands() {
-        return commandRepository.findTop100ByOrderByRequestedAtDesc()
+    public List<RuntimeCommandLogResponse> recentCommands(Long runId, int limit) {
+        var pageable = org.springframework.data.domain.PageRequest.of(0, Math.min(Math.max(limit, 1), 100));
+        var commands = runId == null
+                ? commandRepository.findAllByOrderByRequestedAtDesc(pageable)
+                : commandRepository.findByRunIdOrderByRequestedAtDesc(runId, pageable);
+        return commands
                 .stream()
                 .map(RuntimeCommandLogResponse::from)
                 .toList();
@@ -294,6 +299,12 @@ public class RuntimeControlService {
         validateCommandTarget(request.commandType(), targetDevice);
         Long deviceId = targetDevice == null ? null : targetDevice.getId();
         validateRun(request.runId());
+        RuntimeScope runtimeScope = request.runtimeScope() != null
+                ? request.runtimeScope()
+                : (request.runId() == null ? RuntimeScope.SYSTEM_OVERVIEW : RuntimeScope.MISSION_CENTER);
+        if (request.runId() != null && runtimeScope != RuntimeScope.MISSION_CENTER) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "任务执行批次只能向任务中心运行实例下发指令");
+        }
         ensureNoPendingCommand(request.runId(), deviceId);
         ControlCommand command = commandRepository.save(new ControlCommand(
                 sessionId,
@@ -301,7 +312,9 @@ public class RuntimeControlService {
                 deviceId,
                 request.commandType(),
                 request.payload(),
-                username
+                username,
+                runtimeScope,
+                request.runtimeInstanceId()
         ));
         command.dispatch(buildCommandDetail(request));
         commandRepository.save(command);

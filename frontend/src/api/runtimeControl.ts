@@ -38,12 +38,16 @@ export interface RuntimeCommandPayload {
   deviceCode?: string
   payload?: string
   detail?: string
+  runtimeScope?: 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
+  runtimeInstanceId?: string
 }
 
 export interface RuntimeCommandResult {
   id: number
   commandKey: string
   commandType: RuntimeCommandType
+  runtimeScope: 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
+  runtimeInstanceId: string | null
   status: RuntimeCommandStatus
   detail: string
   acceptedAt: string
@@ -56,6 +60,8 @@ export interface RuntimeCommandLog {
   deviceId: number | null
   commandKey: string
   commandType: RuntimeCommandType
+  runtimeScope: 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
+  runtimeInstanceId: string | null
   status: RuntimeCommandStatus
   requestedBy: string
   requestedAt: string
@@ -73,8 +79,8 @@ export async function fetchRuntimeControlStatus(): Promise<RuntimeControlState> 
   return response.data.data
 }
 
-export async function fetchRuntimeCommandLogs(): Promise<RuntimeCommandLog[]> {
-  const response = await http.get<ApiResponse<RuntimeCommandLog[]>>('/runtime-control/commands/recent')
+export async function fetchRuntimeCommandLogs(params: { runId?: number; limit?: number } = {}): Promise<RuntimeCommandLog[]> {
+  const response = await http.get<ApiResponse<RuntimeCommandLog[]>>('/runtime-control/commands/recent', { params })
   return response.data.data
 }
 

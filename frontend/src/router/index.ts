@@ -5,6 +5,7 @@ import DashboardView from '@/views/DashboardView.vue'
 import DeviceManagementView from '@/views/DeviceManagementView.vue'
 import LoginView from '@/views/LoginView.vue'
 import MissionControlView from '@/views/MissionControlView.vue'
+import MissionExecutionView from '@/views/MissionExecutionView.vue'
 import RuntimeMonitorView from '@/views/RuntimeMonitorView.vue'
 
 const router = createRouter({
@@ -13,6 +14,7 @@ const router = createRouter({
     { path: '/', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
     { path: '/devices', name: 'devices', component: DeviceManagementView, meta: { requiresAuth: true } },
     { path: '/missions', name: 'missions', component: MissionControlView, meta: { requiresAuth: true } },
+    { path: '/missions/:missionId/runs/:runId', name: 'mission-run', component: MissionExecutionView, meta: { requiresAuth: true } },
     { path: '/monitoring', name: 'monitoring', component: RuntimeMonitorView, meta: { requiresAuth: true } },
     { path: '/login', name: 'login', component: LoginView },
   ],

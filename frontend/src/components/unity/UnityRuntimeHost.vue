@@ -1,39 +1,53 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, reactive, watch } from 'vue'
-import { useRoute } from 'vue-router'
 
 import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
+import type { UnityRuntimeScope } from '@/stores/unityBridge'
 
-const route = useRoute()
+const props = withDefaults(
+  defineProps<{
+    viewport: string
+    runtimeScope?: UnityRuntimeScope
+    runtimeInstanceId?: string
+    missionId?: number
+    runId?: number
+    active?: boolean
+    layer?: number
+  }>(),
+  {
+    runtimeScope: 'SYSTEM_OVERVIEW',
+    runtimeInstanceId: 'overview-unity-01',
+    active: true,
+    layer: 20,
+  },
+)
+
 const frameStyle = reactive<Record<string, string>>({})
-let viewport: HTMLElement | null = null
+let viewportElement: HTMLElement | null = null
 let resizeObserver: ResizeObserver | null = null
 let animationFrame = 0
 
 function parkRuntime() {
-  Object.assign(frameStyle, {
-    left: '0px',
-    top: '0px',
-    width: '2px',
-    height: '2px',
-  })
+  Object.assign(frameStyle, { left: '0px', top: '0px', width: '2px', height: '2px' })
 }
 
 function alignRuntime() {
-  const nextViewport = document.querySelector<HTMLElement>('[data-unity-runtime-viewport]')
-  if (nextViewport !== viewport) {
+  const nextViewport = props.active
+    ? document.querySelector<HTMLElement>(`[data-unity-runtime-viewport="${props.viewport}"]`)
+    : null
+  if (nextViewport !== viewportElement) {
     resizeObserver?.disconnect()
-    viewport = nextViewport
-    if (viewport) {
+    viewportElement = nextViewport
+    if (viewportElement) {
       resizeObserver = new ResizeObserver(alignRuntime)
-      resizeObserver.observe(viewport)
+      resizeObserver.observe(viewportElement)
     }
   }
-  if (!viewport || route.name !== 'dashboard') {
+  if (!viewportElement || !props.active) {
     parkRuntime()
     return
   }
-  const rect = viewport.getBoundingClientRect()
+  const rect = viewportElement.getBoundingClientRect()
   Object.assign(frameStyle, {
     left: `${Math.round(rect.left)}px`,
     top: `${Math.round(rect.top)}px`,
@@ -52,7 +66,7 @@ function scheduleAlignment() {
   })
 }
 
-watch(() => route.fullPath, scheduleAlignment, { immediate: true })
+watch(() => [props.viewport, props.active], scheduleAlignment, { immediate: true })
 
 onMounted(() => {
   window.addEventListener('resize', scheduleAlignment)
@@ -70,19 +84,23 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="global-unity-runtime"
-    :class="{ active: route.name === 'dashboard' }"
-    :style="frameStyle"
-    aria-label="全局常驻 Unity WebGL 运行实例"
+    class="unity-runtime-host"
+    :class="{ active }"
+    :style="{ ...frameStyle, zIndex: String(layer) }"
+    :aria-label="`${runtimeScope} Unity WebGL 运行实例`"
   >
-    <UnityWebglPanel />
+    <UnityWebglPanel
+      :runtime-scope="runtimeScope"
+      :runtime-instance-id="runtimeInstanceId"
+      :mission-id="missionId"
+      :run-id="runId"
+    />
   </div>
 </template>
 
 <style scoped>
-.global-unity-runtime {
+.unity-runtime-host {
   position: fixed;
-  z-index: 20;
   overflow: hidden;
   pointer-events: none;
   opacity: 0.001;
@@ -90,12 +108,12 @@ onBeforeUnmount(() => {
   transition: opacity 120ms ease;
 }
 
-.global-unity-runtime.active {
+.unity-runtime-host.active {
   pointer-events: auto;
   opacity: 1;
 }
 
-.global-unity-runtime :deep(.unity-webgl-panel) {
+.unity-runtime-host :deep(.unity-webgl-panel) {
   width: 100%;
   height: 100%;
 }

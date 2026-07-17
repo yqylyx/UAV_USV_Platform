@@ -7,6 +7,12 @@ import com.uavusv.platform.module.mission.dto.response.MissionActionResponse;
 import com.uavusv.platform.module.mission.dto.response.MissionResponse;
 import com.uavusv.platform.module.mission.entity.MissionStatus;
 import com.uavusv.platform.module.mission.entity.MissionType;
+import com.uavusv.platform.module.mission.entity.MissionExecutionMode;
+import com.uavusv.platform.module.mission.entity.MissionEventLevel;
+import com.uavusv.platform.module.mission.dto.response.MissionSummaryResponse;
+import com.uavusv.platform.module.mission.dto.response.MissionPreflightResponse;
+import com.uavusv.platform.module.mission.dto.response.MissionEventResponse;
+import java.util.List;
 
 public interface MissionService {
 
@@ -14,11 +20,22 @@ public interface MissionService {
             String keyword,
             MissionType type,
             MissionStatus status,
+            MissionExecutionMode executionMode,
             int page,
             int size
     );
 
     MissionDetailResponse getMission(Long id);
+
+    MissionSummaryResponse getSummary();
+
+    MissionPreflightResponse preflight(Long id, String runtimeInstanceId);
+
+    default MissionPreflightResponse preflight(Long id) {
+        return preflight(id, null);
+    }
+
+    List<MissionEventResponse> getEvents(Long id, Long runId, MissionEventLevel level, int limit);
 
     MissionDetailResponse createMission(MissionSaveRequest request);
 
@@ -28,7 +45,7 @@ public interface MissionService {
 
     MissionActionResponse markReady(Long id, String operator, String source);
 
-    MissionActionResponse startMission(Long id, String operator, String source);
+    MissionActionResponse startMission(Long id, String operator, String source, String runtimeInstanceId);
 
     MissionActionResponse pauseMission(Long id, String operator, String source);
 
