@@ -394,7 +394,7 @@ const sessionStatusLabel = computed(() => {
     IDLE: '实时位置监视 · 未记录',
     DEPLOYING: '编组部署中 · 轨迹已清零',
     READY: '编组已就绪 · 等待开始',
-    RUNNING: '任务控制记录中',
+    RUNNING: '任务中心记录中',
     PAUSED: '本页轨迹已暂停',
     RETURNING: '返航轨迹记录中',
     STOPPED: '本页轨迹已停止',
@@ -406,11 +406,11 @@ const phase = computed(() => {
   if (props.trajectoryFrame && !isFrameLive.value) return '轨迹数据已中断，保持最后位置'
   if (props.externalActivity && props.sessionState === 'IDLE') return '系统总览任务运行中，本页未开始轨迹记录'
   if (props.sessionState === 'IDLE') return '实时位置监视，等待本页编组部署'
-  if (props.sessionState === 'DEPLOYING') return '任务控制正在部署编组'
+  if (props.sessionState === 'DEPLOYING') return '任务中心正在部署编组'
   if (props.sessionState === 'READY') return '编组就绪，等待本页开始任务'
-  if (props.sessionState === 'PAUSED') return '任务控制轨迹记录已暂停'
-  if (props.sessionState === 'STOPPED') return '任务控制轨迹记录已停止'
-  if (props.sessionState === 'RETURNING') return '任务控制编组返航'
+  if (props.sessionState === 'PAUSED') return '任务中心轨迹记录已暂停'
+  if (props.sessionState === 'STOPPED') return '任务中心轨迹记录已停止'
+  if (props.sessionState === 'RETURNING') return '任务中心编组返航'
   if (props.sessionState === 'RUNNING' && props.trajectoryFrame?.mission.phase) return props.trajectoryFrame.mission.phase
   const states = Object.values(deviceMotion.value).map((item) => item.state)
   if (states.some((state) => state === 'ERROR')) return '载具指令异常'

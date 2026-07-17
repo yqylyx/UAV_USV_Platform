@@ -1,6 +1,7 @@
 package com.uavusv.platform.module.mission.dto.response;
 
 import com.uavusv.platform.module.mission.entity.MissionStage;
+import com.uavusv.platform.module.mission.entity.MissionExecutionMode;
 import com.uavusv.platform.module.mission.entity.MissionStatus;
 import com.uavusv.platform.module.mission.entity.MissionTask;
 import com.uavusv.platform.module.mission.entity.MissionType;
@@ -12,6 +13,7 @@ public record MissionResponse(
         String code,
         String name,
         MissionType type,
+        MissionExecutionMode executionMode,
         MissionStatus status,
         MissionStage stage,
         Integer priority,
@@ -31,6 +33,7 @@ public record MissionResponse(
                 mission.getCode(),
                 mission.getName(),
                 mission.getType(),
+                mission.getExecutionMode(),
                 mission.getStatus(),
                 mission.getStage(),
                 mission.getPriority(),

@@ -3,6 +3,7 @@ package com.uavusv.platform.module.runtimecontrol.dto;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandStatus;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.ControlCommand;
+import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
 
 import java.time.LocalDateTime;
 
@@ -13,6 +14,8 @@ public record RuntimeCommandLogResponse(
         Long deviceId,
         String commandKey,
         CommandType commandType,
+        RuntimeScope runtimeScope,
+        String runtimeInstanceId,
         CommandStatus status,
         String requestedBy,
         LocalDateTime requestedAt,
@@ -30,6 +33,8 @@ public record RuntimeCommandLogResponse(
                 command.getDeviceId(),
                 command.getCommandKey(),
                 command.getCommandType(),
+                command.getRuntimeScope(),
+                command.getRuntimeInstanceId(),
                 command.getStatus(),
                 command.getRequestedBy(),
                 command.getRequestedAt(),

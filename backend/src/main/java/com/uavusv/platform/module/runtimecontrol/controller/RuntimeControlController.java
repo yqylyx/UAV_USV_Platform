@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
@@ -33,8 +34,11 @@ public class RuntimeControlController {
     }
 
     @GetMapping("/commands/recent")
-    public ApiResponse<List<RuntimeCommandLogResponse>> recentCommands() {
-        return ApiResponse.success(runtimeControlService.recentCommands());
+    public ApiResponse<List<RuntimeCommandLogResponse>> recentCommands(
+            @RequestParam(required = false) Long runId,
+            @RequestParam(defaultValue = "100") int limit
+    ) {
+        return ApiResponse.success(runtimeControlService.recentCommands(runId, limit));
     }
 
     @PostMapping("/start")

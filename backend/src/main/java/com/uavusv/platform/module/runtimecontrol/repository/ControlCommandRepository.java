@@ -8,9 +8,14 @@ import java.util.List;
 import java.util.Optional;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import org.springframework.data.domain.Pageable;
 
 public interface ControlCommandRepository extends JpaRepository<ControlCommand, Long> {
     List<ControlCommand> findTop100ByOrderByRequestedAtDesc();
+
+    List<ControlCommand> findByRunIdOrderByRequestedAtDesc(Long runId, Pageable pageable);
+
+    List<ControlCommand> findAllByOrderByRequestedAtDesc(Pageable pageable);
 
     Optional<ControlCommand> findByCommandKey(String commandKey);
 

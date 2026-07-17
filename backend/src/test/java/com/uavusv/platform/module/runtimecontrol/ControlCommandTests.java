@@ -3,6 +3,7 @@ package com.uavusv.platform.module.runtimecontrol;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandStatus;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.ControlCommand;
+import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,5 +49,25 @@ class ControlCommandTests {
 
         assertEquals(CommandType.UAV_HOVER, uav.getCommandType());
         assertEquals(CommandType.USV_HOLD, usv.getCommandType());
+        assertEquals(RuntimeScope.SYSTEM_OVERVIEW, uav.getRuntimeScope());
+        assertEquals(RuntimeScope.SYSTEM_OVERVIEW, usv.getRuntimeScope());
+    }
+
+    @Test
+    void shouldBindRunCommandsToMissionCenterInstance() {
+        ControlCommand command = new ControlCommand(
+                1L,
+                20L,
+                11L,
+                CommandType.START_MISSION,
+                "{}",
+                "admin",
+                RuntimeScope.MISSION_CENTER,
+                "mission-unity-test"
+        );
+
+        assertEquals(RuntimeScope.MISSION_CENTER, command.getRuntimeScope());
+        assertEquals("mission-unity-test", command.getRuntimeInstanceId());
+        assertEquals(20L, command.getRunId());
     }
 }

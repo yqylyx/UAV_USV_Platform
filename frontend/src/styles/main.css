@@ -4794,3 +4794,17 @@ h2 {
   }
 
 }
+.overview-mission-brief {
+  border: 1px solid rgba(67, 207, 226, 0.42);
+  border-radius: 8px;
+  padding: 14px;
+  background: linear-gradient(145deg, rgba(3, 27, 38, 0.96), rgba(2, 15, 23, 0.94));
+}
+.overview-mission-brief header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.overview-mission-brief h3 { margin:2px 0; }
+.overview-mission-brief header small { color:#43cfe2; font-weight:700; letter-spacing:.08em; }
+.overview-mission-brief header b { color:#55e7a7; }
+.overview-mission-brief p { color:#84a8ad; font-size:12px; }
+.overview-mission-progress { height:4px; background:#153640; margin:12px 0; overflow:hidden; }
+.overview-mission-progress i { display:block; height:100%; background:#6ce4d5; }
+.overview-mission-brief button { width:100%; height:38px; color:#dff8f6; border:1px solid #2b5862; border-radius:6px; background:#09232d; }

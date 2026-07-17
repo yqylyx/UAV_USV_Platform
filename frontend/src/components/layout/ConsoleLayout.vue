@@ -42,7 +42,7 @@ async function logout() {
         </RouterLink>
         <RouterLink class="nav-item" active-class="active" to="/missions">
           <Ship :size="18" />
-          任务控制
+          任务中心
         </RouterLink>
         <RouterLink class="nav-item" active-class="active" to="/devices">
           <Boxes :size="18" />

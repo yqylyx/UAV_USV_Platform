@@ -58,6 +58,10 @@
       var urlParameters = new URLSearchParams(window.location.search);
       var embedded = urlParameters.has('embedded');
       var buildStamp = urlParameters.get('v') || String(Date.now());
+      var runtimeScope = urlParameters.get('scope') || 'SYSTEM_OVERVIEW';
+      var runtimeInstanceId = urlParameters.get('instanceId') || 'overview-unity-01';
+      var missionId = urlParameters.get('missionId') || '';
+      var runId = urlParameters.get('runId') || '';
 
       function withBuildStamp(url) {
         return url + (url.indexOf('?') === -1 ? '?' : '&') + 'v=' + encodeURIComponent(buildStamp);
@@ -70,11 +74,18 @@
         window.parent.postMessage(
           {
             source: 'unity-webgl',
+            runtimeScope: runtimeScope,
+            runtimeInstanceId: runtimeInstanceId,
             message: {
               type: type,
               requestId: payload && payload.requestId ? payload.requestId : '',
               timestamp: Date.now(),
-              payload: payload || {},
+              payload: Object.assign({}, payload || {}, {
+                runtimeScope: runtimeScope,
+                runtimeInstanceId: runtimeInstanceId,
+                missionId: missionId,
+                runId: runId,
+              }),
             },
           },
           window.location.origin,
@@ -88,11 +99,18 @@
             window.parent.postMessage(
               {
                 source: 'unity-webgl',
+                runtimeScope: runtimeScope,
+                runtimeInstanceId: runtimeInstanceId,
                 message: {
                   type: parsed.type,
                   requestId: parsed.requestId || '',
                   timestamp: parsed.timestamp || Date.now(),
-                  payload: parsed.payload || {},
+                  payload: Object.assign({}, parsed.payload || {}, {
+                    runtimeScope: runtimeScope,
+                    runtimeInstanceId: runtimeInstanceId,
+                    missionId: missionId,
+                    runId: runId,
+                  }),
                 },
               },
               window.location.origin,
@@ -291,6 +309,8 @@
         if (event.origin !== window.location.origin) return;
         var data = event.data || {};
         if (data.source !== 'vue-console' || !data.message) return;
+        if (data.runtimeScope && data.runtimeScope !== runtimeScope) return;
+        if (data.runtimeInstanceId && data.runtimeInstanceId !== runtimeInstanceId) return;
         var message = data.message;
         var bridgeSent = false;
         if (window.uavUsvUnityInstance && window.uavUsvUnityInstance.SendMessage) {

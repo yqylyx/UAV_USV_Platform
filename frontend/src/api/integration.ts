@@ -9,6 +9,12 @@ export interface IntegrationHeartbeatPayload {
   state: IntegrationState
   detail: string
   rosConnectionStatus: string
+  runtimeScope?: 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
+  missionId?: number
+  runId?: number
+  controlsReady?: boolean
+  deviceCodes?: string[]
+  trajectorySequence?: number
 }
 
 const integrationToken = import.meta.env.VITE_PLATFORM_INTEGRATION_TOKEN ?? 'uav-usv-local-agent'

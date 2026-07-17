@@ -24,6 +24,10 @@ public class MissionTask extends BaseEntity {
     private MissionType type;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "execution_mode", nullable = false, length = 32)
+    private MissionExecutionMode executionMode;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private MissionStatus status;
 
@@ -75,6 +79,7 @@ public class MissionTask extends BaseEntity {
             String code,
             String name,
             MissionType type,
+            MissionExecutionMode executionMode,
             MissionStatus status,
             MissionStage stage,
             Integer priority,
@@ -88,6 +93,7 @@ public class MissionTask extends BaseEntity {
         this.code = code;
         this.name = name;
         this.type = type;
+        this.executionMode = executionMode;
         this.status = status;
         this.stage = stage;
         this.priority = priority;
@@ -101,6 +107,24 @@ public class MissionTask extends BaseEntity {
             this.startedAt = null;
             this.completedAt = null;
         }
+    }
+
+    public void update(
+            String code,
+            String name,
+            MissionType type,
+            MissionStatus status,
+            MissionStage stage,
+            Integer priority,
+            String targetName,
+            String targetBehavior,
+            String missionArea,
+            LocalDateTime plannedStartAt,
+            LocalDateTime plannedEndAt,
+            String description
+    ) {
+        update(code, name, type, MissionExecutionMode.HYBRID_MIRROR, status, stage, priority,
+                targetName, targetBehavior, missionArea, plannedStartAt, plannedEndAt, description);
     }
 
     public void softDelete() {
@@ -136,6 +160,10 @@ public class MissionTask extends BaseEntity {
 
     public MissionType getType() {
         return type;
+    }
+
+    public MissionExecutionMode getExecutionMode() {
+        return executionMode;
     }
 
     public MissionStatus getStatus() {

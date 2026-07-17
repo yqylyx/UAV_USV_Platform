@@ -46,4 +46,22 @@ class MissionRunTests {
         assertEquals("ROS heartbeat timeout", run.getFailureReason());
         assertNotNull(run.getEndedAt());
     }
+
+    @Test
+    void shouldRetainMissionCenterRuntimeAndAlgorithmIdentity() {
+        MissionRun run = new MissionRun(
+                10L,
+                20L,
+                3,
+                MissionStage.TARGET_DETECTED,
+                "operator",
+                "mission-unity-test",
+                "encirclement-v2",
+                "2.1.0"
+        );
+
+        assertEquals("mission-unity-test", run.getRuntimeInstanceId());
+        assertEquals("encirclement-v2", run.getAlgorithmCode());
+        assertEquals("2.1.0", run.getAlgorithmVersion());
+    }
 }

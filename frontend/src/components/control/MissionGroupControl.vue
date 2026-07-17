@@ -44,17 +44,15 @@ function statusLabel(status: string) {
   <article class="mission-group-control">
     <header>
       <div>
-        <span>MISSION GROUP</span>
         <strong>任务编组控制</strong>
       </div>
       <b>{{ statusLabel(status) }}</b>
     </header>
-    <p>{{ missionName }} · {{ readinessText }}</p>
     <div class="progress-track"><i :style="{ width: `${Math.max(0, Math.min(100, progress))}%` }"></i></div>
     <div class="mission-actions">
       <button
         type="button"
-        :disabled="busy"
+        :disabled="busy || !canDeploy"
         @click="emit('action', 'deploy')"
       >
         <Send />编组部署
@@ -64,7 +62,7 @@ function statusLabel(status: string) {
         v-if="status === 'DRAFT' || status === 'READY'"
         type="button"
         class="primary"
-        :disabled="busy"
+        :disabled="busy || !canStart"
         @click="emit('action', 'start')"
       >
         <Play />开始任务
@@ -80,7 +78,6 @@ function statusLabel(status: string) {
         <OctagonX />终止任务
       </button>
     </div>
-    
   </article>
 </template>
 
@@ -113,22 +110,13 @@ header {
   gap: 12px;
 }
 
-header span,
 header strong {
   display: block;
 }
 
-header span {
-  color: #4bd5ef;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-}
-
 header strong {
-  margin-top: 2px;
   color: #efffff;
-  font-size: 15px;
+  font-size: 17px;
 }
 
 header b {
@@ -136,14 +124,9 @@ header b {
   font-size: 11px;
 }
 
-p {
-  margin: 10px 0 8px;
-  color: #8fb1b0;
-  font-size: 11px;
-}
-
 .progress-track {
   height: 4px;
+  margin-top: 12px;
   overflow: hidden;
   background: rgba(110, 169, 174, 0.16);
   border-radius: 999px;

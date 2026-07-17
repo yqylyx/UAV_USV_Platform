@@ -16,6 +16,8 @@ export type MissionStatus =
   | 'FAILED'
   | 'CANCELLED'
 
+export type MissionExecutionMode = 'ROS_GAZEBO' | 'UNITY_STANDALONE' | 'HYBRID_MIRROR'
+
 export type MissionStage =
   | 'PREPARE'
   | 'TARGET_DETECTED'
@@ -43,6 +45,7 @@ export interface Mission {
   code: string
   name: string
   type: MissionType
+  executionMode: MissionExecutionMode
   status: MissionStatus
   stage: MissionStage
   priority: number
@@ -103,6 +106,9 @@ export interface MissionRun {
   pausedAt: string | null
   endedAt: string | null
   failureReason: string | null
+  runtimeInstanceId: string | null
+  algorithmCode: string | null
+  algorithmVersion: string | null
 }
 
 export interface MissionDetail {
@@ -133,6 +139,7 @@ export interface MissionSavePayload {
   code: string
   name: string
   type: MissionType
+  executionMode: MissionExecutionMode
   status: MissionStatus
   stage: MissionStage
   priority: number
@@ -150,6 +157,39 @@ export interface MissionQuery {
   keyword?: string
   type?: MissionType
   status?: MissionStatus
+  executionMode?: MissionExecutionMode
   page: number
   size: number
+}
+
+export interface MissionSummary {
+  total: number
+  ready: number
+  running: number
+  abnormal: number
+}
+
+export interface MissionPreflightIssue {
+  code: string
+  level: 'ERROR' | 'WARNING'
+  message: string
+}
+
+export interface MissionPreflight {
+  missionId: number
+  missionStatus: MissionStatus
+  executionMode: MissionExecutionMode
+  configurationComplete: boolean
+  requiredDeviceCount: number
+  onlineRequiredDeviceCount: number
+  offlineDeviceCodes: string[]
+  rosOnline: boolean
+  unityOnline: boolean
+  unityControlsReady: boolean
+  unityRecognizedDeviceCount: number
+  unityTrajectorySequence: number | null
+  hasOpenRun: boolean
+  canStart: boolean
+  issues: MissionPreflightIssue[]
+  checkedAt: string
 }

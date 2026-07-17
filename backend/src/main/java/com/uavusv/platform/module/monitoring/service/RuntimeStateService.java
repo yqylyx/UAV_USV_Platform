@@ -11,6 +11,7 @@ import com.uavusv.platform.module.monitoring.entity.DeviceTelemetry;
 import com.uavusv.platform.module.mission.entity.MissionRunStatus;
 import com.uavusv.platform.module.mission.repository.MissionRunRepository;
 import com.uavusv.platform.module.runtimecontrol.entity.SimulationStatus;
+import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
 import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
 import com.uavusv.platform.module.monitoring.entity.RuntimeDeviceStatus;
 import com.uavusv.platform.module.monitoring.entity.RuntimePose;
@@ -28,7 +29,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class RuntimeStateService {
@@ -50,6 +53,7 @@ public class RuntimeStateService {
     private final MissionRunRepository missionRunRepository;
     private final SimulationSessionRepository simulationSessionRepository;
     private final Map<String, Observation> observations = new ConcurrentHashMap<>();
+    private final Map<String, UnityRuntimeSnapshot> unityRuntimeSnapshots = new ConcurrentHashMap<>();
     private final int heartbeatTimeoutSeconds;
     private final int telemetryRetentionDays;
     private final String rosHost;
@@ -103,20 +107,69 @@ public class RuntimeStateService {
         if (request.rosConnectionStatus() != null && !request.rosConnectionStatus().isBlank()) {
             detail = (detail == null || detail.isBlank() ? "" : detail + " | ") + request.rosConnectionStatus();
         }
-        observations.put(UNITY_CODE, new Observation(LocalDateTime.now(), online, "UNITY_HEARTBEAT",
-                request.instanceId(), null, host, null, null, detail));
+        RuntimeScope scope = request.runtimeScope() == null ? RuntimeScope.SYSTEM_OVERVIEW : request.runtimeScope();
+        Observation observation = new Observation(LocalDateTime.now(), online, "UNITY_HEARTBEAT",
+                request.instanceId(), null, host, null, null, detail);
+        observations.put(unityObservationKey(scope), observation);
+        Set<String> deviceCodes = request.deviceCodes() == null
+                ? Set.of()
+                : request.deviceCodes().stream()
+                        .filter(code -> code != null && !code.isBlank())
+                        .map(code -> code.trim().toLowerCase())
+                        .collect(Collectors.toUnmodifiableSet());
+        unityRuntimeSnapshots.put(unityObservationKey(scope), new UnityRuntimeSnapshot(
+                request.instanceId(),
+                Boolean.TRUE.equals(request.controlsReady()),
+                deviceCodes,
+                request.trajectorySequence(),
+                LocalDateTime.now()
+        ));
+        if (scope == RuntimeScope.SYSTEM_OVERVIEW) {
+            observations.put(UNITY_CODE, observation);
+        }
+    }
+
+    public boolean isUnityOnline(RuntimeScope scope) {
+        return isObservationOnline(unityObservationKey(scope));
+    }
+
+    public boolean isUnityOnline(RuntimeScope scope, String instanceId) {
+        Observation observation = observations.get(unityObservationKey(scope));
+        return observation != null
+                && (instanceId == null || instanceId.isBlank() || instanceId.equals(observation.instanceId()))
+                && observation.online()
+                && Duration.between(observation.observedAt(), LocalDateTime.now()).getSeconds() <= heartbeatTimeoutSeconds;
     }
 
     public boolean isOnline(String code) {
-        Observation observation = observations.get(code);
+        return isObservationOnline(code);
+    }
+
+    public UnityRuntimeSnapshot getUnityRuntimeSnapshot(RuntimeScope scope, String instanceId) {
+        UnityRuntimeSnapshot snapshot = unityRuntimeSnapshots.get(unityObservationKey(scope));
+        if (snapshot == null
+                || (instanceId != null && !instanceId.isBlank() && !instanceId.equals(snapshot.instanceId()))
+                || Duration.between(snapshot.observedAt(), LocalDateTime.now()).getSeconds() > heartbeatTimeoutSeconds) {
+            return null;
+        }
+        return snapshot;
+    }
+
+    private boolean isObservationOnline(String key) {
+        Observation observation = observations.get(key);
         return observation != null && observation.online()
                 && Duration.between(observation.observedAt(), LocalDateTime.now()).getSeconds() <= heartbeatTimeoutSeconds;
+    }
+
+    private String unityObservationKey(RuntimeScope scope) {
+        return UNITY_CODE + ":" + scope.name();
     }
 
     @Transactional
     public void markRuntimeStopped(String detail) {
         LocalDateTime now = LocalDateTime.now();
         observations.clear();
+        unityRuntimeSnapshots.clear();
         for (Device device : deviceRepository.findAllByDeletedFalse(Sort.by(Sort.Direction.ASC, "id"))) {
             if (!RUNTIME_TYPES.contains(device.getType())) {
                 continue;
@@ -224,6 +277,15 @@ public class RuntimeStateService {
             Integer port,
             RuntimePose pose,
             String detail
+    ) {
+    }
+
+    public record UnityRuntimeSnapshot(
+            String instanceId,
+            boolean controlsReady,
+            Set<String> deviceCodes,
+            Long trajectorySequence,
+            LocalDateTime observedAt
     ) {
     }
 }

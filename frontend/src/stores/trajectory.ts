@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { UnityRuntimeScope } from './unityBridge'
 
 export type TrajectoryAgentType = 'UAV' | 'USV' | 'TARGET'
 
@@ -30,6 +31,11 @@ export interface UnityTrajectoryFrame {
   receivedAt: number
 }
 
+interface TrajectoryChannel {
+  frame: UnityTrajectoryFrame | null
+  lastSequence: number
+}
+
 function finite(value: unknown) {
   const number = Number(value)
   return Number.isFinite(number) ? number : 0
@@ -37,21 +43,34 @@ function finite(value: unknown) {
 
 export const useTrajectoryStore = defineStore('trajectory', {
   state: () => ({
-    frame: null as UnityTrajectoryFrame | null,
-    lastSequence: 0,
+    channels: {
+      SYSTEM_OVERVIEW: { frame: null, lastSequence: 0 },
+      MISSION_CENTER: { frame: null, lastSequence: 0 },
+    } as Record<UnityRuntimeScope, TrajectoryChannel>,
   }),
   getters: {
-    isLive: (state) => !!state.frame && Date.now() - state.frame.receivedAt <= 2000,
+    frame: (state) => state.channels.SYSTEM_OVERVIEW.frame,
+    lastSequence: (state) => state.channels.SYSTEM_OVERVIEW.lastSequence,
+    isLive: (state) => {
+      const frame = state.channels.SYSTEM_OVERVIEW.frame
+      return !!frame && Date.now() - frame.receivedAt <= 2000
+    },
+    frameFor: (state) => (scope: UnityRuntimeScope) => state.channels[scope].frame,
+    isLiveFor: (state) => (scope: UnityRuntimeScope) => {
+      const frame = state.channels[scope].frame
+      return !!frame && Date.now() - frame.receivedAt <= 2000
+    },
   },
   actions: {
-    ingest(payload: Record<string, unknown>) {
+    ingestFor(scope: UnityRuntimeScope, payload: Record<string, unknown>) {
+      const channel = this.channels[scope]
       const sequence = finite(payload.sequence)
-      const sequenceRestarted = sequence > 0 && sequence <= 3 && sequence < this.lastSequence
+      const sequenceRestarted = sequence > 0 && sequence <= 3 && sequence < channel.lastSequence
       if (sequenceRestarted) {
-        this.frame = null
-        this.lastSequence = 0
+        channel.frame = null
+        channel.lastSequence = 0
       }
-      if (sequence <= this.lastSequence) return
+      if (sequence <= channel.lastSequence) return
       const mission = (payload.mission ?? {}) as Record<string, unknown>
       const agents = Array.isArray(payload.agents) ? payload.agents : []
       const normalizedAgents = agents
@@ -69,8 +88,8 @@ export const useTrajectoryStore = defineStore('trajectory', {
         .filter((item) => item.code)
       if (!normalizedAgents.some((item) => item.type === 'TARGET')) return
 
-      this.lastSequence = sequence
-      this.frame = {
+      channel.lastSequence = sequence
+      channel.frame = {
         sequence,
         source: String(payload.source ?? 'unity-webgl'),
         coordinateSystem: String(payload.coordinateSystem ?? 'UNITY_XZ'),
@@ -86,9 +105,15 @@ export const useTrajectoryStore = defineStore('trajectory', {
         receivedAt: Date.now(),
       }
     },
+    ingest(payload: Record<string, unknown>) {
+      this.ingestFor('SYSTEM_OVERVIEW', payload)
+    },
+    clearFor(scope: UnityRuntimeScope) {
+      this.channels[scope].frame = null
+      this.channels[scope].lastSequence = 0
+    },
     clear() {
-      this.frame = null
-      this.lastSequence = 0
+      this.clearFor('SYSTEM_OVERVIEW')
     },
   },
 })

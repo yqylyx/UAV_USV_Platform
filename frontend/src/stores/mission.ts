@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { fetchMissions } from '@/api/mission'
-import type { Mission, MissionQuery, MissionStatus, MissionType } from '@/types/mission'
+import type { Mission, MissionExecutionMode, MissionQuery, MissionStatus, MissionType } from '@/types/mission'
 
 interface MissionState {
   records: Mission[]
@@ -12,6 +12,7 @@ interface MissionState {
   keyword: string
   type?: MissionType
   status?: MissionStatus
+  executionMode?: MissionExecutionMode
   loading: boolean
   error: string
 }
@@ -26,6 +27,7 @@ export const useMissionStore = defineStore('mission', {
     keyword: '',
     type: undefined,
     status: undefined,
+    executionMode: undefined,
     loading: false,
     error: '',
   }),
@@ -35,6 +37,7 @@ export const useMissionStore = defineStore('mission', {
         keyword: overrides.keyword ?? (this.keyword || undefined),
         type: overrides.type ?? this.type,
         status: overrides.status ?? this.status,
+        executionMode: overrides.executionMode ?? this.executionMode,
         page: overrides.page ?? this.page,
         size: overrides.size ?? this.size,
       }
