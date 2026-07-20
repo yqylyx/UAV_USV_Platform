@@ -7,9 +7,18 @@ export type AlgorithmRunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' 
 export type AlgorithmEventLevel = 'INFO' | 'WARN' | 'ERROR'
 export type AlgorithmAssignmentRole = 'TRACK' | 'INTERCEPT' | 'ENCIRCLE' | 'ESCORT' | 'DEFEND' | 'RETURN' | 'STANDBY'
 
+export interface AlgorithmPositionPayload {
+  x: number
+  y: number
+  z: number
+  heading: number
+}
+
 export interface AlgorithmStartPayload {
   algorithmType: AlgorithmType
   targetId?: string
+  targetPosition?: AlgorithmPositionPayload
+  threatPosition?: AlgorithmPositionPayload
   uavIds?: string[]
   usvIds?: string[]
   parameters?: Record<string, unknown>

@@ -2,7 +2,10 @@
 import { ElMessage } from 'element-plus'
 import { ref } from 'vue'
 
-import { useAlgorithmMissionDemo } from '@/composables/useAlgorithmMissionDemo'
+import {
+  toAlgorithmPosition,
+  useAlgorithmMissionDemo,
+} from '@/composables/useAlgorithmMissionDemo'
 import { useAlgorithmStore } from '@/stores/algorithm'
 
 const {
@@ -61,6 +64,11 @@ function validateCaptureForm() {
     return false
   }
 
+  if (!toAlgorithmPosition(captureForm.targetPosition)) {
+    ElMessage.warning('请完整填写围捕目标坐标')
+    return false
+  }
+
   const totalAgents = captureForm.uavIds.length + captureForm.usvIds.length
 
   if (totalAgents === 0) {
@@ -87,6 +95,11 @@ function validateEscortForm() {
     return false
   }
 
+  if (!toAlgorithmPosition(escortForm.targetPosition) || !toAlgorithmPosition(escortForm.threatPosition)) {
+    ElMessage.warning('请完整填写护航目标和威胁目标坐标')
+    return false
+  }
+
   if (escortForm.uavIds.length === 0 && escortForm.usvIds.length === 0) {
     ElMessage.warning('请至少选择一个参与平台')
     return false
@@ -103,6 +116,23 @@ async function handleStart() {
 
   if (!valid) return
 
+  const captureTargetPosition = toAlgorithmPosition(captureForm.targetPosition)
+  const escortTargetPosition = toAlgorithmPosition(escortForm.targetPosition)
+  const escortThreatPosition = toAlgorithmPosition(escortForm.threatPosition)
+
+  if (selectedMissionType.value === 'CAPTURE' && !captureTargetPosition) {
+    ElMessage.warning('请完整填写围捕目标坐标')
+    return
+  }
+
+  if (
+    selectedMissionType.value === 'ESCORT_DEFENSE' &&
+    (!escortTargetPosition || !escortThreatPosition)
+  ) {
+    ElMessage.warning('请完整填写护航目标和威胁目标坐标')
+    return
+  }
+
   starting.value = true
   try {
     const run =
@@ -110,6 +140,7 @@ async function handleStart() {
         ? await algorithmStore.start({
             algorithmType: 'CAPTURE',
             targetId: captureForm.targetId,
+            targetPosition: captureTargetPosition ?? undefined,
             uavIds: [...captureForm.uavIds],
             usvIds: [...captureForm.usvIds],
             parameters: {
@@ -121,6 +152,8 @@ async function handleStart() {
         : await algorithmStore.start({
             algorithmType: 'ESCORT_DEFENSE',
             targetId: escortForm.escortTargetId,
+            targetPosition: escortTargetPosition ?? undefined,
+            threatPosition: escortThreatPosition ?? undefined,
             uavIds: [...escortForm.uavIds],
             usvIds: [...escortForm.usvIds],
             parameters: {
@@ -230,6 +263,38 @@ function handleReset() {
           />
         </el-form-item>
 
+        <el-form-item label="目标 X">
+          <el-input-number
+            v-model="captureForm.targetPosition.x"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="目标 Y">
+          <el-input-number
+            v-model="captureForm.targetPosition.y"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="目标 Z">
+          <el-input-number
+            v-model="captureForm.targetPosition.z"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="目标航向">
+          <el-input-number
+            v-model="captureForm.targetPosition.heading"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
         <el-form-item label="围捕半径（m）">
           <el-input-number
             v-model="captureForm.captureRadius"
@@ -319,6 +384,74 @@ function handleReset() {
             v-model="escortForm.threatTargetId"
             :disabled="controlState === 'RUNNING' || starting || stopping"
             placeholder="例如 enemy_01"
+          />
+        </el-form-item>
+
+        <div class="coordinate-section-title">护航目标</div>
+
+        <el-form-item label="目标 X">
+          <el-input-number
+            v-model="escortForm.targetPosition.x"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="目标 Y">
+          <el-input-number
+            v-model="escortForm.targetPosition.y"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="目标 Z">
+          <el-input-number
+            v-model="escortForm.targetPosition.z"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="目标航向">
+          <el-input-number
+            v-model="escortForm.targetPosition.heading"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <div class="coordinate-section-title">威胁目标</div>
+
+        <el-form-item label="威胁 X">
+          <el-input-number
+            v-model="escortForm.threatPosition.x"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="威胁 Y">
+          <el-input-number
+            v-model="escortForm.threatPosition.y"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="威胁 Z">
+          <el-input-number
+            v-model="escortForm.threatPosition.z"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
+          />
+        </el-form-item>
+
+        <el-form-item label="威胁航向">
+          <el-input-number
+            v-model="escortForm.threatPosition.heading"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
+            controls-position="right"
           />
         </el-form-item>
 
@@ -491,6 +624,12 @@ function handleReset() {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.coordinate-section-title {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .algorithm-parameter-form :deep(.el-input-number),
