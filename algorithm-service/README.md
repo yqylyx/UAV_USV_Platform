@@ -57,3 +57,52 @@ Run:
 ```bash
 python -B -m unittest discover algorithm-service/tests
 ```
+
+## HTTP Wrapper Stage 1
+
+Install dependencies:
+
+```bash
+pip install -r algorithm-service/requirements.txt
+```
+
+Start the service:
+
+```bash
+uvicorn app:app --app-dir algorithm-service --host 127.0.0.1 --port 8000
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Response:
+
+```json
+{"status":"ok"}
+```
+
+Run one synchronous algorithm step:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/algorithms/run-once \
+  -H "content-type: application/json" \
+  -d '{
+    "algorithmType": "CAPTURE",
+    "targetId": "target_01",
+    "uavs": [
+      {"vehicleId": "uav_01", "position": {"x": 0, "y": 0, "z": 20}}
+    ],
+    "usvs": [
+      {"vehicleId": "usv_01", "position": {"x": 10, "y": 0, "z": 0}}
+    ],
+    "targetPosition": {"x": 50, "y": 50, "z": 0},
+    "parameters": {"minimumAgents": 2}
+  }'
+```
+
+This HTTP stage only wraps the existing adapters for one synchronous
+`run-once` call. It does not implement start/stop/polling, and it is not yet
+connected to Spring Boot, the frontend, Unity, ROS, or the database.
