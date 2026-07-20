@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
+import { ref } from 'vue'
 
 import { useAlgorithmMissionDemo } from '@/composables/useAlgorithmMissionDemo'
+import { useAlgorithmStore } from '@/stores/algorithm'
 
 const {
   selectedMissionType,
   controlState,
+  currentCommandId,
   captureForm,
   escortForm,
   startDemo,
   stopDemo,
   resetDemo,
 } = useAlgorithmMissionDemo()
+
+const algorithmStore = useAlgorithmStore()
+const starting = ref(false)
+const stopping = ref(false)
 
 const uavOptions = [
   { label: 'UAV-01', value: 'uav_01' },
@@ -37,8 +44,8 @@ const threatDirectionOptions = [
 ]
 
 function controlStateLabel() {
-  if (controlState.value === 'RUNNING') return '演示运行中'
-  if (controlState.value === 'STOPPED') return '演示已停止'
+  if (controlState.value === 'RUNNING') return '等待外部ACK'
+  if (controlState.value === 'STOPPED') return '已提交停止'
   return '等待启动'
 }
 
@@ -54,8 +61,7 @@ function validateCaptureForm() {
     return false
   }
 
-  const totalAgents =
-    captureForm.uavIds.length + captureForm.usvIds.length
+  const totalAgents = captureForm.uavIds.length + captureForm.usvIds.length
 
   if (totalAgents === 0) {
     ElMessage.warning('请至少选择一个参与平台')
@@ -81,10 +87,7 @@ function validateEscortForm() {
     return false
   }
 
-  if (
-    escortForm.uavIds.length === 0 &&
-    escortForm.usvIds.length === 0
-  ) {
+  if (escortForm.uavIds.length === 0 && escortForm.usvIds.length === 0) {
     ElMessage.warning('请至少选择一个参与平台')
     return false
   }
@@ -92,7 +95,7 @@ function validateEscortForm() {
   return true
 }
 
-function handleStart() {
+async function handleStart() {
   const valid =
     selectedMissionType.value === 'CAPTURE'
       ? validateCaptureForm()
@@ -100,18 +103,63 @@ function handleStart() {
 
   if (!valid) return
 
-  startDemo()
+  starting.value = true
+  try {
+    const run =
+      selectedMissionType.value === 'CAPTURE'
+        ? await algorithmStore.start({
+            algorithmType: 'CAPTURE',
+            targetId: captureForm.targetId,
+            uavIds: [...captureForm.uavIds],
+            usvIds: [...captureForm.usvIds],
+            parameters: {
+              captureRadius: captureForm.captureRadius,
+              minimumAgents: captureForm.minimumAgents,
+              dynamicReassignment: captureForm.dynamicReassignment,
+            },
+          })
+        : await algorithmStore.start({
+            algorithmType: 'ESCORT_DEFENSE',
+            targetId: escortForm.escortTargetId,
+            uavIds: [...escortForm.uavIds],
+            usvIds: [...escortForm.usvIds],
+            parameters: {
+              escortTargetId: escortForm.escortTargetId,
+              threatTargetId: escortForm.threatTargetId,
+              escortRadius: escortForm.escortRadius,
+              defenseDistance: escortForm.defenseDistance,
+              threatDirection: escortForm.threatDirection,
+            },
+          })
 
-  ElMessage.success(
-    selectedMissionType.value === 'CAPTURE'
-      ? '围捕前端演示已启动，未调用真实算法'
-      : '护航防守前端演示已启动，未调用真实算法',
-  )
+    startDemo(run.commandId)
+    ElMessage.success(`算法指令已提交，等待外部算法ACK：${run.commandId}`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '算法指令提交失败')
+  } finally {
+    starting.value = false
+  }
 }
 
-function handleStop() {
-  stopDemo()
-  ElMessage.info('前端演示已停止，未向真实算法发送指令')
+async function handleStop() {
+  if (!currentCommandId.value) {
+    ElMessage.warning('暂无可停止的算法指令')
+    return
+  }
+
+  stopping.value = true
+  try {
+    await algorithmStore.stop({
+      commandId: currentCommandId.value,
+      reason: '用户从围捕/护航控制面板停止算法',
+    })
+    stopDemo()
+    ElMessage.info('算法停止指令已提交')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '算法停止失败')
+  } finally {
+    stopping.value = false
+  }
 }
 
 function handleReset() {
@@ -137,14 +185,14 @@ function handleReset() {
         </el-tag>
 
         <el-tag type="warning" effect="plain">
-          前端演示
+          接口已连接
         </el-tag>
       </div>
     </div>
 
     <el-alert
-      title="当前为前端演示模式"
-      description="启动和停止按钮只验证页面交互，没有调用Python算法、ROS、后端或Unity。"
+      title="当前已连接平台算法接口；真实算法执行仍需外部Python算法服务ACK。"
+      description="当前任务分配图和状态详情属于演示数据。"
       type="warning"
       show-icon
       :closable="false"
@@ -156,7 +204,7 @@ function handleReset() {
 
       <el-radio-group
         v-model="selectedMissionType"
-        :disabled="controlState === 'RUNNING'"
+        :disabled="controlState === 'RUNNING' || starting || stopping"
       >
         <el-radio-button value="CAPTURE">
           协同围捕
@@ -177,7 +225,7 @@ function handleReset() {
         <el-form-item label="围捕目标">
           <el-input
             v-model="captureForm.targetId"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             placeholder="例如 target_01"
           />
         </el-form-item>
@@ -185,7 +233,7 @@ function handleReset() {
         <el-form-item label="围捕半径（m）">
           <el-input-number
             v-model="captureForm.captureRadius"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             :min="10"
             :max="500"
             :step="5"
@@ -196,7 +244,7 @@ function handleReset() {
         <el-form-item label="最少围捕平台数">
           <el-input-number
             v-model="captureForm.minimumAgents"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             :min="1"
             :max="20"
             controls-position="right"
@@ -206,7 +254,7 @@ function handleReset() {
         <el-form-item label="动态重新分配">
           <el-switch
             v-model="captureForm.dynamicReassignment"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             active-text="允许"
             inactive-text="关闭"
           />
@@ -217,7 +265,7 @@ function handleReset() {
         <el-form-item label="参与UAV">
           <el-select
             v-model="captureForm.uavIds"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             multiple
             collapse-tags
             collapse-tags-tooltip
@@ -235,7 +283,7 @@ function handleReset() {
         <el-form-item label="参与USV">
           <el-select
             v-model="captureForm.usvIds"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             multiple
             collapse-tags
             collapse-tags-tooltip
@@ -261,7 +309,7 @@ function handleReset() {
         <el-form-item label="被护航目标">
           <el-input
             v-model="escortForm.escortTargetId"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             placeholder="例如 escort_target_01"
           />
         </el-form-item>
@@ -269,7 +317,7 @@ function handleReset() {
         <el-form-item label="威胁目标">
           <el-input
             v-model="escortForm.threatTargetId"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             placeholder="例如 enemy_01"
           />
         </el-form-item>
@@ -277,7 +325,7 @@ function handleReset() {
         <el-form-item label="护航半径（m）">
           <el-input-number
             v-model="escortForm.escortRadius"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             :min="10"
             :max="500"
             :step="5"
@@ -285,10 +333,10 @@ function handleReset() {
           />
         </el-form-item>
 
-        <el-form-item label="防守距离（m）">
+        <el-form-item label="防御距离（m）">
           <el-input-number
             v-model="escortForm.defenseDistance"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             :min="5"
             :max="500"
             :step="5"
@@ -299,7 +347,7 @@ function handleReset() {
         <el-form-item label="威胁方向">
           <el-select
             v-model="escortForm.threatDirection"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
           >
             <el-option
               v-for="option in threatDirectionOptions"
@@ -315,7 +363,7 @@ function handleReset() {
         <el-form-item label="参与UAV">
           <el-select
             v-model="escortForm.uavIds"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             multiple
             collapse-tags
             collapse-tags-tooltip
@@ -333,7 +381,7 @@ function handleReset() {
         <el-form-item label="参与USV">
           <el-select
             v-model="escortForm.usvIds"
-            :disabled="controlState === 'RUNNING'"
+            :disabled="controlState === 'RUNNING' || starting || stopping"
             multiple
             collapse-tags
             collapse-tags-tooltip
@@ -353,23 +401,25 @@ function handleReset() {
     <div class="algorithm-control-actions">
       <el-button
         type="primary"
-        :disabled="controlState === 'RUNNING'"
+        :disabled="controlState === 'RUNNING' || starting || stopping"
+        :loading="starting"
         @click="handleStart"
       >
-        启动算法演示
+        启动算法
       </el-button>
 
       <el-button
         type="danger"
         plain
-        :disabled="controlState !== 'RUNNING'"
+        :disabled="controlState !== 'RUNNING' || starting || stopping"
+        :loading="stopping"
         @click="handleStop"
       >
-        停止演示
+        停止算法
       </el-button>
 
       <el-button
-        :disabled="controlState === 'RUNNING'"
+        :disabled="controlState === 'RUNNING' || starting || stopping"
         @click="handleReset"
       >
         重置参数

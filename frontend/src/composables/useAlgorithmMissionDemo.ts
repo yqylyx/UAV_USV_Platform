@@ -6,6 +6,7 @@ export type AlgorithmDemoControlState = 'READY' | 'RUNNING' | 'STOPPED'
 
 const selectedMissionType = ref<AlgorithmMissionType>('CAPTURE')
 const controlState = ref<AlgorithmDemoControlState>('READY')
+const currentCommandId = ref<string | null>(null)
 
 const captureForm = reactive({
   targetId: 'target_01',
@@ -26,7 +27,8 @@ const escortForm = reactive({
   threatDirection: 'FRONT',
 })
 
-function startDemo() {
+function startDemo(commandId: string) {
+  currentCommandId.value = commandId
   controlState.value = 'RUNNING'
 }
 
@@ -36,6 +38,7 @@ function stopDemo() {
 
 function resetDemo() {
   controlState.value = 'READY'
+  currentCommandId.value = null
 
   selectedMissionType.value = 'CAPTURE'
 
@@ -59,6 +62,7 @@ export function useAlgorithmMissionDemo() {
   return {
     selectedMissionType,
     controlState,
+    currentCommandId,
     captureForm,
     escortForm,
     startDemo,
