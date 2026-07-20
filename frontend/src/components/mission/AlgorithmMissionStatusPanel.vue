@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
 
 import { useAlgorithmMissionDemo } from '@/composables/useAlgorithmMissionDemo'
 import { getAlgorithmMissionPreview } from '@/services/algorithmMissionDataService'
@@ -51,6 +51,91 @@ const currentEvents = computed(() =>
     ? events.value.filter((event) => event.commandId === currentCommandId.value)
     : [],
 )
+
+const pollingStatuses = new Set<AlgorithmRunStatus>(['PENDING', 'RUNNING'])
+let pollingTimer: ReturnType<typeof setInterval> | null = null
+let refreshing = false
+let queuedCommandId: string | null = null
+
+function shouldPoll(status?: AlgorithmRunStatus | null) {
+  return !!status && pollingStatuses.has(status)
+}
+
+function clearPolling() {
+  if (pollingTimer !== null) {
+    clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+}
+
+async function refreshCurrentAlgorithm(commandId: string) {
+  if (refreshing) {
+    queuedCommandId = commandId
+    return
+  }
+
+  refreshing = true
+  try {
+    await Promise.all([
+      algorithmStore.refreshStatus(commandId),
+      algorithmStore.refreshAssignments(commandId),
+      algorithmStore.refreshEvents(commandId),
+    ])
+  } finally {
+    refreshing = false
+    const nextCommandId = queuedCommandId
+    queuedCommandId = null
+    if (nextCommandId && nextCommandId === currentCommandId.value) {
+      void refreshCurrentAlgorithm(nextCommandId)
+    }
+  }
+}
+
+function ensurePolling() {
+  if (!currentCommandId.value || !shouldPoll(currentRun.value?.status)) {
+    clearPolling()
+    return
+  }
+
+  if (pollingTimer !== null) return
+
+  pollingTimer = setInterval(() => {
+    const commandId = currentCommandId.value
+    if (!commandId || !shouldPoll(currentRun.value?.status)) {
+      clearPolling()
+      return
+    }
+    void refreshCurrentAlgorithm(commandId)
+  }, 3000)
+}
+
+watch(
+  currentCommandId,
+  (commandId) => {
+    clearPolling()
+    queuedCommandId = null
+    if (!commandId) return
+
+    void refreshCurrentAlgorithm(commandId).finally(() => {
+      if (currentCommandId.value === commandId) {
+        ensurePolling()
+      }
+    })
+  },
+  { immediate: true },
+)
+
+watch(
+  () => currentRun.value?.status,
+  () => {
+    ensurePolling()
+  },
+)
+
+onBeforeUnmount(() => {
+  clearPolling()
+  queuedCommandId = null
+})
 
 function missionTypeLabel(type: AlgorithmMissionType) {
   return type === 'CAPTURE' ? '协同围捕' : '护航防守'
