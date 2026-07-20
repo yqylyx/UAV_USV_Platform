@@ -7,6 +7,7 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -38,7 +39,13 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
-                        .ignoringRequestMatchers("/api/auth/login", "/api/integration/**","/api/runtime-control/**")
+                        .ignoringRequestMatchers(
+                                "/api/auth/login",
+                                "/api/integration/**",
+                                "/api/runtime-control/**",
+                                "/api/perception/**",
+                                "/api/algorithm/**"
+                        )
                 )
                 .securityContext(context -> context
                         .securityContextRepository(securityContextRepository)
@@ -55,6 +62,14 @@ public class SecurityConfig {
                                 "/api/integration/**",
                                 "/actuator/health",
                                 "/actuator/info"
+                        ).permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/perception/sensors/status",
+                                "/api/perception/targets",
+                                "/api/algorithm/*/ack",
+                                "/api/algorithm/*/status",
+                                "/api/algorithm/*/assignments",
+                                "/api/algorithm/events"
                         ).permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()

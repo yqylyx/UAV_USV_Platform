@@ -12,7 +12,10 @@ import { executeMissionAction, fetchMission, fetchMissions } from '@/api/mission
 import type { MissionAction } from '@/api/mission'
 import { issueRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
+import type { AlgorithmRunStatus } from '@/api/algorithm'
+import { useAlgorithmStore } from '@/stores/algorithm'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { usePerceptionStore } from '@/stores/perception'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
@@ -28,6 +31,8 @@ type UnityMessage = {
 }
 
 const monitoringStore = useMonitoringStore()
+const algorithmStore = useAlgorithmStore()
+const perceptionStore = usePerceptionStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const unityViewportStore = useUnityViewportStore()
@@ -141,6 +146,7 @@ const realtimePoseCount = computed(
     ).length,
 )
 const onlineNodeCount = computed(() => displayedNodes.value.filter((node) => node.status === 'ONLINE').length)
+const overviewAlgorithmRun = computed(() => algorithmStore.activeRun ?? algorithmStore.latestRun)
 const taskStateText = computed(() => {
   if (!unityReady.value) return '等待 Unity'
   if (rosBridgeOnline.value && realtimePoseCount.value > 0) return '实时同步'
@@ -180,6 +186,9 @@ const missionReadinessText = computed(() =>
       ? `${quickControlDevices.value.length}/${quickControlDevices.value.length} 载具已完成编组部署`
       : `等待部署 ${quickControlDevices.value.length} 台围捕载具`,
 )
+const perceptionSummaryText = computed(() =>
+  `${perceptionStore.onlineSensorCount}/${perceptionStore.sensors.length} 传感器在线 · ${perceptionStore.hostileTargetCount} 个敌方目标`,
+)
 
 const overviewFleetCards = computed(() =>
   selectableDevices.value.map((device) => {
@@ -206,6 +215,56 @@ function operationalStateAfterCommand(commandType: RuntimeCommandType) {
     USV_DEPART: 'SAILING', USV_HOLD: 'HOLDING', USV_RESUME: 'SAILING', USV_RETURN: 'RETURNING', USV_STOP: 'STOPPED',
   }
   return states[commandType]
+}
+
+function algorithmStatusLabel(status?: AlgorithmRunStatus) {
+  const labels: Partial<Record<AlgorithmRunStatus, string>> = {
+    PENDING: '等待算法 ACK',
+    RUNNING: '算法运行中',
+    COMPLETED: '算法完成',
+    FAILED: '算法异常',
+    TIMEOUT: '算法超时',
+    STOPPED: '算法已停止',
+  }
+  return status ? labels[status] ?? status : '未启动'
+}
+
+function overviewAlgorithmPayload() {
+  const uavIds = quickControlDevices.value.filter((device) => device.type === 'UAV').map((device) => normalizeDeviceCode(device.code).replace(/-/g, '_'))
+  const usvIds = quickControlDevices.value.filter((device) => device.type === 'USV').map((device) => normalizeDeviceCode(device.code).replace(/-/g, '_'))
+  return {
+    algorithmType: 'CAPTURE' as const,
+    targetId: perceptionStore.targets[0]?.targetId ?? 'target_01',
+    uavIds: uavIds.length ? uavIds : ['uav_01', 'uav_02', 'uav_03'],
+    usvIds: usvIds.length ? usvIds : ['usv_01', 'usv_02', 'usv_03'],
+    parameters: {
+      source: 'dashboard',
+      missionName: overviewMissionName.value,
+      runtimeInstanceId: unityInstanceId,
+    },
+  }
+}
+
+async function startOverviewAlgorithm() {
+  const payload = overviewAlgorithmPayload()
+  const run = await algorithmStore.start(payload)
+  unityBridgeStore.send('algorithmStart', {
+    commandId: run.commandId,
+    algorithmType: run.algorithmType,
+    targetId: run.targetId,
+    uavIds: payload.uavIds,
+    usvIds: payload.usvIds,
+  })
+  unityBridgeStore.send('perceptionTargets', { targets: perceptionStore.targets })
+  unityCommandState.value = `围捕算法：${algorithmStatusLabel(run.status)}`
+  ElMessage.warning(`围捕算法指令已生成：${run.commandId}，等待算法组 ACK`)
+}
+
+async function stopOverviewAlgorithm(reason: string) {
+  const active = algorithmStore.activeRun
+  if (!active) return
+  await algorithmStore.stop({ commandId: active.commandId, reason }).catch(() => [])
+  unityBridgeStore.send('algorithmStop', { commandId: active.commandId, reason })
 }
 
 function toUnityPose(node: RuntimeNode) {
@@ -725,6 +784,7 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
   commandBusy.value = true
   try {
     if (action === 'abort') {
+      await stopOverviewAlgorithm('系统总览终止任务')
       await runOverviewDemoCommand('cancel')
       overviewDeploymentAcknowledged.value = false
       ElMessage.success('简单围捕任务已终止')
@@ -748,6 +808,7 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
       if (!overviewDeploymentAcknowledged.value) {
         throw new Error('请先点击“编组部署”，确认三机三艇加入围捕编组')
       }
+      await startOverviewAlgorithm()
       await runOverviewDemoCommand('start')
       ElMessage.success('简单围捕任务已启动')
       return
@@ -756,6 +817,7 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
     if (action === 'pause') {
       const held = await sendFleetPair('UAV_HOVER', '无人机编组悬停', 'USV_HOLD', '无人艇编组定点保持')
       if (!held.allAcknowledged) throw new Error(`暂停失败：${held.failed} 台载具未确认保持`)
+      await stopOverviewAlgorithm('系统总览暂停任务')
       await runOverviewDemoCommand('pause')
       ElMessage.success('任务已暂停，三机三艇均已进入保持状态')
       return
@@ -764,6 +826,7 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
     if (action === 'resume') {
       const resumed = await sendFleetPair('UAV_RESUME', '无人机继续任务', 'USV_RESUME', '无人艇继续航行')
       if (!resumed.allAcknowledged) throw new Error(`继续任务失败：${resumed.failed} 台载具未确认恢复`)
+      await startOverviewAlgorithm()
       await runOverviewDemoCommand('resume')
       ElMessage.success('任务已继续，Unity 与后端状态均已确认')
       return
@@ -771,6 +834,7 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
 
     const returning = await sendFleetPair('UAV_RETURN', '无人机编组返航', 'USV_RETURN', '无人艇编组返航')
     if (!returning.allAcknowledged) throw new Error(`返航失败：${returning.failed} 台载具未确认返航`)
+    await stopOverviewAlgorithm('系统总览全体返航')
     await runOverviewDemoCommand('cancel')
     ElMessage.success('全体返航已确认，当前任务已结束')
   } catch (error) {
@@ -870,6 +934,8 @@ onMounted(() => {
   unityViewportStore.show('dashboard')
   freshnessTimer = window.setInterval(() => { freshnessClock.value = Date.now() }, 500)
   void monitoringStore.refresh({}, true).then(pushPoseFrameToUnity)
+  void perceptionStore.refresh()
+  void algorithmStore.refreshStatus()
   monitoringStore.connectEvents()
 })
 
@@ -1022,6 +1088,28 @@ watch(
               :readiness-text="missionReadinessText"
               @action="handleMissionGroupAction"
             />
+            <article class="mission-command-feedback-card">
+              <header>
+                <div><span>PERCEPTION</span><strong>视觉/雷达模拟</strong></div>
+                <b>{{ perceptionSummaryText }}</b>
+              </header>
+              <p>
+                {{ perceptionStore.targets[0]?.targetId || 'target_01' }} ·
+                {{ perceptionStore.targets[0]?.targetType || 'ENEMY_USV' }} ·
+                置信度 {{ Math.round((perceptionStore.targets[0]?.confidence ?? 0) * 100) }}%
+              </p>
+            </article>
+            <article class="mission-command-feedback-card">
+              <header>
+                <div><span>ALGORITHM</span><strong>围捕/护航算法</strong></div>
+                <b :class="overviewAlgorithmRun?.status.toLowerCase()">{{ algorithmStatusLabel(overviewAlgorithmRun?.status) }}</b>
+              </header>
+              <p>
+                {{ overviewAlgorithmRun?.commandId || '尚未生成算法指令' }}
+                <br />
+                {{ overviewAlgorithmRun?.message || '点击开始任务后生成 CAPTURE 指令，后续由算法组 ACK' }}
+              </p>
+            </article>
           </div>
         </aside>
       </div>
