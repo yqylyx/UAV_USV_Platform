@@ -44,6 +44,9 @@ declare module 'vue' {
     UnityWebglPanel: typeof import('./components/unity/UnityWebglPanel.vue')['default']
     VehicleGlyph: typeof import('./components/control/VehicleGlyph.vue')['default']
     VehicleQuickControl: typeof import('./components/control/VehicleQuickControl.vue')['default']
+    VisionCameraPanel: typeof import('./components/monitoring/VisionCameraPanel.vue')['default']
+    VisionDetectionPanel: typeof import('./components/monitoring/VisionDetectionPanel.vue')['default']
+    VisionSensorStatusPanel: typeof import('./components/monitoring/VisionSensorStatusPanel.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

@@ -4,6 +4,9 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import VisionSensorStatusPanel from '@/components/monitoring/VisionSensorStatusPanel.vue'
+import VisionDetectionPanel from '@/components/monitoring/VisionDetectionPanel.vue'
+import VisionCameraPanel from '@/components/monitoring/VisionCameraPanel.vue'
 import { useMonitoringStore } from '@/stores/monitoring'
 import { useRuntimeControlStore } from '@/stores/runtimeControl'
 import type { DeviceStatus, DeviceType } from '@/types/device'
@@ -493,6 +496,12 @@ onBeforeUnmount(() => {
         </div>
       </article>
     </section>
+
+    <VisionCameraPanel />
+
+    <VisionSensorStatusPanel />
+
+    <VisionDetectionPanel />
 
     <section class="console-panel filter-panel">
       <el-select v-model="filters.type" clearable placeholder="节点类型">
