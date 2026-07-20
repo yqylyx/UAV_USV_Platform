@@ -3,15 +3,53 @@ import { computed } from 'vue'
 
 import { useAlgorithmMissionDemo } from '@/composables/useAlgorithmMissionDemo'
 import { getAlgorithmMissionPreview } from '@/services/algorithmMissionDataService'
+import { useAlgorithmStore } from '@/stores/algorithm'
+import type {
+  AlgorithmAssignmentRole,
+  AlgorithmEventLevel,
+  AlgorithmRunStatus,
+} from '@/api/algorithm'
 import type {
   AlgorithmMissionType,
   AlgorithmVehicleType,
 } from '@/types/algorithmMission'
 
-const { selectedMissionType } = useAlgorithmMissionDemo()
+const { currentCommandId, selectedMissionType } = useAlgorithmMissionDemo()
+const algorithmStore = useAlgorithmStore()
+
+const runs = computed(() => algorithmStore.runs)
+const activeRun = computed(() => algorithmStore.activeRun)
+const latestRun = computed(() => algorithmStore.latestRun)
+const assignments = computed(() => algorithmStore.assignments)
+const events = computed(() => algorithmStore.events)
+const loading = computed(() => algorithmStore.loading)
+const error = computed(() => algorithmStore.error)
 
 const preview = computed(() =>
   getAlgorithmMissionPreview(selectedMissionType.value),
+)
+
+const currentRun = computed(() => {
+  const commandId = currentCommandId.value
+  if (!commandId) return null
+  return (
+    runs.value.find((run) => run.commandId === commandId) ??
+    (activeRun.value?.commandId === commandId ? activeRun.value : null) ??
+    (latestRun.value?.commandId === commandId ? latestRun.value : null)
+  )
+})
+
+const currentAssignments = computed(() => {
+  if (!currentCommandId.value || assignments.value?.commandId !== currentCommandId.value) {
+    return []
+  }
+  return assignments.value.assignments
+})
+
+const currentEvents = computed(() =>
+  currentCommandId.value
+    ? events.value.filter((event) => event.commandId === currentCommandId.value)
+    : [],
 )
 
 function missionTypeLabel(type: AlgorithmMissionType) {
@@ -22,18 +60,58 @@ function vehicleTypeLabel(type: AlgorithmVehicleType) {
   return type === 'UAV' ? '无人机' : '无人艇'
 }
 
-function eventTagType(level: string) {
+function runStatusLabel(status?: AlgorithmRunStatus | null) {
+  if (status === 'PENDING') return '等待算法ACK'
+  if (status === 'RUNNING') return '算法运行中'
+  if (status === 'COMPLETED') return '算法已完成'
+  if (status === 'FAILED') return '算法执行失败'
+  if (status === 'TIMEOUT') return '算法ACK超时'
+  if (status === 'STOPPED') return '算法已停止'
+  return '等待状态刷新'
+}
+
+function runStatusTagType(status?: AlgorithmRunStatus | null) {
+  if (error.value) return 'danger'
+  if (status === 'COMPLETED') return 'success'
+  if (status === 'FAILED' || status === 'TIMEOUT') return 'danger'
+  if (status === 'RUNNING') return 'success'
+  if (status === 'STOPPED') return 'info'
+  return 'warning'
+}
+
+function assignmentRoleLabel(role?: AlgorithmAssignmentRole | null) {
+  if (role === 'TRACK') return '跟踪'
+  if (role === 'INTERCEPT') return '拦截'
+  if (role === 'ENCIRCLE') return '围捕'
+  if (role === 'ESCORT') return '护航'
+  if (role === 'DEFEND') return '防守'
+  if (role === 'RETURN') return '返航'
+  if (role === 'STANDBY') return '待命'
+  return '--'
+}
+
+function eventTagType(level: string | AlgorithmEventLevel) {
   if (level === 'SUCCESS') return 'success'
-  if (level === 'WARNING') return 'warning'
+  if (level === 'WARNING' || level === 'WARN') return 'warning'
   if (level === 'ERROR') return 'danger'
   return 'info'
 }
 
-function eventLevelLabel(level: string) {
+function eventLevelLabel(level: string | AlgorithmEventLevel) {
   if (level === 'SUCCESS') return '完成'
-  if (level === 'WARNING') return '告警'
+  if (level === 'WARNING' || level === 'WARN') return '告警'
   if (level === 'ERROR') return '错误'
   return '信息'
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '--'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+}
+
+function formatNullableNumber(value?: number | null) {
+  return typeof value === 'number' ? value.toFixed(1) : '--'
 }
 
 function formatCoordinate(value: number) {
@@ -50,7 +128,7 @@ function formatCost(value: number) {
     <div class="algorithm-heading">
       <div>
         <h2>协同算法展示</h2>
-        <p>展示围捕与护航防守算法的阶段、角色分配和运行事件。</p>
+        <p>展示围捕与护航防守算法的后端指令状态、任务分配和运行事件。</p>
       </div>
 
       <div class="algorithm-heading-actions">
@@ -59,62 +137,145 @@ function formatCost(value: number) {
           <el-radio-button value="ESCORT_DEFENSE">护航防守</el-radio-button>
         </el-radio-group>
 
-        <el-tag effect="plain">演示数据</el-tag>
+        <el-tag v-if="currentCommandId" :type="runStatusTagType(currentRun?.status)" effect="plain">
+          {{ loading ? '同步中' : runStatusLabel(currentRun?.status) }}
+        </el-tag>
+        <el-tag v-else effect="plain">演示预览</el-tag>
       </div>
     </div>
 
-    <div class="algorithm-summary">
-      <article>
-        <span>任务模式</span>
-        <strong>{{ missionTypeLabel(preview.summary.missionType) }}</strong>
-      </article>
+    <el-alert
+      v-if="error"
+      :title="error"
+      type="error"
+      show-icon
+      :closable="false"
+      class="demo-alert"
+    />
 
-      <article>
-        <span>当前阶段</span>
-        <strong>{{ preview.summary.statusName }}</strong>
-      </article>
+    <template v-if="currentCommandId">
+      <div class="algorithm-summary">
+        <article>
+          <span>任务模式</span>
+          <strong>{{ currentRun ? missionTypeLabel(currentRun.algorithmType) : missionTypeLabel(selectedMissionType) }}</strong>
+        </article>
 
-      <article>
-        <span>任务目标</span>
-        <strong>{{ preview.summary.targetId }}</strong>
-      </article>
+        <article>
+          <span>后端状态</span>
+          <strong>{{ runStatusLabel(currentRun?.status) }}</strong>
+        </article>
 
-      <article>
-        <span>参与平台</span>
-        <strong>
-          {{ preview.summary.participatingUavs }} UAV /
-          {{ preview.summary.participatingUsvs }} USV
-        </strong>
-      </article>
-    </div>
+        <article>
+          <span>算法指令</span>
+          <strong>{{ currentCommandId }}</strong>
+        </article>
 
-    <div class="algorithm-progress">
-      <div>
-        <strong>{{ preview.summary.algorithmName }}</strong>
-        <span>已运行 {{ preview.summary.elapsedSeconds }} 秒</span>
+        <article>
+          <span>任务目标</span>
+          <strong>{{ currentRun?.targetId || assignments?.targetId || '--' }}</strong>
+        </article>
       </div>
 
-      <el-progress
-        :percentage="preview.summary.progress"
-        :stroke-width="12"
-      />
+      <div class="algorithm-progress">
+        <div>
+          <strong>{{ currentRun?.stage || '等待阶段信息' }}</strong>
+          <span>{{ formatDateTime(currentRun?.startedAt) }}</span>
+        </div>
 
-      <p>{{ preview.summary.detail }}</p>
-    </div>
+        <p>{{ currentRun?.message || '暂无后端状态消息' }}</p>
+        <p v-if="currentRun?.errorMessage">{{ currentRun.errorMessage }}</p>
+      </div>
+    </template>
+
+    <template v-else>
+      <div class="algorithm-summary">
+        <article>
+          <span>真实状态</span>
+          <strong>尚未提交算法指令</strong>
+        </article>
+
+        <article>
+          <span>演示模式</span>
+          <strong>{{ missionTypeLabel(preview.summary.missionType) }}</strong>
+        </article>
+
+        <article>
+          <span>演示目标</span>
+          <strong>{{ preview.summary.targetId }}</strong>
+        </article>
+
+        <article>
+          <span>演示平台</span>
+          <strong>
+            {{ preview.summary.participatingUavs }} UAV /
+            {{ preview.summary.participatingUsvs }} USV
+          </strong>
+        </article>
+      </div>
+
+      <div class="algorithm-progress">
+        <div>
+          <strong>演示预览</strong>
+          <span>非真实算法状态</span>
+        </div>
+
+        <p>下方任务分配和事件用于界面预览，不代表后端算法运行结果。</p>
+      </div>
+    </template>
 
     <div class="algorithm-content">
       <article class="assignment-section">
         <div class="subsection-heading">
           <div>
             <h3>角色与目标分配</h3>
-            <p>展示算法为各UAV和USV生成的任务位置。</p>
+            <p>{{ currentCommandId ? '展示后端返回的任务分配结果。' : '演示预览数据，非真实算法结果。' }}</p>
           </div>
           <el-tag effect="plain">
-            {{ preview.assignments.length }}个平台
+            {{ currentCommandId ? `${currentAssignments.length}个平台` : '演示预览' }}
           </el-tag>
         </div>
 
-        <el-table :data="preview.assignments">
+        <el-table v-if="currentCommandId" :data="currentAssignments">
+          <el-table-column prop="vehicleId" label="平台" min-width="100" />
+
+          <el-table-column prop="vehicleCode" label="平台编号" min-width="110">
+            <template #default="{ row }">
+              {{ row.vehicleCode || '--' }}
+            </template>
+          </el-table-column>
+
+          <el-table-column label="角色" min-width="110">
+            <template #default="{ row }">
+              {{ assignmentRoleLabel(row.role) }}
+            </template>
+          </el-table-column>
+
+          <el-table-column label="目标位置" min-width="160">
+            <template #default="{ row }">
+              ({{ formatNullableNumber(row.x) }},
+              {{ formatNullableNumber(row.y) }},
+              {{ formatNullableNumber(row.z) }})
+            </template>
+          </el-table-column>
+
+          <el-table-column label="航向" min-width="90">
+            <template #default="{ row }">
+              {{ formatNullableNumber(row.heading) }}
+            </template>
+          </el-table-column>
+
+          <el-table-column prop="detail" label="详情" min-width="150">
+            <template #default="{ row }">
+              {{ row.detail || '--' }}
+            </template>
+          </el-table-column>
+
+          <template #empty>
+            暂无后端任务分配结果
+          </template>
+        </el-table>
+
+        <el-table v-else :data="preview.assignments">
           <el-table-column prop="vehicleId" label="平台" min-width="100" />
 
           <el-table-column label="类型" min-width="90">
@@ -148,11 +309,34 @@ function formatCost(value: number) {
         <div class="subsection-heading">
           <div>
             <h3>运行事件</h3>
-            <p>显示算法阶段变化。</p>
+            <p>{{ currentCommandId ? '显示后端算法事件。' : '演示预览事件，非真实算法结果。' }}</p>
           </div>
         </div>
 
-        <div class="algorithm-event-list">
+        <div v-if="currentCommandId" class="algorithm-event-list">
+          <article
+            v-for="event in currentEvents"
+            :key="`${event.occurredAt}-${event.message}`"
+            class="algorithm-event"
+          >
+            <div>
+              <el-tag :type="eventTagType(event.level)" effect="plain">
+                {{ eventLevelLabel(event.level) }}
+              </el-tag>
+              <time>{{ formatDateTime(event.occurredAt) }}</time>
+            </div>
+            <strong>{{ event.stage || '--' }}</strong>
+            <p>{{ event.message }}</p>
+          </article>
+
+          <el-empty
+            v-if="currentEvents.length === 0"
+            description="暂无后端算法事件"
+            :image-size="80"
+          />
+        </div>
+
+        <div v-else class="algorithm-event-list">
           <article
             v-for="event in preview.events"
             :key="event.id"
@@ -215,6 +399,10 @@ function formatCost(value: number) {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.demo-alert {
+  margin-bottom: 18px;
 }
 
 .algorithm-summary {
