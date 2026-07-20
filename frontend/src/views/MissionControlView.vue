@@ -19,6 +19,9 @@ import {
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import MissionListPanel from '@/components/mission/MissionListPanel.vue'
+import AlgorithmMissionControlPanel from '@/components/mission/AlgorithmMissionControlPanel.vue'
+import AlgorithmMissionStatusPanel from '@/components/mission/AlgorithmMissionStatusPanel.vue'
+import AlgorithmTacticalMap from '@/components/mission/AlgorithmTacticalMap.vue'
 import MissionConfigDialog from '@/components/mission/MissionConfigDialog.vue'
 import MissionStartCheckDialog from '@/components/mission/MissionStartCheckDialog.vue'
 import MissionEventDrawer from '@/components/mission/MissionEventDrawer.vue'
@@ -194,6 +197,12 @@ onMounted(()=>{monitoringStore.connectEvents();void deviceStore.refresh({page:0,
         <article><span class="summary-icon running"><Radio :size="20"/></span><div><span>运行中</span><b>{{ summary.running }}</b><small>{{ missionUnityChannel.connected ? '任务中心 Unity 在线' : '等待任务中心 Unity' }}</small></div></article>
         <article><span class="summary-icon abnormal"><AlertTriangle :size="20"/></span><div><span>异常与终止</span><b>{{ summary.abnormal }}</b><small>保留事件与运行记录</small></div></article>
       </div>
+
+      <AlgorithmMissionControlPanel />
+
+      <AlgorithmMissionStatusPanel />
+
+      <AlgorithmTacticalMap />
 
       <div class="mission-center-grid">
         <section class="mission-catalog-panel">

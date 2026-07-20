@@ -11,6 +11,9 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AlgorithmMissionControlPanel: typeof import('./components/mission/AlgorithmMissionControlPanel.vue')['default']
+    AlgorithmMissionStatusPanel: typeof import('./components/mission/AlgorithmMissionStatusPanel.vue')['default']
+    AlgorithmTacticalMap: typeof import('./components/mission/AlgorithmTacticalMap.vue')['default']
     ConsoleLayout: typeof import('./components/layout/ConsoleLayout.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElButton: typeof import('element-plus/es')['ElButton']
@@ -25,7 +28,11 @@ declare module 'vue' {
     ElInputNumber: typeof import('element-plus/es')['ElInputNumber']
     ElOption: typeof import('element-plus/es')['ElOption']
     ElPagination: typeof import('element-plus/es')['ElPagination']
+    ElProgress: typeof import('element-plus/es')['ElProgress']
+    ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
+    ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElSelect: typeof import('element-plus/es')['ElSelect']
+    ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTag: typeof import('element-plus/es')['ElTag']
