@@ -60,7 +60,7 @@ public class AlgorithmRun extends BaseEntity {
         this.status = AlgorithmRunStatus.PENDING;
         this.targetId = targetId;
         this.stage = "INIT";
-        this.message = "已生成算法指令，等待外部算法 ACK；模拟分配结果可用于前端联调";
+        this.message = "已生成算法指令，等待算法服务执行";
         this.requestJson = requestJson;
         this.parameterJson = parameterJson;
         this.startedAt = LocalDateTime.now();
