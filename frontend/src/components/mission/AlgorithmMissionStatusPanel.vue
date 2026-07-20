@@ -2,19 +2,22 @@
 import { computed, onBeforeUnmount, watch } from 'vue'
 
 import { useAlgorithmMissionDemo } from '@/composables/useAlgorithmMissionDemo'
-import { getAlgorithmMissionPreview } from '@/services/algorithmMissionDataService'
 import { useAlgorithmStore } from '@/stores/algorithm'
 import type {
   AlgorithmAssignmentRole,
   AlgorithmEventLevel,
   AlgorithmRunStatus,
 } from '@/api/algorithm'
-import type {
-  AlgorithmMissionType,
-  AlgorithmVehicleType,
-} from '@/types/algorithmMission'
+import type { AlgorithmMissionType } from '@/types/algorithmMission'
 
-const { currentCommandId, selectedMissionType } = useAlgorithmMissionDemo()
+const {
+  currentCommandId,
+  selectedMissionType,
+  captureForm,
+  escortForm,
+  submittedPositionSource,
+  submittedVehicleIds,
+} = useAlgorithmMissionDemo()
 const algorithmStore = useAlgorithmStore()
 
 const runs = computed(() => algorithmStore.runs)
@@ -24,10 +27,6 @@ const assignments = computed(() => algorithmStore.assignments)
 const events = computed(() => algorithmStore.events)
 const loading = computed(() => algorithmStore.loading)
 const error = computed(() => algorithmStore.error)
-
-const preview = computed(() =>
-  getAlgorithmMissionPreview(selectedMissionType.value),
-)
 
 const currentRun = computed(() => {
   const commandId = currentCommandId.value
@@ -50,6 +49,21 @@ const currentEvents = computed(() =>
   currentCommandId.value
     ? events.value.filter((event) => event.commandId === currentCommandId.value)
     : [],
+)
+
+const selectedVehicleCount = computed(() => {
+  const form = selectedMissionType.value === 'CAPTURE' ? captureForm : escortForm
+  return form.uavIds.length + form.usvIds.length
+})
+
+const resultSourceLabel = computed(() =>
+  submittedPositionSource.value === 'MANUAL' ? '手动初始位姿实验' : '实时位姿',
+)
+
+const resultSourceDescription = computed(() =>
+  submittedPositionSource.value === 'MANUAL'
+    ? '车辆初始位置来自人工输入；任务分配与事件来自真实Python算法服务。'
+    : '车辆初始位置来自 RuntimeDeviceStatus；任务分配与事件来自真实Python算法服务。',
 )
 
 const pollingStatuses = new Set<AlgorithmRunStatus>(['PENDING', 'RUNNING'])
@@ -141,16 +155,12 @@ function missionTypeLabel(type: AlgorithmMissionType) {
   return type === 'CAPTURE' ? '协同围捕' : '护航防守'
 }
 
-function vehicleTypeLabel(type: AlgorithmVehicleType) {
-  return type === 'UAV' ? '无人机' : '无人艇'
-}
-
 function runStatusLabel(status?: AlgorithmRunStatus | null) {
-  if (status === 'PENDING') return '等待算法ACK'
-  if (status === 'RUNNING') return '算法运行中'
+  if (status === 'PENDING') return '等待算法处理'
+  if (status === 'RUNNING') return '算法执行中'
   if (status === 'COMPLETED') return '算法已完成'
   if (status === 'FAILED') return '算法执行失败'
-  if (status === 'TIMEOUT') return '算法ACK超时'
+  if (status === 'TIMEOUT') return '算法执行超时'
   if (status === 'STOPPED') return '算法已停止'
   return '等待状态刷新'
 }
@@ -198,14 +208,6 @@ function formatDateTime(value?: string | null) {
 function formatNullableNumber(value?: number | null) {
   return typeof value === 'number' ? value.toFixed(1) : '--'
 }
-
-function formatCoordinate(value: number) {
-  return value.toFixed(1)
-}
-
-function formatCost(value: number) {
-  return value.toFixed(2)
-}
 </script>
 
 <template>
@@ -225,7 +227,7 @@ function formatCost(value: number) {
         <el-tag v-if="currentCommandId" :type="runStatusTagType(currentRun?.status)" effect="plain">
           {{ loading ? '同步中' : runStatusLabel(currentRun?.status) }}
         </el-tag>
-        <el-tag v-else effect="plain">演示预览</el-tag>
+        <el-tag v-else effect="plain">尚未获得算法结果</el-tag>
       </div>
     </div>
 
@@ -251,6 +253,11 @@ function formatCost(value: number) {
         </article>
 
         <article>
+          <span>输入来源</span>
+          <strong>{{ resultSourceLabel }}</strong>
+        </article>
+
+        <article>
           <span>算法指令</span>
           <strong>{{ currentCommandId }}</strong>
         </article>
@@ -268,6 +275,8 @@ function formatCost(value: number) {
         </div>
 
         <p>{{ currentRun?.message || '暂无后端状态消息' }}</p>
+        <p>{{ resultSourceDescription }}</p>
+        <p>提交车辆：{{ submittedVehicleIds.length }} 个</p>
         <p v-if="currentRun?.errorMessage">{{ currentRun.errorMessage }}</p>
       </div>
     </template>
@@ -280,31 +289,28 @@ function formatCost(value: number) {
         </article>
 
         <article>
-          <span>演示模式</span>
-          <strong>{{ missionTypeLabel(preview.summary.missionType) }}</strong>
+          <span>当前任务模式</span>
+          <strong>{{ missionTypeLabel(selectedMissionType) }}</strong>
         </article>
 
         <article>
-          <span>演示目标</span>
-          <strong>{{ preview.summary.targetId }}</strong>
+          <span>算法结果</span>
+          <strong>尚未获得算法结果</strong>
         </article>
 
         <article>
-          <span>演示平台</span>
-          <strong>
-            {{ preview.summary.participatingUavs }} UAV /
-            {{ preview.summary.participatingUsvs }} USV
-          </strong>
+          <span>当前选择平台</span>
+          <strong>{{ selectedVehicleCount }} 个</strong>
         </article>
       </div>
 
       <div class="algorithm-progress">
         <div>
-          <strong>演示预览</strong>
-          <span>非真实算法状态</span>
+          <strong>尚未获得算法结果</strong>
+          <span>启动后显示真实Python算法结果</span>
         </div>
 
-        <p>下方任务分配和事件用于界面预览，不代表后端算法运行结果。</p>
+        <p>当前没有成功提交的算法结果；任务分配与事件只会在后端返回真实Python算法结果后显示。</p>
       </div>
     </template>
 
@@ -313,10 +319,10 @@ function formatCost(value: number) {
         <div class="subsection-heading">
           <div>
             <h3>角色与目标分配</h3>
-            <p>{{ currentCommandId ? '展示后端返回的任务分配结果。' : '演示预览数据，非真实算法结果。' }}</p>
+            <p>{{ currentCommandId ? '展示真实Python算法服务返回的任务分配结果。' : '尚未获得算法分配结果。' }}</p>
           </div>
           <el-tag effect="plain">
-            {{ currentCommandId ? `${currentAssignments.length}个平台` : '演示预览' }}
+            {{ currentCommandId ? `${currentAssignments.length}个平台` : '尚未获得结果' }}
           </el-tag>
         </div>
 
@@ -360,41 +366,18 @@ function formatCost(value: number) {
           </template>
         </el-table>
 
-        <el-table v-else :data="preview.assignments">
-          <el-table-column prop="vehicleId" label="平台" min-width="100" />
-
-          <el-table-column label="类型" min-width="90">
-            <template #default="{ row }">
-              {{ vehicleTypeLabel(row.vehicleType) }}
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="roleName" label="角色" min-width="120" />
-
-          <el-table-column prop="targetId" label="任务目标" min-width="130" />
-
-          <el-table-column label="目标位置" min-width="140">
-            <template #default="{ row }">
-              ({{ formatCoordinate(row.targetX) }},
-              {{ formatCoordinate(row.targetY) }})
-            </template>
-          </el-table-column>
-
-          <el-table-column label="分配代价" min-width="100">
-            <template #default="{ row }">
-              {{ formatCost(row.assignmentCost) }}
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="status" label="执行状态" min-width="150" />
-        </el-table>
+        <el-empty
+          v-else
+          description="尚未获得算法结果"
+          :image-size="90"
+        />
       </article>
 
       <aside class="algorithm-event-section">
         <div class="subsection-heading">
           <div>
             <h3>运行事件</h3>
-            <p>{{ currentCommandId ? '显示后端算法事件。' : '演示预览事件，非真实算法结果。' }}</p>
+            <p>{{ currentCommandId ? '显示真实Python算法服务返回的事件。' : '尚未获得算法事件。' }}</p>
           </div>
         </div>
 
@@ -421,22 +404,11 @@ function formatCost(value: number) {
           />
         </div>
 
-        <div v-else class="algorithm-event-list">
-          <article
-            v-for="event in preview.events"
-            :key="event.id"
-            class="algorithm-event"
-          >
-            <div>
-              <el-tag :type="eventTagType(event.level)" effect="plain">
-                {{ eventLevelLabel(event.level) }}
-              </el-tag>
-              <time>{{ event.time }}</time>
-            </div>
-            <strong>{{ event.stage }}</strong>
-            <p>{{ event.message }}</p>
-          </article>
-        </div>
+        <el-empty
+          v-else
+          description="尚未获得算法结果"
+          :image-size="80"
+        />
       </aside>
     </div>
   </section>

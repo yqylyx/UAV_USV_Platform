@@ -1,16 +1,39 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { useAlgorithmMissionDemo } from '@/composables/useAlgorithmMissionDemo'
-import { getAlgorithmMissionPreview } from '@/services/algorithmMissionDataService'
+import {
+  isCompletePosition,
+  useAlgorithmMissionDemo,
+} from '@/composables/useAlgorithmMissionDemo'
 import { useAlgorithmStore } from '@/stores/algorithm'
 import type { AlgorithmAssignmentItem, AlgorithmAssignmentRole } from '@/api/algorithm'
-import type { AlgorithmVehicleType } from '@/types/algorithmMission'
+import type { AlgorithmMissionType } from '@/types/algorithmMission'
+
+type AlgorithmVehicleType = 'UAV' | 'USV'
+
+interface TacticalPoint {
+  id: string
+  label: string
+  vehicleType: AlgorithmVehicleType | 'PLATFORM'
+  x: number
+  y: number
+}
+
+interface TacticalTargetPoint {
+  id: string
+  label: string
+  x: number
+  y: number
+  kind: 'target' | 'threat'
+}
 
 const {
   currentCommandId,
   selectedMissionType,
   controlState,
+  positionSource,
+  manualVehiclePositions,
+  submittedPositionSource,
   captureForm,
   escortForm,
 } = useAlgorithmMissionDemo()
@@ -20,13 +43,6 @@ const assignments = computed(() => algorithmStore.assignments)
 const loading = computed(() => algorithmStore.loading)
 const error = computed(() => algorithmStore.error)
 
-const preview = computed(() =>
-  getAlgorithmMissionPreview(selectedMissionType.value),
-)
-
-const mapCenterX = 300
-const mapCenterY = 180
-const coordinateScale = 2
 const mapWidth = 600
 const mapHeight = 360
 const mapPadding = 48
@@ -52,25 +68,10 @@ const drawableBackendAssignments = computed(() =>
   ),
 )
 
-const backendBounds = computed(() => {
-  const xs = drawableBackendAssignments.value.map((assignment) => assignment.x as number)
-  const ys = drawableBackendAssignments.value.map((assignment) => assignment.y as number)
-  return {
-    minX: Math.min(...xs),
-    maxX: Math.max(...xs),
-    minY: Math.min(...ys),
-    maxY: Math.max(...ys),
-  }
-})
-
 const activeRadius = computed(() =>
   selectedMissionType.value === 'CAPTURE'
     ? captureForm.captureRadius
     : escortForm.escortRadius,
-)
-
-const ringRadius = computed(() =>
-  Math.min(Math.max(activeRadius.value * coordinateScale, 35), 145),
 )
 
 const mapTitle = computed(() =>
@@ -79,47 +80,147 @@ const mapTitle = computed(() =>
     : '护航防守态势',
 )
 
-const mapDescription = computed(() =>
-  usesBackendMode.value
-    ? '显示后端返回的任务分配坐标；目标中心坐标尚未由后端提供。'
-    : selectedMissionType.value === 'CAPTURE'
-      ? '演示预览围捕目标、围捕范围及异构平台分配位置。'
-      : '演示预览被护航目标、护航范围、威胁方向及防守位置。',
+const resultPositionSource = computed(() =>
+  submittedPositionSource.value ?? 'REALTIME',
 )
 
-function pointX(worldX: number) {
-  return (
-    mapCenterX +
-    (worldX - preview.value.scene.centerX) * coordinateScale
-  )
-}
+const positionSourceLabel = computed(() =>
+  usesBackendMode.value
+    ? resultPositionSource.value === 'MANUAL'
+      ? '车辆初始位姿来自人工输入'
+      : '车辆初始位姿来自实时运行状态'
+    : positionSource.value === 'MANUAL'
+      ? '手动初始位姿输入预览，非算法分配结果'
+      : '尚未获得算法分配，启动后将显示真实Python结果',
+)
 
-function pointY(worldY: number) {
-  return (
-    mapCenterY -
-    (worldY - preview.value.scene.centerY) * coordinateScale
-  )
-}
+const mapDescription = computed(() =>
+  usesBackendMode.value
+    ? '图中分配位置来自真实Python算法返回。'
+    : positionSource.value === 'MANUAL'
+      ? '手动初始位姿输入预览，非算法分配结果。'
+      : '尚未获得算法分配，启动后将显示真实Python结果。',
+)
 
-function backendPointX(worldX: number) {
-  const range = backendBounds.value.maxX - backendBounds.value.minX
+const selectedVehicleKeySet = computed(() => {
+  const form = selectedMissionType.value === 'CAPTURE' ? captureForm : escortForm
+  return new Set([...form.uavIds, ...form.usvIds])
+})
+
+const manualPreviewPoints = computed<TacticalPoint[]>(() =>
+  manualVehiclePositions
+    .filter((item) => selectedVehicleKeySet.value.has(item.vehicleId))
+    .flatMap((item) => {
+      const position = item.position
+      if (!isCompletePosition(position)) return []
+
+      return [{
+        id: item.vehicleId,
+        label: vehicleShortLabel(item.vehicleId),
+        vehicleType: vehicleTypeFromId(item.vehicleId),
+        x: position.x,
+        y: position.y,
+      }]
+    }),
+)
+
+const inputTargetPoints = computed<TacticalTargetPoint[]>(() => {
+  if (usesBackendMode.value || positionSource.value !== 'MANUAL') return []
+
+  const points: TacticalTargetPoint[] = []
+  if (selectedMissionType.value === 'CAPTURE') {
+    if (isCompletePosition(captureForm.targetPosition)) {
+      points.push({
+        id: 'target',
+        label: '用户输入目标',
+        x: captureForm.targetPosition.x,
+        y: captureForm.targetPosition.y,
+        kind: 'target',
+      })
+    }
+    return points
+  }
+
+  if (isCompletePosition(escortForm.targetPosition)) {
+    points.push({
+      id: 'escort-target',
+      label: '用户输入目标',
+      x: escortForm.targetPosition.x,
+      y: escortForm.targetPosition.y,
+      kind: 'target',
+    })
+  }
+  if (isCompletePosition(escortForm.threatPosition)) {
+    points.push({
+      id: 'threat',
+      label: '用户输入威胁',
+      x: escortForm.threatPosition.x,
+      y: escortForm.threatPosition.y,
+      kind: 'threat',
+    })
+  }
+  return points
+})
+
+const plottedPoints = computed(() =>
+  usesBackendMode.value
+    ? drawableBackendAssignments.value.map((assignment) => ({
+        id: `${assignment.vehicleId}-${assignment.role}`,
+        label: backendShortLabel(assignment),
+        vehicleType: platformType(assignment),
+        x: assignment.x as number,
+        y: assignment.y as number,
+      }))
+    : manualPreviewPoints.value,
+)
+
+const bounds = computed(() => {
+  const allPoints = [
+    ...plottedPoints.value,
+    ...inputTargetPoints.value.map((point) => ({
+      id: point.id,
+      label: point.label,
+      vehicleType: 'PLATFORM' as const,
+      x: point.x,
+      y: point.y,
+    })),
+  ]
+
+  if (allPoints.length === 0) {
+    return { minX: 0, maxX: 0, minY: 0, maxY: 0 }
+  }
+
+  const xs = allPoints.map((point) => point.x)
+  const ys = allPoints.map((point) => point.y)
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  }
+})
+
+function mapPointX(worldX: number) {
+  const range = bounds.value.maxX - bounds.value.minX
   if (range === 0) return mapWidth / 2
-  return mapPadding + ((worldX - backendBounds.value.minX) / range) * (mapWidth - mapPadding * 2)
+  return mapPadding + ((worldX - bounds.value.minX) / range) * (mapWidth - mapPadding * 2)
 }
 
-function backendPointY(worldY: number) {
-  const range = backendBounds.value.maxY - backendBounds.value.minY
+function mapPointY(worldY: number) {
+  const range = bounds.value.maxY - bounds.value.minY
   if (range === 0) return mapHeight / 2
-  return mapHeight - mapPadding - ((worldY - backendBounds.value.minY) / range) * (mapHeight - mapPadding * 2)
+  return mapHeight - mapPadding - ((worldY - bounds.value.minY) / range) * (mapHeight - mapPadding * 2)
 }
 
 function platformType(assignment: AlgorithmAssignmentItem): AlgorithmVehicleType | 'PLATFORM' {
-  const candidates = [assignment.vehicleCode, assignment.vehicleId]
-    .filter(Boolean)
-    .map((value) => String(value).toLowerCase().replace(/[-_]/g, ''))
+  return vehicleTypeFromId(`${assignment.vehicleCode ?? ''} ${assignment.vehicleId}`)
+}
 
-  if (candidates.some((value) => value.startsWith('uav'))) return 'UAV'
-  if (candidates.some((value) => value.startsWith('usv'))) return 'USV'
+function vehicleTypeFromId(vehicleId: string): AlgorithmVehicleType | 'PLATFORM' {
+  const normalized = vehicleId.toLowerCase().replace(/[-_]/g, '')
+
+  if (normalized.includes('uav')) return 'UAV'
+  if (normalized.includes('usv')) return 'USV'
   return 'PLATFORM'
 }
 
@@ -130,7 +231,7 @@ function vehicleColor(vehicleType: AlgorithmVehicleType | 'PLATFORM') {
 }
 
 function vehicleShortLabel(vehicleId: string) {
-  return vehicleId.replace('uav_', 'U').replace('usv_', 'S')
+  return vehicleId.replace(/^uav[-_]?/i, 'U').replace(/^usv[-_]?/i, 'S')
 }
 
 function backendShortLabel(assignment: AlgorithmAssignmentItem) {
@@ -153,22 +254,22 @@ function formatBackendCoordinate(value?: number | null) {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '--'
 }
 
-function backendCoordinateLabel(assignment: AlgorithmAssignmentItem) {
-  return `(${formatBackendCoordinate(assignment.x)}, ${formatBackendCoordinate(assignment.y)})`
+function coordinateLabel(point: { x: number; y: number }) {
+  return `(${formatBackendCoordinate(point.x)}, ${formatBackendCoordinate(point.y)})`
 }
 
-function backendLabelX(worldX: number) {
-  const point = backendPointX(worldX)
+function labelX(worldX: number) {
+  const point = mapPointX(worldX)
   return point > mapWidth - 150 ? point - 16 : point + 16
 }
 
-function backendLabelAnchor(worldX: number) {
-  return backendPointX(worldX) > mapWidth - 150 ? 'end' : 'start'
+function labelAnchor(worldX: number) {
+  return mapPointX(worldX) > mapWidth - 150 ? 'end' : 'start'
 }
 
 function controlStateLabel() {
-  if (controlState.value === 'RUNNING') return '演示运行中'
-  if (controlState.value === 'STOPPED') return '演示已停止'
+  if (controlState.value === 'RUNNING') return '算法已提交'
+  if (controlState.value === 'STOPPED') return '算法已停止'
   return '等待启动'
 }
 
@@ -176,6 +277,10 @@ function controlStateTagType() {
   if (controlState.value === 'RUNNING') return 'success'
   if (controlState.value === 'STOPPED') return 'danger'
   return 'info'
+}
+
+function missionTypeLabel(type: AlgorithmMissionType) {
+  return type === 'CAPTURE' ? '协同围捕' : '护航防守'
 }
 </script>
 
@@ -194,14 +299,14 @@ function controlStateTagType() {
               ? loading
                 ? '同步中'
                 : drawableBackendAssignments.length > 0
-                  ? '后端分配已加载'
-                  : '等待后端分配'
+                  ? '真实结果已加载'
+                  : '等待真实结果'
               : controlStateLabel()
           }}
         </el-tag>
 
-        <el-tag :type="usesBackendMode ? 'warning' : 'warning'" effect="plain">
-          {{ usesBackendMode ? '后端返回分配' : '演示预览，非真实算法结果' }}
+        <el-tag effect="plain">
+          {{ usesBackendMode ? '真实Python算法结果' : positionSourceLabel }}
         </el-tag>
       </div>
     </div>
@@ -237,20 +342,6 @@ function controlStateTagType() {
                 stroke-width="1"
               />
             </pattern>
-
-            <marker
-              id="threat-arrow"
-              markerWidth="8"
-              markerHeight="8"
-              refX="7"
-              refY="4"
-              orient="auto"
-            >
-              <path
-                d="M0,0 L8,4 L0,8 Z"
-                fill="#ff6b6b"
-              />
-            </marker>
           </defs>
 
           <rect
@@ -261,155 +352,23 @@ function controlStateTagType() {
             fill="url(#algorithm-grid)"
           />
 
-          <template v-if="!usesBackendMode">
-            <circle
-              :cx="mapCenterX"
-              :cy="mapCenterY"
-              :r="ringRadius"
-              fill="rgba(86, 207, 225, 0.06)"
-              stroke="#56cfe1"
-              stroke-width="2"
-              stroke-dasharray="8 6"
-            />
-
-            <circle
-              v-if="selectedMissionType === 'ESCORT_DEFENSE'"
-              :cx="mapCenterX"
-              :cy="mapCenterY"
-              :r="Math.min(ringRadius + escortForm.defenseDistance, 165)"
-              fill="none"
-              stroke="rgba(255, 209, 102, 0.65)"
-              stroke-width="1.5"
-              stroke-dasharray="4 7"
-            />
-
-            <g
-              v-for="assignment in preview.assignments"
-              :key="assignment.vehicleId"
-            >
-              <line
-                :x1="mapCenterX"
-                :y1="mapCenterY"
-                :x2="pointX(assignment.targetX)"
-                :y2="pointY(assignment.targetY)"
-                :stroke="vehicleColor(assignment.vehicleType)"
-                stroke-width="1.5"
-                stroke-dasharray="5 5"
-                opacity="0.65"
-              />
-
-              <circle
-                :cx="pointX(assignment.targetX)"
-                :cy="pointY(assignment.targetY)"
-                r="12"
-                :fill="vehicleColor(assignment.vehicleType)"
-                stroke="#071f24"
-                stroke-width="2"
-              />
-
-              <text
-                :x="pointX(assignment.targetX)"
-                :y="pointY(assignment.targetY) + 4"
-                text-anchor="middle"
-                class="vehicle-label"
-              >
-                {{ vehicleShortLabel(assignment.vehicleId) }}
-              </text>
-            </g>
-
-            <line
-              v-if="
-                preview.scene.threatX !== null &&
-                preview.scene.threatY !== null
-              "
-              :x1="pointX(preview.scene.threatX)"
-              :y1="pointY(preview.scene.threatY)"
-              :x2="mapCenterX + 18"
-              :y2="mapCenterY - 8"
-              stroke="#ff6b6b"
-              stroke-width="3"
-              stroke-dasharray="10 6"
-              marker-end="url(#threat-arrow)"
-            />
-
-            <g
-              v-if="
-                preview.scene.threatX !== null &&
-                preview.scene.threatY !== null
-              "
-            >
-              <circle
-                :cx="pointX(preview.scene.threatX)"
-                :cy="pointY(preview.scene.threatY)"
-                r="15"
-                fill="#ff6b6b"
-                stroke="#ffd1d1"
-                stroke-width="2"
-              />
-
-              <text
-                :x="pointX(preview.scene.threatX)"
-                :y="pointY(preview.scene.threatY) + 4"
-                text-anchor="middle"
-                class="threat-label"
-              >
-                E
-              </text>
-            </g>
-
-            <circle
-              :cx="mapCenterX"
-              :cy="mapCenterY"
-              r="18"
-              :fill="
-                selectedMissionType === 'CAPTURE'
-                  ? '#ff6b6b'
-                  : '#80ed99'
-              "
-              stroke="#ffffff"
-              stroke-width="2"
-            />
-
-            <text
-              :x="mapCenterX"
-              :y="mapCenterY + 5"
-              text-anchor="middle"
-              class="center-label"
-            >
-              {{ selectedMissionType === 'CAPTURE' ? 'T' : 'P' }}
-            </text>
-
-            <text
-              :x="mapCenterX"
-              :y="mapCenterY + ringRadius + 24"
-              text-anchor="middle"
-              class="radius-label"
-            >
-              {{
-                selectedMissionType === 'CAPTURE'
-                  ? `围捕半径 ${captureForm.captureRadius} m`
-                  : `护航半径 ${escortForm.escortRadius} m`
-              }}
-            </text>
-
+          <template v-if="usesBackendMode">
             <text
               x="300"
               y="30"
               text-anchor="middle"
               class="radius-label"
             >
-              演示预览，非真实算法结果
+              图中分配位置来自真实Python算法返回
             </text>
-          </template>
 
-          <template v-else>
             <text
               x="300"
-              y="30"
+              y="48"
               text-anchor="middle"
               class="radius-label"
             >
-              目标中心坐标尚未由后端提供
+              {{ positionSourceLabel }}
             </text>
 
             <text
@@ -419,7 +378,7 @@ function controlStateTagType() {
               text-anchor="middle"
               class="radius-label"
             >
-              暂无后端任务分配坐标
+              尚未获得算法分配，启动后将显示真实Python结果。
             </text>
 
             <g
@@ -427,8 +386,8 @@ function controlStateTagType() {
               :key="`${assignment.vehicleId}-${assignment.role}`"
             >
               <circle
-                :cx="backendPointX(assignment.x as number)"
-                :cy="backendPointY(assignment.y as number)"
+                :cx="mapPointX(assignment.x as number)"
+                :cy="mapPointY(assignment.y as number)"
                 r="12"
                 :fill="vehicleColor(platformType(assignment))"
                 stroke="#071f24"
@@ -436,8 +395,8 @@ function controlStateTagType() {
               />
 
               <text
-                :x="backendPointX(assignment.x as number)"
-                :y="backendPointY(assignment.y as number) + 4"
+                :x="mapPointX(assignment.x as number)"
+                :y="mapPointY(assignment.y as number) + 4"
                 text-anchor="middle"
                 class="vehicle-label"
               >
@@ -445,26 +404,134 @@ function controlStateTagType() {
               </text>
 
               <text
-                :x="backendLabelX(assignment.x as number)"
-                :y="backendPointY(assignment.y as number) - 10"
-                :text-anchor="backendLabelAnchor(assignment.x as number)"
+                :x="labelX(assignment.x as number)"
+                :y="mapPointY(assignment.y as number) - 10"
+                :text-anchor="labelAnchor(assignment.x as number)"
                 class="radius-label"
               >
                 <tspan>{{ assignment.vehicleCode || assignment.vehicleId }}</tspan>
                 <tspan
-                  :x="backendLabelX(assignment.x as number)"
+                  :x="labelX(assignment.x as number)"
                   dy="14"
                 >
                   {{ assignmentRoleLabel(assignment.role) }}
                 </tspan>
                 <tspan
-                  :x="backendLabelX(assignment.x as number)"
+                  :x="labelX(assignment.x as number)"
                   dy="14"
                 >
-                  {{ backendCoordinateLabel(assignment) }}
+                  {{ coordinateLabel({ x: assignment.x as number, y: assignment.y as number }) }}
                 </tspan>
               </text>
             </g>
+          </template>
+
+          <template v-else-if="positionSource === 'MANUAL'">
+            <text
+              x="300"
+              y="30"
+              text-anchor="middle"
+              class="radius-label"
+            >
+              手动初始位姿输入预览，非算法分配结果
+            </text>
+
+            <text
+              v-if="manualPreviewPoints.length === 0"
+              x="300"
+              y="180"
+              text-anchor="middle"
+              class="radius-label"
+            >
+              请完整填写车辆初始位姿后预览输入位置
+            </text>
+
+            <g
+              v-for="target in inputTargetPoints"
+              :key="target.id"
+            >
+              <circle
+                :cx="mapPointX(target.x)"
+                :cy="mapPointY(target.y)"
+                r="15"
+                :fill="target.kind === 'threat' ? '#ff6b6b' : '#80ed99'"
+                stroke="#ffffff"
+                stroke-width="2"
+              />
+
+              <text
+                :x="mapPointX(target.x)"
+                :y="mapPointY(target.y) + 4"
+                text-anchor="middle"
+                class="center-label"
+              >
+                {{ target.kind === 'threat' ? 'E' : 'T' }}
+              </text>
+
+              <text
+                :x="labelX(target.x)"
+                :y="mapPointY(target.y) - 12"
+                :text-anchor="labelAnchor(target.x)"
+                class="radius-label"
+              >
+                {{ target.label }}
+              </text>
+            </g>
+
+            <g
+              v-for="point in manualPreviewPoints"
+              :key="point.id"
+            >
+              <circle
+                :cx="mapPointX(point.x)"
+                :cy="mapPointY(point.y)"
+                r="12"
+                :fill="vehicleColor(point.vehicleType)"
+                stroke="#071f24"
+                stroke-width="2"
+              />
+
+              <text
+                :x="mapPointX(point.x)"
+                :y="mapPointY(point.y) + 4"
+                text-anchor="middle"
+                class="vehicle-label"
+              >
+                {{ point.label }}
+              </text>
+
+              <text
+                :x="labelX(point.x)"
+                :y="mapPointY(point.y) - 10"
+                :text-anchor="labelAnchor(point.x)"
+                class="radius-label"
+              >
+                <tspan>{{ point.id }}</tspan>
+                <tspan
+                  :x="labelX(point.x)"
+                  dy="14"
+                >
+                  手动输入
+                </tspan>
+                <tspan
+                  :x="labelX(point.x)"
+                  dy="14"
+                >
+                  {{ coordinateLabel(point) }}
+                </tspan>
+              </text>
+            </g>
+          </template>
+
+          <template v-else>
+            <text
+              x="300"
+              y="180"
+              text-anchor="middle"
+              class="radius-label"
+            >
+              尚未获得算法分配，启动后将显示真实Python结果。
+            </text>
           </template>
         </svg>
       </div>
@@ -475,18 +542,12 @@ function controlStateTagType() {
         <dl>
           <div>
             <dt>当前模式</dt>
-            <dd>
-              {{
-                selectedMissionType === 'CAPTURE'
-                  ? '协同围捕'
-                  : '护航防守'
-              }}
-            </dd>
+            <dd>{{ missionTypeLabel(selectedMissionType) }}</dd>
           </div>
 
           <div>
-            <dt>中心目标</dt>
-            <dd>{{ usesBackendMode ? '目标中心坐标尚未由后端提供' : preview.scene.centerLabel }}</dd>
+            <dt>数据来源</dt>
+            <dd>{{ usesBackendMode ? '真实Python算法结果' : positionSourceLabel }}</dd>
           </div>
 
           <div>
@@ -495,18 +556,13 @@ function controlStateTagType() {
           </div>
 
           <div>
-            <dt>分配平台</dt>
-            <dd>{{ usesBackendMode ? drawableBackendAssignments.length : preview.assignments.length }} 个</dd>
+            <dt>{{ usesBackendMode ? '分配平台' : '预览平台' }}</dt>
+            <dd>{{ usesBackendMode ? drawableBackendAssignments.length : manualPreviewPoints.length }} 个</dd>
           </div>
 
-          <div v-if="!usesBackendMode && preview.scene.threatLabel">
-            <dt>威胁目标</dt>
-            <dd>{{ preview.scene.threatLabel }}</dd>
-          </div>
-
-          <div v-if="usesBackendMode && selectedMissionType === 'ESCORT_DEFENSE'">
-            <dt>威胁目标</dt>
-            <dd>威胁目标坐标尚未由后端提供</dd>
+          <div v-if="!usesBackendMode && inputTargetPoints.length > 0">
+            <dt>用户输入目标</dt>
+            <dd>{{ inputTargetPoints.map((point) => point.label).join(' / ') }}</dd>
           </div>
 
           <div v-if="selectedMissionType === 'ESCORT_DEFENSE'">
@@ -520,44 +576,35 @@ function controlStateTagType() {
 
           <span>
             <i class="legend-dot uav" />
-            UAV分配点
+            UAV{{ usesBackendMode ? '分配点' : '输入点' }}
           </span>
 
           <span>
             <i class="legend-dot usv" />
-            USV分配点
+            USV{{ usesBackendMode ? '分配点' : '输入点' }}
           </span>
 
-          <span v-if="!usesBackendMode">
-            <i
-              class="legend-dot"
-              :class="
-                selectedMissionType === 'CAPTURE'
-                  ? 'target'
-                  : 'protected'
-              "
-            />
-            {{
-              selectedMissionType === 'CAPTURE'
-                ? '围捕目标'
-                : '被护航目标'
-            }}
+          <span v-if="!usesBackendMode && positionSource === 'MANUAL'">
+            <i class="legend-dot protected" />
+            用户输入目标
           </span>
 
-          <span v-if="!usesBackendMode && selectedMissionType === 'ESCORT_DEFENSE'">
+          <span v-if="!usesBackendMode && positionSource === 'MANUAL' && selectedMissionType === 'ESCORT_DEFENSE'">
             <i class="legend-dot threat" />
-            威胁目标
+            用户输入威胁
           </span>
         </div>
 
         <el-alert
-          :title="usesBackendMode ? '后端返回分配' : '演示预览，非真实算法结果'"
+          :title="usesBackendMode ? '真实Python算法结果' : positionSourceLabel"
           :description="
             usesBackendMode
-              ? '图中位置来自后端返回的任务分配；当前后端可能使用模拟分配，尚不能代表Python真实算法结果。目标中心和威胁坐标尚未由后端提供。'
-              : '图中位置来自演示数据，尚未接收Python算法或Unity实时坐标。'
+              ? '图中分配位置来自真实Python算法返回；车辆初始位姿来源按提交时的任务快照显示。'
+              : positionSource === 'MANUAL'
+                ? '手动初始位姿输入预览，非算法分配结果；启动成功后只显示真实Python返回的assignment。'
+                : '尚未获得算法分配，启动后将显示真实Python结果。'
           "
-          :type="usesBackendMode ? 'warning' : 'warning'"
+          :type="usesBackendMode ? 'success' : positionSource === 'MANUAL' ? 'warning' : 'info'"
           show-icon
           :closable="false"
         />

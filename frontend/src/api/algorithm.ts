@@ -3,6 +3,7 @@ import { http } from './http'
 import type { ApiResponse } from '@/types/api'
 
 export type AlgorithmType = 'CAPTURE' | 'ESCORT_DEFENSE'
+export type AlgorithmPositionSource = 'REALTIME' | 'MANUAL'
 export type AlgorithmRunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'TIMEOUT' | 'STOPPED'
 export type AlgorithmEventLevel = 'INFO' | 'WARN' | 'ERROR'
 export type AlgorithmAssignmentRole = 'TRACK' | 'INTERCEPT' | 'ENCIRCLE' | 'ESCORT' | 'DEFEND' | 'RETURN' | 'STANDBY'
@@ -14,6 +15,11 @@ export interface AlgorithmPositionPayload {
   heading: number
 }
 
+export interface AlgorithmVehiclePosition {
+  vehicleId: string
+  position: AlgorithmPositionPayload
+}
+
 export interface AlgorithmStartPayload {
   algorithmType: AlgorithmType
   targetId?: string
@@ -21,6 +27,8 @@ export interface AlgorithmStartPayload {
   threatPosition?: AlgorithmPositionPayload
   uavIds?: string[]
   usvIds?: string[]
+  positionSource?: AlgorithmPositionSource
+  manualVehiclePositions?: AlgorithmVehiclePosition[]
   parameters?: Record<string, unknown>
 }
 
