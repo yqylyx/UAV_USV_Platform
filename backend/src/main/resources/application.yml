@@ -33,6 +33,8 @@ management:
       show-details: never
 
 app:
+  algorithm:
+    service-base-url: ${ALGORITHM_SERVICE_BASE_URL:http://127.0.0.1:8000}
   runtime:
     ros-websocket-url: ${ROS_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv}
     heartbeat-timeout-seconds: 5
