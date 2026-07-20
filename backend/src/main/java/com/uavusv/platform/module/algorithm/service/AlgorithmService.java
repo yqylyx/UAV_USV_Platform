@@ -43,6 +43,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -292,11 +293,99 @@ public class AlgorithmService {
     }
 
     private ResolvedVehicles resolveVehicles(AlgorithmStartRequest request, LocalDateTime now) {
+        if (request.resolvedPositionSource() == AlgorithmStartRequest.PositionSource.MANUAL) {
+            return resolveManualVehicles(request);
+        }
         Set<String> vehicleIds = new LinkedHashSet<>();
         Set<String> deviceCodes = new LinkedHashSet<>();
         List<AlgorithmPythonClient.Vehicle> uavs = resolveVehicles(request.uavIds(), DeviceType.UAV, "UAV", now, vehicleIds, deviceCodes);
         List<AlgorithmPythonClient.Vehicle> usvs = resolveVehicles(request.usvIds(), DeviceType.USV, "USV", now, vehicleIds, deviceCodes);
         return new ResolvedVehicles(uavs, usvs, vehicleIds);
+    }
+
+    private ResolvedVehicles resolveManualVehicles(AlgorithmStartRequest request) {
+        Map<String, AlgorithmStartRequest.ManualVehiclePositionRequest> manualPositions = manualPositionsByVehicleCode(request);
+        Set<String> selectedVehicleCodes = new LinkedHashSet<>();
+        Set<String> vehicleIds = new LinkedHashSet<>();
+        Set<String> deviceCodes = new LinkedHashSet<>();
+        List<AlgorithmPythonClient.Vehicle> uavs = resolveManualVehicles(
+                request.uavIds(), DeviceType.UAV, "UAV", manualPositions, selectedVehicleCodes, vehicleIds, deviceCodes);
+        List<AlgorithmPythonClient.Vehicle> usvs = resolveManualVehicles(
+                request.usvIds(), DeviceType.USV, "USV", manualPositions, selectedVehicleCodes, vehicleIds, deviceCodes);
+        for (AlgorithmStartRequest.ManualVehiclePositionRequest item : request.manualVehiclePositions()) {
+            String vehicleCode = normalizeVehicleCode(item.vehicleId(), null);
+            if (!selectedVehicleCodes.contains(vehicleCode)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "手动车辆位姿包含未选择设备: " + item.vehicleId());
+            }
+        }
+        return new ResolvedVehicles(uavs, usvs, vehicleIds);
+    }
+
+    private Map<String, AlgorithmStartRequest.ManualVehiclePositionRequest> manualPositionsByVehicleCode(
+            AlgorithmStartRequest request
+    ) {
+        if (request.manualVehiclePositions() == null || request.manualVehiclePositions().isEmpty()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "MANUAL 模式必须提供手动车辆位姿");
+        }
+        Map<String, AlgorithmStartRequest.ManualVehiclePositionRequest> positions = new LinkedHashMap<>();
+        for (AlgorithmStartRequest.ManualVehiclePositionRequest item : request.manualVehiclePositions()) {
+            if (item.vehicleId() == null || item.vehicleId().isBlank()) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "手动车辆位姿 vehicleId 不能为空");
+            }
+            if (item.position() == null) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "手动车辆位姿缺少坐标: " + item.vehicleId());
+            }
+            String vehicleCode = normalizeVehicleCode(item.vehicleId(), null);
+            if (positions.putIfAbsent(vehicleCode, item) != null) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "手动车辆位姿重复: " + item.vehicleId());
+            }
+        }
+        return positions;
+    }
+
+    private List<AlgorithmPythonClient.Vehicle> resolveManualVehicles(
+            List<String> requestedVehicleIds,
+            DeviceType expectedType,
+            String label,
+            Map<String, AlgorithmStartRequest.ManualVehiclePositionRequest> manualPositions,
+            Set<String> selectedVehicleCodes,
+            Set<String> vehicleIds,
+            Set<String> deviceCodes
+    ) {
+        if (requestedVehicleIds == null || requestedVehicleIds.isEmpty()) {
+            return List.of();
+        }
+        List<AlgorithmPythonClient.Vehicle> vehicles = new ArrayList<>();
+        for (String vehicleId : requestedVehicleIds) {
+            if (vehicleId == null || vehicleId.isBlank()) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, label + " 设备标识不能为空");
+            }
+            String lookupCode = normalizeVehicleCode(vehicleId, null);
+            if (!selectedVehicleCodes.add(lookupCode)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "所选设备重复: " + vehicleId);
+            }
+            if (!vehicleIds.add(vehicleId)) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "所选设备重复: " + vehicleId);
+            }
+            AlgorithmStartRequest.ManualVehiclePositionRequest manualPosition = manualPositions.get(lookupCode);
+            if (manualPosition == null) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "缺少手动车辆位姿: " + vehicleId);
+            }
+            Device device = deviceRepository.findByCode(lookupCode)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.BAD_REQUEST, "设备不存在: " + lookupCode));
+            if (device.getType() != expectedType) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "设备类型不匹配: " + device.getCode());
+            }
+            if (!deviceCodes.add(device.getCode())) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "设备重复: " + device.getCode());
+            }
+            vehicles.add(new AlgorithmPythonClient.Vehicle(
+                    vehicleId,
+                    device.getCode(),
+                    toPythonPosition(manualPosition.position())
+            ));
+        }
+        return vehicles;
     }
 
     private List<AlgorithmPythonClient.Vehicle> resolveVehicles(
@@ -401,6 +490,9 @@ public class AlgorithmService {
         if (position == null) {
             return null;
         }
+        if (!isFinite(position.x()) || !isFinite(position.y()) || !isFinite(position.z()) || !isFinite(position.heading())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "请求坐标必须是有限数字");
+        }
         return new AlgorithmPythonClient.Position(position.x(), position.y(), position.z(), position.heading());
     }
 
@@ -434,9 +526,19 @@ public class AlgorithmService {
         run.updateStatus(
                 AlgorithmRunStatus.COMPLETED,
                 result.stage() == null || result.stage().isBlank() ? "COMPLETED" : result.stage(),
-                result.message() == null || result.message().isBlank() ? "Python run-once 执行完成" : result.message(),
+                runMessage(request, result),
                 null
         );
+    }
+
+    private String runMessage(AlgorithmStartRequest request, AlgorithmPythonClient.AlgorithmResult result) {
+        String message = result.message() == null || result.message().isBlank()
+                ? "Python run-once 执行完成"
+                : result.message();
+        if (request.resolvedPositionSource() != AlgorithmStartRequest.PositionSource.MANUAL) {
+            return message;
+        }
+        return "手动初始位姿实验：车辆初始位置来自请求输入，算法结果来自Python服务；" + message;
     }
 
     private List<AlgorithmAssignment> validateAssignments(

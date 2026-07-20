@@ -276,6 +276,8 @@ class AlgorithmServiceTest {
                 null,
                 List.of("uav_01", "uav_01"),
                 List.of(),
+                null,
+                null,
                 Map.of()
         )));
 
@@ -421,6 +423,212 @@ class AlgorithmServiceTest {
         assertEquals("python event", event.getMessage());
     }
 
+    @Test
+    void realtimeStillQueriesRuntimeDeviceStatus() {
+        Device device = registerDevice("uav_01", "uav-01", DeviceType.UAV, runtimeStatus(1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 1.0, NOW));
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(captureRequest());
+
+        verify(runtimeStatusRepository).findByDeviceId(device.getId());
+    }
+
+    @Test
+    void manualDoesNotQueryRuntimeDeviceStatus() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        verify(runtimeStatusRepository, never()).findByDeviceId(any());
+    }
+
+    @Test
+    void manualStillQueriesDeviceByCode() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        verify(deviceRepository).findByCode("uav-01");
+    }
+
+    @Test
+    void manualMapsUavUnderscoreIdToHyphenDeviceCode() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        assertEquals("uav-01", capturedPythonRequest().uavs().get(0).vehicleCode());
+    }
+
+    @Test
+    void manualPythonVehicleIdKeepsFrontendOriginalValue() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        assertEquals("uav_01", capturedPythonRequest().uavs().get(0).vehicleId());
+    }
+
+    @Test
+    void manualPositionIsPassedToPythonUnchanged() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        AlgorithmPythonClient.Position position = capturedPythonRequest().uavs().get(0).position();
+        assertEquals(11.0, position.x());
+        assertEquals(22.0, position.y());
+        assertEquals(33.0, position.z());
+        assertEquals(-0.25, position.heading());
+    }
+
+    @Test
+    void manualDeviceOfflineDoesNotBlockPythonCall() {
+        Device device = registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        device.updateRuntimeStatus(DeviceStatus.OFFLINE);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        verify(pythonClient).runOnce(any());
+        verify(runtimeStatusRepository, never()).findByDeviceId(any());
+    }
+
+    @Test
+    void manualMissingSelectedVehiclePositionDoesNotCallPython() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+
+        assertThrows(BusinessException.class, () -> service.start(manualCaptureRequest(List.of())));
+
+        verify(pythonClient, never()).runOnce(any());
+        verify(assignmentRepository, never()).save(any());
+    }
+
+    @Test
+    void manualExtraUnselectedVehiclePositionDoesNotCallPython() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+
+        assertThrows(BusinessException.class, () -> service.start(manualCaptureRequest(List.of(
+                manualPosition("uav_01", 11.0, 22.0, 33.0, -0.25),
+                manualPosition("uav_02", 44.0, 55.0, 66.0, 0.5)
+        ))));
+
+        verify(pythonClient, never()).runOnce(any());
+        verify(assignmentRepository, never()).save(any());
+    }
+
+    @Test
+    void manualDuplicateVehicleIdDoesNotCallPython() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+
+        assertThrows(BusinessException.class, () -> service.start(manualCaptureRequest(List.of(
+                manualPosition("uav_01", 11.0, 22.0, 33.0, -0.25),
+                manualPosition("uav_01", 44.0, 55.0, 66.0, 0.5)
+        ))));
+
+        verify(pythonClient, never()).runOnce(any());
+        verify(assignmentRepository, never()).save(any());
+    }
+
+    @Test
+    void manualEquivalentUnderscoreAndHyphenIdsAreDuplicate() {
+        assertThrows(BusinessException.class, () -> service.start(new AlgorithmStartRequest(
+                AlgorithmType.CAPTURE,
+                "target_01",
+                position(10.0, 20.0, 30.0, 1.25),
+                null,
+                List.of("uav_01", "uav-01"),
+                List.of(),
+                AlgorithmStartRequest.PositionSource.MANUAL,
+                List.of(
+                        manualPosition("uav_01", 11.0, 22.0, 33.0, -0.25),
+                        manualPosition("uav-01", 44.0, 55.0, 66.0, 0.5)
+                ),
+                Map.of()
+        )));
+
+        verify(pythonClient, never()).runOnce(any());
+    }
+
+    @Test
+    void manualCrossDuplicateBetweenUavAndUsvIdsFails() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+
+        assertThrows(BusinessException.class, () -> service.start(new AlgorithmStartRequest(
+                AlgorithmType.CAPTURE,
+                "target_01",
+                position(10.0, 20.0, 30.0, 1.25),
+                null,
+                List.of("uav_01"),
+                List.of("uav_01"),
+                AlgorithmStartRequest.PositionSource.MANUAL,
+                List.of(manualPosition("uav_01", 11.0, 22.0, 33.0, -0.25)),
+                Map.of()
+        )));
+
+        verify(pythonClient, never()).runOnce(any());
+    }
+
+    @Test
+    void manualWrongDeviceTypeDoesNotCallPython() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.USV);
+
+        assertThrows(BusinessException.class, () -> service.start(manualCaptureRequest()));
+
+        verify(pythonClient, never()).runOnce(any());
+    }
+
+    @Test
+    void manualSuccessSavesAssignmentFromPython() throws Exception {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        AlgorithmAssignment assignment = capturedAssignment();
+        assertEquals("uav_01", assignment.getVehicleId());
+        assertEquals(101.0, assignment.getX());
+        assertEquals("python", objectMapper.readTree(assignment.getDetail()).path("source").asText());
+    }
+
+    @Test
+    void manualSuccessSavesEventFromPython() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        AlgorithmEvent event = capturedEvent();
+        assertEquals("python-stage", event.getStage());
+        assertEquals("python event", event.getMessage());
+    }
+
+    @Test
+    void manualPythonBusinessFailureEndsAsFailed() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> failedResult(invocation.getArgument(0), "INVALID_REQUEST"));
+
+        assertThrows(BusinessException.class, () -> service.start(manualCaptureRequest()));
+
+        assertEquals(AlgorithmRunStatus.FAILED, lastSavedRun().getStatus());
+    }
+
+    @Test
+    void manualStartPathDoesNotGenerateMockAssignments() {
+        registerDeviceWithoutStatus("uav_01", "uav-01", DeviceType.UAV);
+        when(pythonClient.runOnce(any())).thenAnswer(invocation -> successResult(invocation.getArgument(0)));
+
+        service.start(manualCaptureRequest());
+
+        verify(assignmentRepository, times(1)).save(any());
+        assertEquals(101.0, capturedAssignment().getX());
+    }
+
     private AlgorithmStartRequest captureRequest() {
         return new AlgorithmStartRequest(
                 AlgorithmType.CAPTURE,
@@ -429,6 +637,8 @@ class AlgorithmServiceTest {
                 null,
                 List.of("uav_01"),
                 List.of(),
+                null,
+                null,
                 Map.of("captureRadius", 60)
         );
     }
@@ -441,8 +651,40 @@ class AlgorithmServiceTest {
                 position(40.0, 50.0, 60.0, 2.5),
                 List.of("uav_01"),
                 List.of(),
+                null,
+                null,
                 Map.of("threatTargetId", "enemy_01", "threatDirection", "FRONT")
         );
+    }
+
+    private AlgorithmStartRequest manualCaptureRequest() {
+        return manualCaptureRequest(List.of(manualPosition("uav_01", 11.0, 22.0, 33.0, -0.25)));
+    }
+
+    private AlgorithmStartRequest manualCaptureRequest(
+            List<AlgorithmStartRequest.ManualVehiclePositionRequest> manualVehiclePositions
+    ) {
+        return new AlgorithmStartRequest(
+                AlgorithmType.CAPTURE,
+                "target_01",
+                position(10.0, 20.0, 30.0, 1.25),
+                null,
+                List.of("uav_01"),
+                List.of(),
+                AlgorithmStartRequest.PositionSource.MANUAL,
+                manualVehiclePositions,
+                Map.of("captureRadius", 60)
+        );
+    }
+
+    private AlgorithmStartRequest.ManualVehiclePositionRequest manualPosition(
+            String vehicleId,
+            double x,
+            double y,
+            double z,
+            double heading
+    ) {
+        return new AlgorithmStartRequest.ManualVehiclePositionRequest(vehicleId, position(x, y, z, heading));
     }
 
     private AlgorithmStartRequest.PositionRequest position(double x, double y, double z, double heading) {

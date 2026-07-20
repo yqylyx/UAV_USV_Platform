@@ -130,10 +130,120 @@ class AlgorithmStartRequestTest {
         assertThat(validator.validate(overFullCircleHeading)).isEmpty();
     }
 
+    @Test
+    void nullPositionSourceKeepsRealtimeCompatibility() {
+        AlgorithmStartRequest request = request(
+                AlgorithmType.CAPTURE,
+                position(10.0, 20.0, 0.0, 90.0),
+                null
+        );
+
+        assertThat(request.resolvedPositionSource()).isEqualTo(AlgorithmStartRequest.PositionSource.REALTIME);
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
+    void explicitRealtimeDoesNotRequireManualVehiclePositions() {
+        AlgorithmStartRequest request = request(
+                AlgorithmType.CAPTURE,
+                position(10.0, 20.0, 0.0, 90.0),
+                null,
+                AlgorithmStartRequest.PositionSource.REALTIME,
+                null
+        );
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
+    void manualWithoutManualVehiclePositionsFailsValidation() {
+        AlgorithmStartRequest request = request(
+                AlgorithmType.CAPTURE,
+                position(10.0, 20.0, 0.0, 90.0),
+                null,
+                AlgorithmStartRequest.PositionSource.MANUAL,
+                null
+        );
+
+        assertThat(validator.validate(request)).isNotEmpty();
+    }
+
+    @Test
+    void manualWithEmptyManualVehiclePositionsFailsValidation() {
+        AlgorithmStartRequest request = request(
+                AlgorithmType.CAPTURE,
+                position(10.0, 20.0, 0.0, 90.0),
+                null,
+                AlgorithmStartRequest.PositionSource.MANUAL,
+                List.of()
+        );
+
+        assertThat(validator.validate(request)).isNotEmpty();
+    }
+
+    @Test
+    void manualVehicleIdBlankFailsValidation() {
+        AlgorithmStartRequest request = manualRequest(List.of(manualPosition(" ", position(1.0, 2.0, 3.0, 0.5))));
+
+        assertThat(validator.validate(request)).isNotEmpty();
+    }
+
+    @Test
+    void manualPositionNullFailsValidation() {
+        AlgorithmStartRequest request = manualRequest(List.of(manualPosition("uav_01", null)));
+
+        assertThat(validator.validate(request)).isNotEmpty();
+    }
+
+    @Test
+    void manualCoordinateNullFailsValidation() {
+        AlgorithmStartRequest request = manualRequest(List.of(manualPosition("uav_01", position(null, 2.0, 3.0, 0.5))));
+
+        assertThat(validator.validate(request)).isNotEmpty();
+    }
+
+    @Test
+    void manualCoordinateNanFailsValidation() {
+        AlgorithmStartRequest request = manualRequest(List.of(manualPosition("uav_01", position(Double.NaN, 2.0, 3.0, 0.5))));
+
+        assertThat(validator.validate(request)).isNotEmpty();
+    }
+
+    @Test
+    void manualCoordinateInfinityFailsValidation() {
+        AlgorithmStartRequest request = manualRequest(List.of(manualPosition("uav_01", position(Double.NEGATIVE_INFINITY, 2.0, 3.0, 0.5))));
+
+        assertThat(validator.validate(request)).isNotEmpty();
+    }
+
+    @Test
+    void manualLegalNegativeCoordinatesPassValidation() {
+        AlgorithmStartRequest request = manualRequest(List.of(manualPosition("uav_01", position(-1.0, -2.0, -3.0, 0.5))));
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
+    void manualFiniteHeadingOutsideCompassRangePassesValidation() {
+        AlgorithmStartRequest request = manualRequest(List.of(manualPosition("uav_01", position(1.0, 2.0, 3.0, -720.0))));
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
     private static AlgorithmStartRequest request(
             AlgorithmType algorithmType,
             AlgorithmStartRequest.PositionRequest targetPosition,
             AlgorithmStartRequest.PositionRequest threatPosition
+    ) {
+        return request(algorithmType, targetPosition, threatPosition, null, null);
+    }
+
+    private static AlgorithmStartRequest request(
+            AlgorithmType algorithmType,
+            AlgorithmStartRequest.PositionRequest targetPosition,
+            AlgorithmStartRequest.PositionRequest threatPosition,
+            AlgorithmStartRequest.PositionSource positionSource,
+            List<AlgorithmStartRequest.ManualVehiclePositionRequest> manualVehiclePositions
     ) {
         return new AlgorithmStartRequest(
                 algorithmType,
@@ -142,8 +252,29 @@ class AlgorithmStartRequestTest {
                 threatPosition,
                 List.of("uav_01"),
                 List.of("usv_01"),
+                positionSource,
+                manualVehiclePositions,
                 Map.of()
         );
+    }
+
+    private static AlgorithmStartRequest manualRequest(
+            List<AlgorithmStartRequest.ManualVehiclePositionRequest> manualVehiclePositions
+    ) {
+        return request(
+                AlgorithmType.CAPTURE,
+                position(10.0, 20.0, 0.0, 90.0),
+                null,
+                AlgorithmStartRequest.PositionSource.MANUAL,
+                manualVehiclePositions
+        );
+    }
+
+    private static AlgorithmStartRequest.ManualVehiclePositionRequest manualPosition(
+            String vehicleId,
+            AlgorithmStartRequest.PositionRequest position
+    ) {
+        return new AlgorithmStartRequest.ManualVehiclePositionRequest(vehicleId, position);
     }
 
     private static AlgorithmStartRequest.PositionRequest position(
