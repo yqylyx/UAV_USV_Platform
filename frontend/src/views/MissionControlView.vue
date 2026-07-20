@@ -24,9 +24,12 @@ import MissionStartCheckDialog from '@/components/mission/MissionStartCheckDialo
 import MissionEventDrawer from '@/components/mission/MissionEventDrawer.vue'
 import { createMission, deleteMission, executeMissionAction, fetchMission, fetchMissionPreflight, fetchMissionSummary, updateMission } from '@/api/mission'
 import type { MissionAction } from '@/api/mission'
+import type { AlgorithmRunStatus, AlgorithmType } from '@/api/algorithm'
+import { useAlgorithmStore } from '@/stores/algorithm'
 import { useDeviceStore } from '@/stores/device'
 import { useMissionStore } from '@/stores/mission'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { usePerceptionStore } from '@/stores/perception'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
@@ -34,6 +37,8 @@ import { useUnityViewportStore } from '@/stores/unityViewport'
 import type { Mission, MissionDetail, MissionExecutionMode, MissionPreflight, MissionSavePayload, MissionStatus, MissionSummary, MissionType } from '@/types/mission'
 
 const missionStore=useMissionStore()
+const algorithmStore=useAlgorithmStore()
+const perceptionStore=usePerceptionStore()
 const deviceStore=useDeviceStore()
 const monitoringStore=useMonitoringStore()
 const trajectoryStore=useTrajectoryStore()
@@ -62,6 +67,7 @@ const missionUnityChannel=computed(()=>unityBridgeStore.channels.MISSION_CENTER)
 const missionTrajectoryFrame=computed(()=>trajectoryStore.channels.MISSION_CENTER.frame)
 const trajectoryLive=computed(()=>missionUnityChannel.value.connected&&!!missionTrajectoryFrame.value&&Date.now()-missionTrajectoryFrame.value.receivedAt<3000)
 const recentRuns=computed(()=>missionStore.records.filter(mission=>['RUNNING','PAUSED','COMPLETED','FAILED','CANCELLED'].includes(mission.status)).slice(0,4))
+const missionAlgorithmRun=computed(()=>algorithmStore.activeRun??algorithmStore.latestRun)
 
 async function load(page=missionStore.page){
   await Promise.all([
@@ -106,6 +112,40 @@ async function openStart(mission:Mission){
 
 function missionUnityCommand(action:MissionAction){return {start:'missionStart',pause:'missionPause',resume:'missionResume',complete:'missionComplete',fail:'missionFail',cancel:'missionCancel',ready:'missionResume'}[action]}
 
+function algorithmStatusLabel(status?:AlgorithmRunStatus){
+  return status ? ({PENDING:'等待算法 ACK',RUNNING:'算法运行中',COMPLETED:'算法完成',FAILED:'算法异常',TIMEOUT:'算法超时',STOPPED:'算法已停止'} as Partial<Record<AlgorithmRunStatus,string>>)[status] ?? status : '未启动'
+}
+function resolveMissionAlgorithmType(mission:Mission):AlgorithmType{
+  const text=`${mission.name} ${mission.targetName??''} ${mission.targetBehavior??''}`
+  return text.includes('护航')||text.toUpperCase().includes('ESCORT')?'ESCORT_DEFENSE':'CAPTURE'
+}
+function missionAlgorithmPayload(){
+  const mission=detail.value?.mission
+  const devices=detail.value?.devices??[]
+  const uavIds=devices.filter(device=>device.type==='UAV'&&device.code).map(device=>device.code!.toLowerCase().replace(/-/g,'_'))
+  const usvIds=devices.filter(device=>device.type==='USV'&&device.code).map(device=>device.code!.toLowerCase().replace(/-/g,'_'))
+  return {
+    algorithmType: mission ? resolveMissionAlgorithmType(mission) : 'CAPTURE' as AlgorithmType,
+    targetId: perceptionStore.targets[0]?.targetId??'target_01',
+    uavIds: uavIds.length?uavIds:['uav_01','uav_02','uav_03'],
+    usvIds: usvIds.length?usvIds:['usv_01','usv_02','usv_03'],
+    parameters:{source:'mission-control',missionId:mission?.id,missionName:mission?.name,runId:detail.value?.currentRun?.id,runtimeInstanceId:unityViewportStore.missionInstanceId},
+  }
+}
+async function startMissionAlgorithm(){
+  const payload=missionAlgorithmPayload()
+  const run=await algorithmStore.start(payload)
+  unityBridgeStore.sendFor('MISSION_CENTER','algorithmStart',{commandId:run.commandId,algorithmType:run.algorithmType,targetId:run.targetId,uavIds:payload.uavIds,usvIds:payload.usvIds,missionId:detail.value?.mission.id,runId:detail.value?.currentRun?.id})
+  unityBridgeStore.sendFor('MISSION_CENTER','perceptionTargets',{targets:perceptionStore.targets})
+  ElMessage.warning(`${run.algorithmType==='CAPTURE'?'围捕':'护航防守'}算法指令已生成：${run.commandId}，等待算法组 ACK`)
+}
+async function stopMissionAlgorithm(reason:string){
+  const active=algorithmStore.activeRun
+  if(!active)return
+  await algorithmStore.stop({commandId:active.commandId,reason}).catch(()=>[])
+  unityBridgeStore.sendFor('MISSION_CENTER','algorithmStop',{commandId:active.commandId,reason})
+}
+
 async function runMissionAction(action:MissionAction){
   if(!detail.value)return
   if(action==='cancel'){
@@ -130,10 +170,22 @@ async function runMissionAction(action:MissionAction){
     }
     selectedMission.value=detail.value.mission
     sessionStore.bind(detail.value.mission.id,detail.value.currentRun?.id||null)
-    if(action==='start')sessionStore.start(missionTrajectoryFrame.value?.sequence||0,detail.value.currentRun?.id)
-    if(action==='pause')sessionStore.pause()
-    if(action==='resume')sessionStore.resume(missionTrajectoryFrame.value?.sequence||0)
-    if(['complete','fail','cancel'].includes(action))sessionStore.stop()
+    if(action==='start'){
+      sessionStore.start(missionTrajectoryFrame.value?.sequence||0,detail.value.currentRun?.id)
+      await startMissionAlgorithm()
+    }
+    if(action==='pause'){
+      sessionStore.pause()
+      await stopMissionAlgorithm('任务中心暂停任务')
+    }
+    if(action==='resume'){
+      sessionStore.resume(missionTrajectoryFrame.value?.sequence||0)
+      await startMissionAlgorithm()
+    }
+    if(['complete','fail','cancel'].includes(action)){
+      sessionStore.stop()
+      await stopMissionAlgorithm(`任务中心${action}`)
+    }
     await load()
     return true
   }catch(error){ElMessage.error(error instanceof Error?error.message:'任务指令执行失败');return false}finally{actionBusy.value=false}
@@ -168,7 +220,13 @@ async function handleListAction(action:string,mission:Mission){
 }
 function showDeveloping(feature:string){ElMessage.info(`${feature}功能正在开发，当前版本暂未开放`)}
 watch([keyword,typeFilter,statusFilter,modeFilter],()=>void load(0))
-onMounted(()=>{monitoringStore.connectEvents();void deviceStore.refresh({page:0,size:100});void load(0)})
+onMounted(()=>{
+  monitoringStore.connectEvents()
+  void deviceStore.refresh({page:0,size:100})
+  void perceptionStore.refresh()
+  void algorithmStore.refreshStatus()
+  void load(0)
+})
 </script>
 
 <template>
@@ -214,6 +272,15 @@ onMounted(()=>{monitoringStore.connectEvents();void deviceStore.refresh({page:0,
         <aside class="mission-side-stack">
           <section class="mission-side-panel">
             <header><div><h3>算法库</h3><p>统一适配器接入，任务页面不直接绑定算法实现。</p></div><button @click="showDeveloping('算法注册管理')">管理</button></header>
+            <article class="algorithm-card available">
+              <div class="algorithm-icon"><Radio :size="20"/></div>
+              <div>
+                <b>后端模拟闭环</b>
+                <span>{{ missionAlgorithmRun?.commandId || '等待任务启动' }}</span>
+                <p>{{ missionAlgorithmRun?.message || `感知：${perceptionStore.onlineSensorCount}/${perceptionStore.sensors.length} 传感器在线，${perceptionStore.hostileTargetCount} 个敌方目标` }}</p>
+              </div>
+              <em>{{ algorithmStatusLabel(missionAlgorithmRun?.status) }}</em>
+            </article>
             <article class="algorithm-card available">
               <div class="algorithm-icon"><Waves :size="20"/></div>
               <div><b>Unity 默认简单围捕</b><span>UnityNativeAdapter · v1.0</span><p>支持开始、暂停、继续、终止和实时轨迹。</p></div>
