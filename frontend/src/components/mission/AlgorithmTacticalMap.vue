@@ -22,6 +22,7 @@ interface TacticalPoint {
 interface TacticalTargetPoint {
   id: string
   label: string
+  description: string
   x: number
   y: number
   kind: 'target' | 'threat'
@@ -34,6 +35,10 @@ const {
   positionSource,
   manualVehiclePositions,
   submittedPositionSource,
+  submittedTargetId,
+  submittedTargetPosition,
+  submittedThreatTargetId,
+  submittedThreatPosition,
   captureForm,
   escortForm,
 } = useAlgorithmMissionDemo()
@@ -96,10 +101,20 @@ const positionSourceLabel = computed(() =>
 
 const mapDescription = computed(() =>
   usesBackendMode.value
-    ? '图中分配位置来自真实Python算法返回。'
+    ? submittedThreatPosition.value
+      ? '车辆分配位置来自真实Python算法返回；护航目标和威胁目标来自本次任务输入。'
+      : '车辆分配位置来自真实Python算法返回；任务目标来自本次任务输入。'
     : positionSource.value === 'MANUAL'
       ? '手动初始位姿输入预览，非算法分配结果。'
       : '尚未获得算法分配，启动后将显示真实Python结果。',
+)
+
+const targetLegendLabel = computed(() =>
+  usesBackendMode.value
+    ? submittedThreatPosition.value
+      ? '用户输入护航目标'
+      : '用户输入围捕目标'
+    : '用户输入目标',
 )
 
 const selectedVehicleKeySet = computed(() => {
@@ -133,6 +148,7 @@ const inputTargetPoints = computed<TacticalTargetPoint[]>(() => {
       points.push({
         id: 'target',
         label: '用户输入目标',
+        description: '围捕目标（任务输入）',
         x: captureForm.targetPosition.x,
         y: captureForm.targetPosition.y,
         kind: 'target',
@@ -145,6 +161,7 @@ const inputTargetPoints = computed<TacticalTargetPoint[]>(() => {
     points.push({
       id: 'escort-target',
       label: '用户输入目标',
+      description: '护航目标（任务输入）',
       x: escortForm.targetPosition.x,
       y: escortForm.targetPosition.y,
       kind: 'target',
@@ -154,6 +171,7 @@ const inputTargetPoints = computed<TacticalTargetPoint[]>(() => {
     points.push({
       id: 'threat',
       label: '用户输入威胁',
+      description: '威胁目标（任务输入）',
       x: escortForm.threatPosition.x,
       y: escortForm.threatPosition.y,
       kind: 'threat',
@@ -161,6 +179,36 @@ const inputTargetPoints = computed<TacticalTargetPoint[]>(() => {
   }
   return points
 })
+
+const submittedTargetPoints = computed<TacticalTargetPoint[]>(() => {
+  if (!usesBackendMode.value || !submittedTargetPosition.value) return []
+
+  const points: TacticalTargetPoint[] = [{
+    id: submittedTargetId.value || 'target',
+    label: submittedTargetId.value || '任务目标',
+    description: submittedThreatPosition.value ? '护航目标（任务输入）' : '围捕目标（任务输入）',
+    x: submittedTargetPosition.value.x,
+    y: submittedTargetPosition.value.y,
+    kind: 'target',
+  }]
+
+  if (submittedThreatPosition.value) {
+    points.push({
+      id: submittedThreatTargetId.value || 'threat',
+      label: submittedThreatTargetId.value || '威胁目标',
+      description: '威胁目标（任务输入）',
+      x: submittedThreatPosition.value.x,
+      y: submittedThreatPosition.value.y,
+      kind: 'threat',
+    })
+  }
+
+  return points
+})
+
+const visibleTargetPoints = computed(() =>
+  usesBackendMode.value ? submittedTargetPoints.value : inputTargetPoints.value,
+)
 
 const plottedPoints = computed(() =>
   usesBackendMode.value
@@ -177,7 +225,7 @@ const plottedPoints = computed(() =>
 const bounds = computed(() => {
   const allPoints = [
     ...plottedPoints.value,
-    ...inputTargetPoints.value.map((point) => ({
+    ...visibleTargetPoints.value.map((point) => ({
       id: point.id,
       label: point.label,
       vehicleType: 'PLATFORM' as const,
@@ -265,6 +313,23 @@ function labelX(worldX: number) {
 
 function labelAnchor(worldX: number) {
   return mapPointX(worldX) > mapWidth - 150 ? 'end' : 'start'
+}
+
+function targetLabelX(point: TacticalTargetPoint) {
+  const base = mapPointX(point.x)
+  return point.kind === 'threat'
+    ? Math.min(base + 28, mapWidth - mapPadding)
+    : labelX(point.x)
+}
+
+function targetLabelY(point: TacticalTargetPoint) {
+  const base = mapPointY(point.y)
+  return point.kind === 'threat' ? Math.max(base - 30, mapPadding) : base - 18
+}
+
+function targetLabelAnchor(point: TacticalTargetPoint) {
+  if (point.kind === 'threat') return 'start'
+  return labelAnchor(point.x)
 }
 
 function controlStateLabel() {
@@ -359,7 +424,7 @@ function missionTypeLabel(type: AlgorithmMissionType) {
               text-anchor="middle"
               class="radius-label"
             >
-              图中分配位置来自真实Python算法返回
+              {{ mapDescription }}
             </text>
 
             <text
@@ -421,6 +486,64 @@ function missionTypeLabel(type: AlgorithmMissionType) {
                   dy="14"
                 >
                   {{ coordinateLabel({ x: assignment.x as number, y: assignment.y as number }) }}
+                </tspan>
+              </text>
+            </g>
+
+            <g
+              v-for="target in submittedTargetPoints"
+              :key="`submitted-${target.kind}-${target.id}`"
+            >
+              <polygon
+                v-if="target.kind === 'threat'"
+                :points="`
+                  ${mapPointX(target.x)},${mapPointY(target.y) - 19}
+                  ${mapPointX(target.x) + 19},${mapPointY(target.y)}
+                  ${mapPointX(target.x)},${mapPointY(target.y) + 19}
+                  ${mapPointX(target.x) - 19},${mapPointY(target.y)}
+                `"
+                fill="#ff6b6b"
+                stroke="#ffe1d6"
+                stroke-width="3"
+              />
+
+              <circle
+                v-else
+                :cx="mapPointX(target.x)"
+                :cy="mapPointY(target.y)"
+                r="17"
+                fill="#80ed99"
+                stroke="#ffffff"
+                stroke-width="3"
+              />
+
+              <text
+                :x="mapPointX(target.x)"
+                :y="mapPointY(target.y) + 5"
+                text-anchor="middle"
+                class="center-label"
+              >
+                {{ target.kind === 'threat' ? '!' : 'T' }}
+              </text>
+
+              <text
+                :x="targetLabelX(target)"
+                :y="targetLabelY(target)"
+                :text-anchor="targetLabelAnchor(target)"
+                class="radius-label"
+              >
+                <tspan>{{ target.label }}</tspan>
+                <tspan
+                  :x="targetLabelX(target)"
+                  dy="14"
+                >
+                  {{ target.description }}
+                </tspan>
+                <tspan
+                  :x="targetLabelX(target)"
+                  dy="14"
+                >
+                  {{ coordinateLabel(target) }}
                 </tspan>
               </text>
             </g>
@@ -565,6 +688,11 @@ function missionTypeLabel(type: AlgorithmMissionType) {
             <dd>{{ inputTargetPoints.map((point) => point.label).join(' / ') }}</dd>
           </div>
 
+          <div v-if="usesBackendMode && submittedTargetPoints.length > 0">
+            <dt>任务输入目标</dt>
+            <dd>{{ submittedTargetPoints.map((point) => point.label).join(' / ') }}</dd>
+          </div>
+
           <div v-if="selectedMissionType === 'ESCORT_DEFENSE'">
             <dt>防守距离</dt>
             <dd>{{ escortForm.defenseDistance }} m</dd>
@@ -576,20 +704,20 @@ function missionTypeLabel(type: AlgorithmMissionType) {
 
           <span>
             <i class="legend-dot uav" />
-            UAV{{ usesBackendMode ? '分配点' : '输入点' }}
+            UAV{{ usesBackendMode ? '算法分配点' : '输入点' }}
           </span>
 
           <span>
             <i class="legend-dot usv" />
-            USV{{ usesBackendMode ? '分配点' : '输入点' }}
+            USV{{ usesBackendMode ? '算法分配点' : '输入点' }}
           </span>
 
-          <span v-if="!usesBackendMode && positionSource === 'MANUAL'">
+          <span v-if="submittedTargetPoints.some((point) => point.kind === 'target') || (!usesBackendMode && positionSource === 'MANUAL')">
             <i class="legend-dot protected" />
-            用户输入目标
+            {{ targetLegendLabel }}
           </span>
 
-          <span v-if="!usesBackendMode && positionSource === 'MANUAL' && selectedMissionType === 'ESCORT_DEFENSE'">
+          <span v-if="submittedTargetPoints.some((point) => point.kind === 'threat') || (!usesBackendMode && positionSource === 'MANUAL' && selectedMissionType === 'ESCORT_DEFENSE')">
             <i class="legend-dot threat" />
             用户输入威胁
           </span>
@@ -599,7 +727,7 @@ function missionTypeLabel(type: AlgorithmMissionType) {
           :title="usesBackendMode ? '真实Python算法结果' : positionSourceLabel"
           :description="
             usesBackendMode
-              ? '图中分配位置来自真实Python算法返回；车辆初始位姿来源按提交时的任务快照显示。'
+              ? `${mapDescription} 目标点为任务请求输入，不计入分配平台数量。`
               : positionSource === 'MANUAL'
                 ? '手动初始位姿输入预览，非算法分配结果；启动成功后只显示真实Python返回的assignment。'
                 : '尚未获得算法分配，启动后将显示真实Python结果。'

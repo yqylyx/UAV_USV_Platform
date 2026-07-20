@@ -70,6 +70,10 @@ const manualVehiclePositions = reactive<AlgorithmManualVehiclePositionForm[]>([]
 const submittedPositionSource = ref<AlgorithmPositionSource | null>(null)
 const submittedVehicleIds = ref<string[]>([])
 const submittedManualVehiclePositions = ref<AlgorithmVehiclePosition[]>([])
+const submittedTargetId = ref<string | null>(null)
+const submittedTargetPosition = ref<AlgorithmPositionPayload | null>(null)
+const submittedThreatTargetId = ref<string | null>(null)
+const submittedThreatPosition = ref<AlgorithmPositionPayload | null>(null)
 
 const captureForm = reactive({
   targetId: 'target_01',
@@ -145,6 +149,18 @@ function copyManualVehiclePositions(items: AlgorithmVehiclePosition[]) {
   }))
 }
 
+function copyPosition(position: AlgorithmPositionForm): AlgorithmPositionPayload | null {
+  const payload = toAlgorithmPosition(position)
+  if (!payload) return null
+
+  return {
+    x: payload.x,
+    y: payload.y,
+    z: payload.z,
+    heading: payload.heading,
+  }
+}
+
 function startDemo(
   commandId: string,
   snapshot: {
@@ -158,6 +174,19 @@ function startDemo(
   submittedPositionSource.value = snapshot.positionSource
   submittedVehicleIds.value = [...snapshot.vehicleIds]
   submittedManualVehiclePositions.value = copyManualVehiclePositions(snapshot.manualVehiclePositions ?? [])
+
+  if (selectedMissionType.value === 'CAPTURE') {
+    submittedTargetId.value = captureForm.targetId
+    submittedTargetPosition.value = copyPosition(captureForm.targetPosition)
+    submittedThreatTargetId.value = null
+    submittedThreatPosition.value = null
+    return
+  }
+
+  submittedTargetId.value = escortForm.escortTargetId
+  submittedTargetPosition.value = copyPosition(escortForm.targetPosition)
+  submittedThreatTargetId.value = escortForm.threatTargetId
+  submittedThreatPosition.value = copyPosition(escortForm.threatPosition)
 }
 
 function stopDemo() {
@@ -172,6 +201,10 @@ function resetDemo() {
   submittedPositionSource.value = null
   submittedVehicleIds.value = []
   submittedManualVehiclePositions.value = []
+  submittedTargetId.value = null
+  submittedTargetPosition.value = null
+  submittedThreatTargetId.value = null
+  submittedThreatPosition.value = null
 
   selectedMissionType.value = 'CAPTURE'
 
@@ -217,6 +250,10 @@ export function useAlgorithmMissionDemo() {
     submittedPositionSource,
     submittedVehicleIds,
     submittedManualVehiclePositions,
+    submittedTargetId,
+    submittedTargetPosition,
+    submittedThreatTargetId,
+    submittedThreatPosition,
     captureForm,
     escortForm,
     getManualVehiclePosition,
