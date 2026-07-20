@@ -64,18 +64,23 @@ def _xy(position: Position | None, fallback: np.ndarray) -> np.ndarray:
 
 
 def _scene_from_parameters(parameters: Dict[str, object]) -> str:
-    raw = str(parameters.get("threatDirection") or parameters.get("scene") or "front").lower()
+    raw = str(parameters.get("threatDirection") or parameters.get("scene") or "front").strip().lower()
+    normalized = raw.replace("-", "_")
     mapping = {
         "front": "front",
+        "front_right": "front_right",
+        "right": "right",
+        "back_right": "back_right",
+        "back": "back",
+        "back_left": "back_left",
+        "left": "left",
+        "front_left": "front_left",
         "forward": "front",
         "ahead": "front",
-        "left": "left",
-        "right": "right",
-        "back": "back",
         "rear": "back",
         "behind": "back",
     }
-    return mapping.get(raw, "front")
+    return mapping.get(normalized, "front")
 
 
 def _numeric_parameter(parameters: Dict[str, object], name: str, fallback: float) -> float:
