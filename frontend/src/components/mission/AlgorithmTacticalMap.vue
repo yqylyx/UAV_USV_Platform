@@ -157,6 +157,15 @@ function backendCoordinateLabel(assignment: AlgorithmAssignmentItem) {
   return `(${formatBackendCoordinate(assignment.x)}, ${formatBackendCoordinate(assignment.y)})`
 }
 
+function backendLabelX(worldX: number) {
+  const point = backendPointX(worldX)
+  return point > mapWidth - 150 ? point - 16 : point + 16
+}
+
+function backendLabelAnchor(worldX: number) {
+  return backendPointX(worldX) > mapWidth - 150 ? 'end' : 'start'
+}
+
 function controlStateLabel() {
   if (controlState.value === 'RUNNING') return '演示运行中'
   if (controlState.value === 'STOPPED') return '演示已停止'
@@ -436,19 +445,20 @@ function controlStateTagType() {
               </text>
 
               <text
-                :x="backendPointX(assignment.x as number) + 16"
+                :x="backendLabelX(assignment.x as number)"
                 :y="backendPointY(assignment.y as number) - 10"
+                :text-anchor="backendLabelAnchor(assignment.x as number)"
                 class="radius-label"
               >
                 <tspan>{{ assignment.vehicleCode || assignment.vehicleId }}</tspan>
                 <tspan
-                  :x="backendPointX(assignment.x as number) + 16"
+                  :x="backendLabelX(assignment.x as number)"
                   dy="14"
                 >
                   {{ assignmentRoleLabel(assignment.role) }}
                 </tspan>
                 <tspan
-                  :x="backendPointX(assignment.x as number) + 16"
+                  :x="backendLabelX(assignment.x as number)"
                   dy="14"
                 >
                   {{ backendCoordinateLabel(assignment) }}
