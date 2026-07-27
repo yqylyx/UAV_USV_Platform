@@ -27,10 +27,17 @@ const statusLabels: Record<MissionStatus, string> = {
 
 const typeLabels = {
   COOPERATIVE_ENCIRCLEMENT: '协同围捕',
+  COOPERATIVE_ESCORT: '协同护航',
   TARGET_INSPECTION: '目标巡检',
   PATH_TRACKING: '路径跟踪',
   COMMUNICATION_RELAY: '通信中继',
   CUSTOM: '自定义实验',
+}
+
+const algorithmLabels: Record<string,string> = {
+  GB_SFLA_CS: 'GB-SFLA-CS 协同围捕',
+  ESCORT_GUARD: '混合 UAV/USV 护航守卫',
+  UNITY_SIMPLE_ENCIRCLEMENT: 'Unity 默认简单围捕',
 }
 
 const modeLabels = {
@@ -65,7 +72,7 @@ function actionIcon(action: string) {
         <b>{{ statusLabels[mission.status] }}</b>
       </header>
       <div class="mission-list-meta">
-        <div><span>算法版本</span><strong>Unity 默认简单围捕 v1.0</strong></div>
+        <div><span>算法版本</span><strong>{{ algorithmLabels[mission.algorithmCode] || mission.algorithmCode }} · v{{ mission.algorithmVersion }}</strong></div>
         <div><span>运行环境</span><strong>{{ modeLabels[mission.executionMode] }}</strong></div>
         <div><span>设备编组</span><strong>{{ mission.deviceCount || 0 }} 台载具</strong></div>
         <div><span>任务类型</span><strong>{{ typeLabels[mission.type] }}</strong></div>

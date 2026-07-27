@@ -5,7 +5,6 @@ import { useRouter } from 'vue-router'
 import {
   AlertTriangle,
   Beaker,
-  Bot,
   CircleCheck,
   Clock3,
   Cpu,
@@ -22,7 +21,9 @@ import MissionListPanel from '@/components/mission/MissionListPanel.vue'
 import MissionConfigDialog from '@/components/mission/MissionConfigDialog.vue'
 import MissionStartCheckDialog from '@/components/mission/MissionStartCheckDialog.vue'
 import MissionEventDrawer from '@/components/mission/MissionEventDrawer.vue'
+import AlgorithmManagerDialog from '@/components/mission/AlgorithmManagerDialog.vue'
 import { createMission, deleteMission, executeMissionAction, fetchMission, fetchMissionPreflight, fetchMissionSummary, updateMission } from '@/api/mission'
+import { controlAlgorithmRun, fetchAlgorithms, prepareAlgorithmRun, setAlgorithmEnabled, setDefaultAlgorithm } from '@/api/algorithm'
 import type { MissionAction } from '@/api/mission'
 import { useDeviceStore } from '@/stores/device'
 import { useMissionStore } from '@/stores/mission'
@@ -31,7 +32,7 @@ import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
 import { useUnityViewportStore } from '@/stores/unityViewport'
-import type { Mission, MissionDetail, MissionExecutionMode, MissionPreflight, MissionSavePayload, MissionStatus, MissionSummary, MissionType } from '@/types/mission'
+import type { AlgorithmDefinition, Mission, MissionDetail, MissionExecutionMode, MissionPreflight, MissionSavePayload, MissionStatus, MissionSummary, MissionType } from '@/types/mission'
 
 const missionStore=useMissionStore()
 const deviceStore=useDeviceStore()
@@ -53,6 +54,9 @@ const preflightLoading=ref(false)
 const eventVisible=ref(false)
 const saving=ref(false)
 const actionBusy=ref(false)
+const algorithmManagerVisible=ref(false)
+const algorithmBusy=ref(false)
+const algorithms=ref<AlgorithmDefinition[]>([])
 const keyword=ref('')
 const typeFilter=ref<MissionType|undefined>()
 const statusFilter=ref<MissionStatus|undefined>()
@@ -68,6 +72,7 @@ async function load(page=missionStore.page){
     missionStore.refresh({page,size:8,keyword:keyword.value||undefined,type:typeFilter.value,status:statusFilter.value,executionMode:modeFilter.value}),
     fetchMissionSummary().then(value=>summary.value=value),
     monitoringStore.refresh({},true),
+    fetchAlgorithms().then(value=>algorithms.value=value),
   ])
 }
 async function loadDetail(mission:Mission){
@@ -105,6 +110,11 @@ async function openStart(mission:Mission){
 }
 
 function missionUnityCommand(action:MissionAction){return {start:'missionStart',pause:'missionPause',resume:'missionResume',complete:'missionComplete',fail:'missionFail',cancel:'missionCancel',ready:'missionResume'}[action]}
+function externalAlgorithm(code:string){return code==='GB_SFLA_CS'||code==='ESCORT_GUARD'}
+function algorithmConfig(current:MissionDetail){return Object.fromEntries(current.parameters.map(item=>[item.key,item.value??'']))}
+
+async function toggleAlgorithm(algorithm:AlgorithmDefinition,enabled:boolean){algorithmBusy.value=true;try{await setAlgorithmEnabled(algorithm.code,enabled);algorithms.value=await fetchAlgorithms();ElMessage.success(enabled?'算法已启用':'算法已停用')}catch(error){ElMessage.error(error instanceof Error?error.message:'算法状态更新失败')}finally{algorithmBusy.value=false}}
+async function makeDefaultAlgorithm(algorithm:AlgorithmDefinition){algorithmBusy.value=true;try{await setDefaultAlgorithm(algorithm.code);algorithms.value=await fetchAlgorithms();ElMessage.success('默认算法已更新')}catch(error){ElMessage.error(error instanceof Error?error.message:'默认算法更新失败')}finally{algorithmBusy.value=false}}
 
 async function runMissionAction(action:MissionAction){
   if(!detail.value)return
@@ -118,15 +128,30 @@ async function runMissionAction(action:MissionAction){
     }catch{return false}
   }
   actionBusy.value=true
+  let preparedRunId:number|undefined
   try{
     if(action!=='ready'&&!missionUnityChannel.value.connected)throw new Error('任务中心 Unity WebGL 尚未连接，未创建控制指令')
     const result=await executeMissionAction(detail.value.mission.id,action,'MISSION_CONTROL',unityViewportStore.missionInstanceId)
     detail.value=result.detail
+    const run=detail.value.currentRun
+    const algorithmCode=detail.value.mission.algorithmCode
+    if(action==='start'&&run&&externalAlgorithm(algorithmCode)){
+      await prepareAlgorithmRun(run.id,algorithmCode,algorithmConfig(detail.value))
+      preparedRunId=run.id
+      unityBridgeStore.sendFor('MISSION_CENTER','loadScenario',{algorithmCode,missionId:detail.value.mission.id,runId:run.id})
+    }
     if(result.command){
       if(['FAILED','TIMEOUT'].includes(result.command.status))throw new Error(result.command.detail||'指令下发失败')
       const ack=await unityBridgeStore.sendControlCommandAndWaitFor('MISSION_CENTER',missionUnityCommand(action),'',result.command.commandKey)
       if(!ack.success)throw new Error(ack.status||'Unity 未确认任务指令')
       detail.value=await fetchMission(detail.value.mission.id)
+    }
+    if(run&&externalAlgorithm(algorithmCode)){
+      if(action==='start')await controlAlgorithmRun(run.id,'start')
+      if(action==='pause')await controlAlgorithmRun(run.id,'pause')
+      if(action==='resume')await controlAlgorithmRun(run.id,'resume')
+      if(action==='complete')await controlAlgorithmRun(run.id,'stop')
+      if(action==='cancel'||action==='fail')await controlAlgorithmRun(run.id,'cancel')
     }
     selectedMission.value=detail.value.mission
     sessionStore.bind(detail.value.mission.id,detail.value.currentRun?.id||null)
@@ -136,7 +161,7 @@ async function runMissionAction(action:MissionAction){
     if(['complete','fail','cancel'].includes(action))sessionStore.stop()
     await load()
     return true
-  }catch(error){ElMessage.error(error instanceof Error?error.message:'任务指令执行失败');return false}finally{actionBusy.value=false}
+  }catch(error){if(preparedRunId)void controlAlgorithmRun(preparedRunId,'cancel').catch(()=>undefined);ElMessage.error(error instanceof Error?error.message:'任务指令执行失败');return false}finally{actionBusy.value=false}
 }
 async function confirmStart(){
   if(!await runMissionAction('start')||!detail.value?.currentRun)return
@@ -174,7 +199,7 @@ onMounted(()=>{monitoringStore.connectEvents();void deviceStore.refresh({page:0,
 <template>
   <ConsoleLayout title="任务中心" eyebrow="MISSION EXPERIMENT CENTER">
     <template #actions>
-      <button class="mission-header-tool" type="button" @click="showDeveloping('算法注册管理')">
+      <button class="mission-header-tool" type="button" @click="algorithmManagerVisible=true">
         <Settings2 :size="15" />算法管理
       </button>
     </template>
@@ -203,7 +228,7 @@ onMounted(()=>{monitoringStore.connectEvents();void deviceStore.refresh({page:0,
           </header>
           <div class="mission-filters">
             <div class="search-field"><Search :size="16"/><input v-model="keyword" placeholder="搜索任务编号、名称、目标或区域"/></div>
-            <el-select v-model="typeFilter" clearable placeholder="全部任务类型"><el-option label="协同围捕" value="COOPERATIVE_ENCIRCLEMENT"/><el-option label="目标巡检" value="TARGET_INSPECTION"/><el-option label="路径跟踪" value="PATH_TRACKING"/><el-option label="通信中继" value="COMMUNICATION_RELAY"/><el-option label="自定义" value="CUSTOM"/></el-select>
+            <el-select v-model="typeFilter" clearable placeholder="全部任务类型"><el-option label="协同围捕" value="COOPERATIVE_ENCIRCLEMENT"/><el-option label="协同护航" value="COOPERATIVE_ESCORT"/><el-option label="目标巡检" value="TARGET_INSPECTION"/><el-option label="路径跟踪" value="PATH_TRACKING"/><el-option label="通信中继" value="COMMUNICATION_RELAY"/><el-option label="自定义" value="CUSTOM"/></el-select>
             <el-select v-model="statusFilter" clearable placeholder="全部状态"><el-option v-for="status in ['DRAFT','READY','RUNNING','PAUSED','COMPLETED','FAILED','CANCELLED']" :key="status" :label="status" :value="status"/></el-select>
             <el-select v-model="modeFilter" clearable placeholder="全部运行模式"><el-option label="ROS / Gazebo" value="ROS_GAZEBO"/><el-option label="Unity 独立" value="UNITY_STANDALONE"/><el-option label="混合镜像" value="HYBRID_MIRROR"/></el-select>
           </div>
@@ -213,21 +238,11 @@ onMounted(()=>{monitoringStore.connectEvents();void deviceStore.refresh({page:0,
 
         <aside class="mission-side-stack">
           <section class="mission-side-panel">
-            <header><div><h3>算法库</h3><p>统一适配器接入，任务页面不直接绑定算法实现。</p></div><button @click="showDeveloping('算法注册管理')">管理</button></header>
-            <article class="algorithm-card available">
-              <div class="algorithm-icon"><Waves :size="20"/></div>
-              <div><b>Unity 默认简单围捕</b><span>UnityNativeAdapter · v1.0</span><p>支持开始、暂停、继续、终止和实时轨迹。</p></div>
-              <em>可执行</em>
-            </article>
-            <article class="algorithm-card" @click="showDeveloping('PSO 协同围捕算法')">
-              <div class="algorithm-icon"><Cpu :size="20"/></div>
-              <div><b>PSO 协同围捕</b><span>ExternalAdapter · v2.3</span><p>粒子群编队分配与闭合控制。</p></div>
-              <em>开发中</em>
-            </article>
-            <article class="algorithm-card" @click="showDeveloping('强化学习围捕策略')">
-              <div class="algorithm-icon"><Bot :size="20"/></div>
-              <div><b>强化学习围捕策略</b><span>ModelGateway · v0.8</span><p>策略模型推理与安全约束适配。</p></div>
-              <em>开发中</em>
+            <header><div><h3>算法库</h3><p>统一适配器接入，任务页面不直接绑定算法实现。</p></div><button @click="algorithmManagerVisible=true">管理</button></header>
+            <article v-for="algorithm in algorithms.filter(item=>item.enabled)" :key="algorithm.code" class="algorithm-card available" @click="algorithmManagerVisible=true">
+              <div class="algorithm-icon"><component :is="algorithm.missionType==='COOPERATIVE_ESCORT'?Cpu:Waves" :size="20"/></div>
+              <div><b>{{ algorithm.name }}</b><span>{{ algorithm.adapterType }} · v{{ algorithm.version }}</span><p>{{ algorithm.description }}</p></div>
+              <em>{{ algorithm.defaultForType?'默认':'可执行' }}</em>
             </article>
           </section>
 
@@ -254,7 +269,8 @@ onMounted(()=>{monitoringStore.connectEvents();void deviceStore.refresh({page:0,
         </aside>
       </div>
     </section>
-    <MissionConfigDialog v-model="configVisible" :detail="detail" :devices="deviceStore.records" :readonly="configReadonly" :saving="saving" @save="save"/>
+    <MissionConfigDialog v-model="configVisible" :detail="detail" :devices="deviceStore.records" :algorithms="algorithms" :readonly="configReadonly" :saving="saving" @save="save"/>
+    <AlgorithmManagerDialog v-model="algorithmManagerVisible" :algorithms="algorithms" :loading="algorithmBusy" @toggle="toggleAlgorithm" @set-default="makeDefaultAlgorithm"/>
     <MissionStartCheckDialog v-model="startVisible" :check="preflight" :trajectory-live="trajectoryLive" :loading="preflightLoading" @confirm="confirmStart"/>
     <MissionEventDrawer v-model="eventVisible" :mission-id="detail?.mission.id||null" :run-id="detail?.currentRun?.id"/>
   </ConsoleLayout>

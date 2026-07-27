@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Activity, Boxes, LogOut, Plane, Radar, RefreshCw, Ship, UserRound } from '@lucide/vue'
+import { Activity, Boxes, Camera, LogOut, Plane, Radar, RefreshCw, Ship, UserRound } from '@lucide/vue'
 import { useRouter } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
@@ -43,6 +43,10 @@ async function logout() {
         <RouterLink class="nav-item" active-class="active" to="/missions">
           <Ship :size="18" />
           任务中心
+        </RouterLink>
+        <RouterLink class="nav-item" active-class="active" to="/visual-sensors">
+          <Camera :size="18" />
+          视觉感知
         </RouterLink>
         <RouterLink class="nav-item" active-class="active" to="/devices">
           <Boxes :size="18" />

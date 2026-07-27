@@ -7,6 +7,7 @@ import com.uavusv.platform.module.monitoring.dto.request.RosPoseFrame;
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.event.RosCommandAckReceivedEvent;
+import com.uavusv.platform.module.visualsensor.service.VisualSensorService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -34,6 +35,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
     private final ObjectMapper objectMapper;
     private final RuntimeStateService runtimeStateService;
     private final ApplicationEventPublisher eventPublisher;
+    private final VisualSensorService visualSensorService;
     private final URI endpoint;
     private final HttpClient httpClient;
     private final ScheduledExecutorService reconnectExecutor;
@@ -46,11 +48,13 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
             ObjectMapper objectMapper,
             RuntimeStateService runtimeStateService,
             ApplicationEventPublisher eventPublisher,
+            VisualSensorService visualSensorService,
             @Value("${app.runtime.ros-websocket-url}") String endpoint
     ) {
         this.objectMapper = objectMapper;
         this.runtimeStateService = runtimeStateService;
         this.eventPublisher = eventPublisher;
+        this.visualSensorService = visualSensorService;
         this.endpoint = URI.create(endpoint);
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
         this.reconnectExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -141,6 +145,25 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
         }
     }
 
+    public boolean isConnected() {
+        return socket != null;
+    }
+
+    public void sendCameraSelection(String cameraId) {
+        WebSocket current = socket;
+        if (current == null || cameraId == null || cameraId.isBlank()) {
+            return;
+        }
+        try {
+            ObjectNode frame = objectMapper.createObjectNode();
+            frame.put("type", "select_camera");
+            frame.put("camera_id", cameraId);
+            current.sendText(objectMapper.writeValueAsString(frame), true);
+        } catch (Exception exception) {
+            log.debug("Unable to select visual sensor {}: {}", cameraId, exception.getMessage());
+        }
+    }
+
     private void handleMessage(String payload) throws Exception {
         JsonNode root = objectMapper.readTree(payload);
         String type = root.path("type").asText("pose_frame");
@@ -150,6 +173,17 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
                     root.path("status").asInt(),
                     root.path("message").asText(null)
             ));
+            return;
+        }
+        if ("camera_frame".equals(type)) {
+            visualSensorService.observeJpegFrame(
+                    root.path("camera_id").asText(),
+                    root.path("jpeg_base64").asText(),
+                    root.path("width").asInt(),
+                    root.path("height").asInt(),
+                    root.path("timestamp_ms").asLong(),
+                    root.path("age_seconds").asDouble(-1)
+            );
             return;
         }
         if ("pose_frame".equals(type) || (root.has("boat") && root.has("drone"))) {

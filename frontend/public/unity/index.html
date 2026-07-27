@@ -62,6 +62,9 @@
       var runtimeInstanceId = urlParameters.get('instanceId') || 'overview-unity-01';
       var missionId = urlParameters.get('missionId') || '';
       var runId = urlParameters.get('runId') || '';
+      var platformBridgeReady = false;
+      var platformCapabilities = {};
+      var pendingUnityMessages = [];
 
       function withBuildStamp(url) {
         return url + (url.indexOf('?') === -1 ? '?' : '&') + 'v=' + encodeURIComponent(buildStamp);
@@ -96,6 +99,21 @@
         try {
           var parsed = typeof message === 'string' ? JSON.parse(message) : message;
           if (parsed && parsed.type) {
+            if (parsed.type === 'platformBridgeReady') {
+              var readyPayload = parsed.payload || {};
+              platformBridgeReady = readyPayload.ready === true;
+              document.documentElement.dataset.platformBridgeReady =
+                platformBridgeReady ? 'true' : 'false';
+              document.documentElement.dataset.unityBuildId =
+                String(readyPayload.buildId || '');
+              platformCapabilities = {};
+              (readyPayload.capabilities || []).forEach(function (capability) {
+                platformCapabilities[String(capability)] = true;
+              });
+              document.documentElement.dataset.unityCapabilities =
+                Object.keys(platformCapabilities).join(',');
+              if (platformBridgeReady) flushPendingUnityMessages();
+            }
             window.parent.postMessage(
               {
                 source: 'unity-webgl',
@@ -122,6 +140,92 @@
         }
         postUnityMessage('unityMessage', { value: String(message || '') });
       };
+
+      function hasPlatformCapability(capability) {
+        return platformCapabilities[capability] === true;
+      }
+
+      function dispatchToUnity(message) {
+        if (!window.uavUsvUnityInstance ||
+            !window.uavUsvUnityInstance.SendMessage ||
+            !platformBridgeReady) {
+          return false;
+        }
+
+        var serialized = JSON.stringify(message);
+        var type = normalizeCommand(message.type);
+        window.uavUsvUnityInstance.SendMessage(
+          'UnityPlatformCompatibilityBridge',
+          'ReceiveFromVue',
+          serialized,
+        );
+
+        var needsCommandBridge =
+          type === 'selectdevice' ||
+          type === 'focusdevice' ||
+          type === 'switchcamera' ||
+          type === 'sendcontrolcommand' ||
+          type === 'toggletrajectory';
+        var needsAlgorithmBridge =
+          type === 'loadscenario' ||
+          type === 'poseframe' ||
+          (runtimeScope === 'MISSION_CENTER' && type === 'sendcontrolcommand');
+        var needsVisualBridge = type === 'visualsensorsubscribe';
+
+        if (needsCommandBridge) {
+          if (!hasPlatformCapability('camera-control') &&
+              !hasPlatformCapability('vehicle-control')) {
+            throw new Error('Unity command bridge capability is unavailable.');
+          }
+          window.uavUsvUnityInstance.SendMessage(
+            'WebCommandBridge',
+            'ReceiveFromVue',
+            serialized,
+          );
+        }
+        if (needsAlgorithmBridge) {
+          if (!hasPlatformCapability('algorithm-scenario')) {
+            throw new Error('Unity algorithm scenario bridge capability is unavailable.');
+          }
+          window.uavUsvUnityInstance.SendMessage(
+            'AlgorithmScenarioBridge',
+            'ReceiveFromVue',
+            serialized,
+          );
+        }
+        if (needsVisualBridge) {
+          if (!hasPlatformCapability('visual-sensor')) {
+            throw new Error('Unity visual sensor bridge capability is unavailable.');
+          }
+          window.uavUsvUnityInstance.SendMessage(
+            'UnityVisualSensorBridge',
+            'ReceiveFromVue',
+            serialized,
+          );
+        }
+        return true;
+      }
+
+      function queueUnityMessage(message) {
+        pendingUnityMessages.push(message);
+        if (pendingUnityMessages.length > 200) pendingUnityMessages.shift();
+      }
+
+      function flushPendingUnityMessages() {
+        if (!platformBridgeReady || !window.uavUsvUnityInstance) return;
+        var queued = pendingUnityMessages.splice(0, pendingUnityMessages.length);
+        queued.forEach(function (message) {
+          try {
+            dispatchToUnity(message);
+          } catch (error) {
+            postUnityMessage('unityBridgeError', {
+              message: String(error && error.message ? error.message : error),
+              requestedType: message.type || '',
+              requestId: message.requestId || '',
+            });
+          }
+        });
+      }
 
       function unityShowBanner(msg, type) {
         function updateBannerVisibility() {
@@ -265,6 +369,7 @@
           companyName: 'UAV-USV',
           productName: 'UAV_USV_WebGL',
           productVersion: '0.1',
+          autoSyncPersistentDataPath: true,
           showBanner: unityShowBanner,
           devicePixelRatio: embedded ? Math.min(window.devicePixelRatio || 1, 1.25) : window.devicePixelRatio || 1,
           cacheControl: function () {
@@ -293,6 +398,7 @@
               postUnityMessage('sceneLoaded', {
                 mode: 'webgl',
                 productName: 'UAV_USV_WebGL',
+                buildId: 'unity-f24959c-platform-v2',
               });
               fullscreenButton.onclick = function () {
                 unityInstance.SetFullscreen(1);
@@ -313,20 +419,31 @@
         if (data.runtimeInstanceId && data.runtimeInstanceId !== runtimeInstanceId) return;
         var message = data.message;
         var bridgeSent = false;
+        var queuedForBridge = false;
         if (window.uavUsvUnityInstance && window.uavUsvUnityInstance.SendMessage) {
-          try {
-            window.uavUsvUnityInstance.SendMessage('WebCommandBridge', 'ReceiveFromVue', JSON.stringify(message));
-            bridgeSent = true;
-          } catch (error) {
-            console.warn('Unity WebBridge command failed, fallback will be used.', error);
+          if (!platformBridgeReady) {
+            queueUnityMessage(message);
+            queuedForBridge = true;
+          } else {
+            try {
+              bridgeSent = dispatchToUnity(message);
+            } catch (error) {
+              console.warn('Unity WebBridge command failed.', error);
+              postUnityMessage('unityBridgeError', {
+                message: String(error && error.message ? error.message : error),
+                requestedType: message.type || '',
+                requestId: message.requestId || '',
+              });
+            }
           }
         }
-        var fallback = bridgeSent ? '' : applyUnityFallback(message);
+        var fallback = bridgeSent || queuedForBridge ? '' : applyUnityFallback(message);
         postUnityMessage('vueCommandReceived', {
           requestId: message.requestId || '',
           type: message.type,
           payload: message.payload || {},
           bridgeSent: bridgeSent,
+          queued: queuedForBridge,
           fallback: fallback,
         });
       });

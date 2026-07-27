@@ -29,6 +29,14 @@ public record MissionSaveRequest(
         @NotNull(message = "任务运行模式不能为空")
         MissionExecutionMode executionMode,
 
+        @NotBlank(message = "算法编码不能为空")
+        @Size(max = 64, message = "算法编码不能超过64个字符")
+        String algorithmCode,
+
+        @NotBlank(message = "算法版本不能为空")
+        @Size(max = 32, message = "算法版本不能超过32个字符")
+        String algorithmVersion,
+
         @NotNull(message = "任务状态不能为空")
         MissionStatus status,
 

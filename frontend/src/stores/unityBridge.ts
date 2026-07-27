@@ -24,6 +24,12 @@ export interface UnityCommandAckResult {
 interface UnityBridgeChannel {
   connected: boolean
   controlsReady: boolean
+  platformReady: boolean
+  cameraReady: boolean
+  algorithmReady: boolean
+  visualSensorReady: boolean
+  buildId: string
+  capabilities: string[]
   lastMessage: UnityBridgeMessage | null
   lastOutgoing: UnityBridgeMessage | null
   error: string
@@ -45,6 +51,12 @@ function createChannel(): UnityBridgeChannel {
   return {
     connected: false,
     controlsReady: false,
+    platformReady: false,
+    cameraReady: false,
+    algorithmReady: false,
+    visualSensorReady: false,
+    buildId: '',
+    capabilities: [],
     lastMessage: null,
     lastOutgoing: null,
     error: '',
@@ -102,6 +114,14 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       if (connected) channel.error = ''
       else {
         channel.controlsReady = false
+        channel.platformReady = false
+        channel.cameraReady = false
+        channel.algorithmReady = false
+        channel.visualSensorReady = false
+        channel.buildId = ''
+        channel.capabilities = []
+        channel.outbox = []
+        channel.commandKeys = {}
         rejectPendingCommandAcks(scope, 'Unity WebGL 连接已断开')
       }
     },
@@ -113,10 +133,32 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       channel.error = message
       channel.connected = false
       channel.controlsReady = false
+      channel.platformReady = false
+      channel.cameraReady = false
+      channel.outbox = []
+      channel.commandKeys = {}
       rejectPendingCommandAcks(scope, message)
     },
     setControlsReadyFor(scope: UnityRuntimeScope, ready: boolean) {
       this.channels[scope].controlsReady = ready
+    },
+    setPlatformCapabilitiesFor(scope: UnityRuntimeScope, payload: Record<string, unknown>) {
+      const channel = this.channels[scope]
+      channel.platformReady = payload.ready === true
+      channel.controlsReady = payload.controlsReady === true
+      channel.cameraReady = payload.cameraReady === true
+      channel.algorithmReady = payload.algorithmReady === true
+      channel.visualSensorReady = payload.visualSensorReady === true
+      channel.buildId = String(payload.buildId ?? '')
+      channel.capabilities = Array.isArray(payload.capabilities)
+        ? payload.capabilities.map(item => String(item))
+        : []
+      const reportedError = String(payload.error ?? '').trim()
+      if (channel.platformReady) {
+        channel.error = ''
+      } else if (reportedError) {
+        channel.error = reportedError
+      }
     },
     setError(message: string) {
       this.setErrorFor('SYSTEM_OVERVIEW', message)

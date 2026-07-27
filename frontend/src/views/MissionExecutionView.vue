@@ -7,6 +7,7 @@ import MissionEventDrawer from '@/components/mission/MissionEventDrawer.vue'
 import MissionExecutionOverlay from '@/components/mission/MissionExecutionOverlay.vue'
 import type { VehicleQuickCommand } from '@/components/control/VehicleQuickControl.vue'
 import { executeMissionAction, fetchMission } from '@/api/mission'
+import { controlAlgorithmRun, fetchAlgorithmFrames, placeEscortThreat, prepareAlgorithmRun } from '@/api/algorithm'
 import type { MissionAction } from '@/api/mission'
 import { issueRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
@@ -15,7 +16,7 @@ import { useMonitoringStore } from '@/stores/monitoring'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
-import type { MissionDetail } from '@/types/mission'
+import type { AlgorithmRuntimeFrame, MissionDetail } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
 
 const route = useRoute()
@@ -32,11 +33,58 @@ const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({}
 const operationalStates = ref<Record<string, string | undefined>>({})
 const busy = ref(false)
 const eventVisible = ref(false)
+const algorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
+const algorithmPolling = ref(false)
 const mode = ref<'2d' | '3d'>('2d')
 const missionId = computed(() => Number(route.params.missionId))
 const runId = computed(() => Number(route.params.runId))
 const unityChannel = computed(() => unityBridgeStore.channels.MISSION_CENTER)
 const trajectoryFrame = computed(() => trajectoryStore.channels.MISSION_CENTER.frame)
+const externalAlgorithm = computed(() => !!detail.value && ['GB_SFLA_CS', 'ESCORT_GUARD'].includes(detail.value.mission.algorithmCode))
+let algorithmPollTimer: number | null = null
+let algorithmAbortController: AbortController | null = null
+let loadedScenarioKey = ''
+let algorithmRecoveryPromise: Promise<void> | null = null
+
+function currentAlgorithmConfig() {
+  return Object.fromEntries((detail.value?.parameters ?? []).map(item => [item.key, item.value ?? '']))
+}
+
+async function ensureAlgorithmRuntime() {
+  if (!externalAlgorithm.value || !detail.value?.currentRun) return
+  if (algorithmRecoveryPromise) return algorithmRecoveryPromise
+  algorithmRecoveryPromise = (async () => {
+    const mission = detail.value!.mission
+    const activeRun = detail.value!.currentRun!
+    const runtime = await prepareAlgorithmRun(activeRun.id, mission.algorithmCode, currentAlgorithmConfig())
+    if (mission.status === 'RUNNING' && runtime.state !== 'RUNNING') {
+      await controlAlgorithmRun(activeRun.id, 'start')
+    }
+  })()
+  try {
+    await algorithmRecoveryPromise
+  } finally {
+    algorithmRecoveryPromise = null
+  }
+}
+
+function ensureMissionScenarioLoaded() {
+  if (!unityChannel.value.controlsReady) {
+    loadedScenarioKey = ''
+    return
+  }
+  const mission = detail.value?.mission
+  const currentRun = detail.value?.currentRun
+  if (!mission || !currentRun || !['GB_SFLA_CS', 'ESCORT_GUARD'].includes(mission.algorithmCode)) return
+  const key = `${mission.id}:${currentRun.id}:${mission.algorithmCode}:${unityViewportStore.missionInstanceId}`
+  if (loadedScenarioKey === key) return
+  unityBridgeStore.sendFor('MISSION_CENTER', 'loadScenario', {
+    algorithmCode: mission.algorithmCode,
+    missionId: mission.id,
+    runId: currentRun.id,
+  })
+  loadedScenarioKey = key
+}
 
 const runtimeNodes = computed<RuntimeNode[]>(() => {
   const frame = trajectoryFrame.value
@@ -102,6 +150,90 @@ async function loadDetail() {
   unityViewportStore.prepareMission(loaded.mission.id, requestedRun.id, requestedRun.runtimeInstanceId)
 }
 
+async function refreshUntilStatus(expected: string) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await loadDetail()
+    if (detail.value?.mission.status === expected) return
+    await new Promise(resolve => window.setTimeout(resolve, 400))
+  }
+}
+
+function ingestAlgorithmFrame(frame: AlgorithmRuntimeFrame) {
+  algorithmFrame.value = frame
+  const agents = [
+    ...frame.agents.map(item => ({ code: item.code, type: item.type, x: item.x, y: item.y, z: item.z, yaw: item.heading, state: item.role })),
+    ...frame.targets.filter(item => item.visible !== false).map(item => ({ code: item.code, type: 'TARGET', x: item.x, y: item.y, z: item.z, yaw: item.heading, state: item.type })),
+  ]
+  const payload = {
+    sequence: frame.sequence,
+    timestamp: frame.timestamp,
+    source: `algorithm:${frame.algorithmCode}`,
+    coordinateSystem: 'MISSION_SCENE_XZ',
+    mission: {
+      phase: frame.phase,
+      elapsed: Math.round(frame.sequence / 6),
+      captureRadius: 7,
+      defenseRadius: 15,
+      captureReady: frame.metrics.captured === true,
+      formationHolding: frame.phase === 'CAPTURED' || frame.phase === 'THREAT_RESPONSE',
+    },
+    agents,
+  }
+  trajectoryStore.ingestFor('MISSION_CENTER', payload)
+  unityBridgeStore.sendFor('MISSION_CENTER', 'poseFrame', {
+    algorithmCode: frame.algorithmCode,
+    runId: frame.runId,
+    sequence: frame.sequence,
+    timestamp: frame.timestamp,
+    phase: frame.phase,
+    agents: frame.agents,
+    targets: frame.targets,
+    route: frame.route.map(point => ({ x: point[0], y: point[1] })),
+    obstacles: frame.obstacles,
+  })
+}
+
+watch([
+  () => unityChannel.value.controlsReady,
+  () => detail.value?.mission.algorithmCode,
+  () => detail.value?.currentRun?.id,
+  () => unityViewportStore.missionInstanceId,
+], ensureMissionScenarioLoaded, { immediate: true })
+
+async function pollAlgorithmFrames() {
+  if (!externalAlgorithm.value || !detail.value?.currentRun || algorithmPolling.value) return
+  algorithmPolling.value = true
+  algorithmAbortController = new AbortController()
+  try {
+    const frames = await fetchAlgorithmFrames(
+      detail.value.currentRun.id,
+      algorithmFrame.value?.sequence ?? 0,
+      algorithmAbortController.signal,
+    )
+    for (const frame of frames) ingestAlgorithmFrame(frame)
+  } catch {
+    // A transient poll failure must not interrupt the task or flood the UI.
+  } finally {
+    algorithmAbortController = null
+    algorithmPolling.value = false
+  }
+}
+
+function stopAlgorithmPolling() {
+  if (algorithmPollTimer !== null) window.clearInterval(algorithmPollTimer)
+  algorithmPollTimer = null
+  algorithmAbortController?.abort()
+  algorithmAbortController = null
+}
+
+function startAlgorithmPolling(forceRunning = false) {
+  stopAlgorithmPolling()
+  if (!externalAlgorithm.value) return
+  void pollAlgorithmFrames()
+  if (!forceRunning && detail.value?.mission.status !== 'RUNNING') return
+  algorithmPollTimer = window.setInterval(() => void pollAlgorithmFrames(), 100)
+}
+
 async function runMissionAction(action: 'pause' | 'resume' | 'complete' | 'cancel') {
   if (!detail.value) return
   if (action === 'cancel') {
@@ -111,6 +243,8 @@ async function runMissionAction(action: 'pause' | 'resume' | 'complete' | 'cance
   }
   busy.value = true
   try {
+    const activeRunId = detail.value.currentRun?.id
+    const usesExternalAlgorithm = externalAlgorithm.value
     if (!unityChannel.value.connected || !unityChannel.value.controlsReady) throw new Error('任务中心 Unity 指令桥尚未就绪')
     const result = await executeMissionAction(detail.value.mission.id, action, 'MISSION_CONTROL', unityViewportStore.missionInstanceId)
     if (result.command) {
@@ -118,14 +252,66 @@ async function runMissionAction(action: 'pause' | 'resume' | 'complete' | 'cance
       const ack = await unityBridgeStore.sendControlCommandAndWaitFor('MISSION_CENTER', missionUnityCommand(action), '', result.command.commandKey)
       if (!ack.success) throw new Error(ack.status || 'Unity 未确认任务指令')
     }
-    if (action === 'pause') sessionStore.pause()
-    if (action === 'resume') sessionStore.resume(trajectoryFrame.value?.sequence ?? 0)
-    if (action === 'complete' || action === 'cancel') sessionStore.stop()
-    await loadDetail()
-    ElMessage.success(action === 'pause' ? '任务已暂停' : action === 'resume' ? '任务已继续' : action === 'complete' ? '任务已完成' : '任务已终止')
+    let algorithmControlWarning = ''
+    if (activeRunId && usesExternalAlgorithm) {
+      try {
+        if (action === 'pause') await controlAlgorithmRun(activeRunId, 'pause')
+        if (action === 'resume') {
+          await ensureAlgorithmRuntime()
+          await controlAlgorithmRun(activeRunId, 'resume')
+        }
+        if (action === 'complete') await controlAlgorithmRun(activeRunId, 'stop')
+        if (action === 'cancel') await controlAlgorithmRun(activeRunId, 'cancel')
+      } catch (error) {
+        // Unity/backend acknowledgement is authoritative for mission state. A
+        // finished or unavailable algorithm worker must not turn that success
+        // into a misleading command failure.
+        algorithmControlWarning = error instanceof Error ? error.message : '算法运行实例未响应'
+      }
+    }
+    if (action === 'pause') {
+      sessionStore.pause()
+      stopAlgorithmPolling()
+    }
+    if (action === 'resume') {
+      sessionStore.resume(trajectoryFrame.value?.sequence ?? 0)
+      startAlgorithmPolling(true)
+    }
+    if (action === 'complete' || action === 'cancel') {
+      sessionStore.stop()
+      stopAlgorithmPolling()
+    }
+    const expectedStatus = action === 'pause'
+      ? 'PAUSED'
+      : action === 'resume'
+        ? 'RUNNING'
+        : action === 'complete'
+          ? 'COMPLETED'
+          : 'CANCELLED'
+    // The backend applies mission state from the Unity acknowledgement event.
+    // Reflect that acknowledged state immediately, then reconcile with the
+    // persisted mission record in the background.
+    detail.value = {
+      ...detail.value,
+      mission: { ...detail.value.mission, status: expectedStatus as typeof detail.value.mission.status },
+      currentRun: detail.value.currentRun
+        ? { ...detail.value.currentRun, status: expectedStatus as typeof detail.value.currentRun.status }
+        : null,
+    }
+    void refreshUntilStatus(expectedStatus).catch(() => undefined)
+    if (algorithmControlWarning) ElMessage.warning(`任务状态已更新；算法实例提示：${algorithmControlWarning}`)
+    else ElMessage.success(action === 'pause' ? '任务已暂停' : action === 'resume' ? '任务已继续' : action === 'complete' ? '任务已完成' : '任务已终止')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '任务指令执行失败')
   } finally { busy.value = false }
+}
+
+async function placeThreat(x: number, y: number) {
+  if (detail.value?.mission.algorithmCode !== 'ESCORT_GUARD' || !detail.value.currentRun) return
+  try {
+    await placeEscortThreat(detail.value.currentRun.id, x, y)
+    ElMessage.success(`威胁目标已更新：${x.toFixed(1)}, ${y.toFixed(1)}`)
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '威胁目标更新失败') }
 }
 
 async function sendVehicleCommand(command: VehicleQuickCommand) {
@@ -178,12 +364,18 @@ onMounted(async () => {
   unityViewportStore.park()
   monitoringStore.connectEvents()
   await monitoringStore.refresh({}, true)
-  try { await loadDetail() } catch (error) {
+  try {
+    await loadDetail()
+    if (externalAlgorithm.value && ['RUNNING', 'PAUSED'].includes(detail.value?.mission.status ?? '')) {
+      await ensureAlgorithmRuntime()
+    }
+    startAlgorithmPolling()
+  } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '任务运行加载失败')
     await router.replace({ name: 'missions' })
   }
 })
-onBeforeUnmount(() => unityViewportStore.park())
+onBeforeUnmount(() => { stopAlgorithmPolling(); unityViewportStore.park() })
 </script>
 
 <template>
@@ -192,6 +384,7 @@ onBeforeUnmount(() => unityViewportStore.park())
     :detail="detail"
     :nodes="runtimeNodes"
     :trajectory-frame="trajectoryFrame"
+    :algorithm-frame="algorithmFrame"
     :session-state="sessionStore.state"
     :session-revision="sessionStore.revision"
     :selected-device-code="selectedDeviceCode"
@@ -204,6 +397,7 @@ onBeforeUnmount(() => unityViewportStore.park())
     @mission-action="runMissionAction"
     @events="eventVisible = true"
     @mode-change="changeMode"
+    @place-threat="placeThreat"
   />
   <MissionEventDrawer v-model="eventVisible" :mission-id="detail?.mission.id ?? null" :run-id="detail?.currentRun?.id" />
 </template>

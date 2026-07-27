@@ -1,0 +1,12 @@
+<linker>
+  <assembly fullname="Assembly-CSharp">
+    <type fullname="UavUsv.PlatformTools.WebCommandBridge" preserve="all" />
+    <type fullname="UavUsv.PlatformTools.WebDeviceObserverCamera" preserve="all" />
+    <type fullname="UavUsv.PlatformTools.WebVehicleCommandController" preserve="all" />
+    <type fullname="UavUsv.PlatformTools.WebTrajectoryTelemetryBridge" preserve="all" />
+    <type fullname="UavUsv.PlatformTools.AlgorithmScenarioBridge" preserve="all" />
+    <type fullname="UavUsv.PlatformTools.UnityVisualSensorBridge" preserve="all" />
+    <type fullname="UavUsv.PlatformTools.UnityPlatformCompatibilityBridge" preserve="all" />
+    <type fullname="UavUsv.PlatformTools.UnityScenarioCompatibilityInstaller" preserve="all" />
+  </assembly>
+</linker>

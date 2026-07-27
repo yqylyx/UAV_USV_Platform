@@ -7,6 +7,7 @@ import LoginView from '@/views/LoginView.vue'
 import MissionControlView from '@/views/MissionControlView.vue'
 import MissionExecutionView from '@/views/MissionExecutionView.vue'
 import RuntimeMonitorView from '@/views/RuntimeMonitorView.vue'
+import VisualSensorView from '@/views/VisualSensorView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -15,6 +16,7 @@ const router = createRouter({
     { path: '/devices', name: 'devices', component: DeviceManagementView, meta: { requiresAuth: true } },
     { path: '/missions', name: 'missions', component: MissionControlView, meta: { requiresAuth: true } },
     { path: '/missions/:missionId/runs/:runId', name: 'mission-run', component: MissionExecutionView, meta: { requiresAuth: true } },
+    { path: '/visual-sensors', name: 'visual-sensors', component: VisualSensorView, meta: { requiresAuth: true } },
     { path: '/monitoring', name: 'monitoring', component: RuntimeMonitorView, meta: { requiresAuth: true } },
     { path: '/login', name: 'login', component: LoginView },
   ],

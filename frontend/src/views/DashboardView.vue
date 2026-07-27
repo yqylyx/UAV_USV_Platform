@@ -38,6 +38,7 @@ const lastUnityEvent = ref('暂无 Unity 回传事件')
 const unityCommandState = ref('等待控制指令')
 const commandBusy = ref(false)
 const cameraCommandBusy = ref(false)
+let selectedDeviceSyncedToUnity = ''
 const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
 const operationalStates = ref<Record<string, string | undefined>>({
   'uav-01': 'UNKNOWN',
@@ -129,6 +130,32 @@ const quickControlDevices = computed(() => {
     status: device.status,
   }))
 })
+const overviewUnityChannel = computed(() => unityBridgeStore.channels.SYSTEM_OVERVIEW)
+const unityCameraReady = computed(() =>
+  overviewUnityChannel.value.connected
+  && overviewUnityChannel.value.platformReady
+  && overviewUnityChannel.value.cameraReady,
+)
+
+function selectedOrDefaultDeviceCode(preferredType?: 'UAV' | 'USV') {
+  const devices = selectableDevices.value.filter((device) => !preferredType || device.type === preferredType)
+  const selected = devices.find(
+    (device) => normalizeDeviceCode(device.code) === normalizeDeviceCode(selectedDeviceCode.value),
+  )
+  const fallback = selected ?? devices[0] ?? selectableDevices.value[0]
+  const code = normalizeDeviceCode(fallback?.code ?? (preferredType === 'USV' ? 'usv-01' : 'uav-01'))
+  selectedDeviceCode.value = code
+  return code
+}
+
+function syncSelectedDeviceToUnity(force = false) {
+  const deviceCode = selectedOrDefaultDeviceCode()
+  if (!unityCameraReady.value) return
+  if (!force && selectedDeviceSyncedToUnity === deviceCode) return
+  selectedDeviceSyncedToUnity = deviceCode
+  unityBridgeStore.send('selectDevice', { deviceCode })
+  lastUnityEvent.value = `selectDevice:${deviceCode}:sync`
+}
 
 const rosBridgeOnline = computed(() =>
   monitoringStore.nodes.some((node) => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
@@ -424,34 +451,58 @@ async function sendTrackedUnityCommand(
 }
 
 async function selectDevice(deviceCode: string) {
+  const normalizedCode = normalizeDeviceCode(deviceCode) || selectedOrDefaultDeviceCode()
+  selectedDeviceCode.value = normalizedCode
+  selectedCameraMode.value = 'device-follow'
+  if (!unityCameraReady.value) {
+    selectedDeviceSyncedToUnity = ''
+    lastUnityEvent.value = `selectDevice:${normalizedCode}:waiting`
+    return
+  }
   try {
-    await sendTrackedUnityCommand('SELECT_DEVICE', '系统总览选择协同设备', 'selectDevice', { deviceCode }, deviceCode)
-    selectedDeviceCode.value = deviceCode
-    selectedCameraMode.value = 'device-follow'
-    lastUnityEvent.value = `selectDevice:${deviceCode}`
+    await sendTrackedUnityCommand(
+      'SELECT_DEVICE',
+      '系统总览选择协同设备',
+      'selectDevice',
+      { deviceCode: normalizedCode },
+      normalizedCode,
+    )
+    selectedDeviceSyncedToUnity = normalizedCode
+    lastUnityEvent.value = `selectDevice:${normalizedCode}`
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '设备视角切换失败')
   }
 }
 
 async function focusSelectedDevice() {
+  const deviceCode = selectedOrDefaultDeviceCode()
   try {
     await sendTrackedUnityCommand(
       'FOCUS_DEVICE',
       'Unity 视角聚焦当前设备',
       'focusDevice',
-      { deviceCode: selectedDeviceCode.value },
+      { deviceCode },
+      deviceCode,
     )
-    lastUnityEvent.value = `focusDevice:${selectedDeviceCode.value}`
+    selectedDeviceSyncedToUnity = deviceCode
+    lastUnityEvent.value = `focusDevice:${deviceCode}`
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '视角重新居中失败')
   }
 }
 
 async function switchCamera(mode: string) {
+  const deviceCode = selectedOrDefaultDeviceCode()
   try {
-    await sendTrackedUnityCommand('SWITCH_CAMERA', 'Unity 切换态势观察视角', 'switchCamera', { mode })
+    await sendTrackedUnityCommand(
+      'SWITCH_CAMERA',
+      'Unity 切换态势观察视角',
+      'switchCamera',
+      { mode, deviceCode },
+      deviceCode,
+    )
     selectedCameraMode.value = mode
+    if (mode === 'device-follow') selectedDeviceSyncedToUnity = deviceCode
     lastUnityEvent.value = `switchCamera:${mode}`
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : 'Unity 视角切换失败')
@@ -789,9 +840,6 @@ function handleUnityReady() {
   unityConnection.value = 'Unity WebGL 已连接'
   lastUnityEvent.value = 'sceneLoaded'
   pushPoseFrameToUnity()
-  // Unity 的“重新居中/当前设备视角”依赖内部已选中设备。
-  // 首次连接时主动同步默认设备，避免出现 No Unity device is currently selected。
-  unityBridgeStore.send('selectDevice', { deviceCode: selectedDeviceCode.value })
   startUnityHeartbeat()
 }
 
@@ -855,6 +903,9 @@ function handleUnityMessage(message: UnityMessage) {
 
   if (message.type !== 'cameraChanged' || payload.success === true) {
     if (typeof payload.deviceCode === 'string' && payload.deviceCode.trim()) selectedDeviceCode.value = payload.deviceCode
+    if (message.type === 'cameraChanged' && payload.success === true && typeof payload.deviceCode === 'string' && payload.deviceCode.trim()) {
+      selectedDeviceSyncedToUnity = normalizeDeviceCode(payload.deviceCode)
+    }
     if (typeof payload.mode === 'string' && payload.mode.trim()) selectedCameraMode.value = payload.mode
   }
 }
@@ -895,6 +946,21 @@ watch(
       )
       .join('|'),
   () => pushPoseFrameToUnity(),
+)
+
+watch(
+  () => [
+    unityCameraReady.value,
+    selectableDevices.value.map((device) => normalizeDeviceCode(device.code)).join('|'),
+  ] as const,
+  ([ready]) => {
+    if (!ready) {
+      selectedDeviceSyncedToUnity = ''
+      return
+    }
+    syncSelectedDeviceToUnity()
+  },
+  { immediate: true },
 )
 
 watch(
@@ -975,7 +1041,7 @@ watch(
                 :key="mode.value"
                 type="button"
                 :class="{ active: selectedCameraMode === mode.value }"
-                :disabled="cameraCommandBusy || !unityBridgeStore.connected"
+                :disabled="cameraCommandBusy || !unityCameraReady"
                 @click="switchCamera(mode.value)"
               >
                 {{ mode.label }}
@@ -990,7 +1056,7 @@ watch(
                 {{ unityBridgeStore.trajectoryVisible ? '隐藏轨迹' : '显示轨迹' }}
               </button>
             </div>
-            <button class="overview-tool-button" type="button" :disabled="cameraCommandBusy || !unityBridgeStore.connected" @click="focusSelectedDevice">重新居中</button>
+            <button class="overview-tool-button" type="button" :disabled="cameraCommandBusy || !unityCameraReady" @click="focusSelectedDevice">重新居中</button>
           </div>
 
           <div class="overview-unity-stage unity-runtime-viewport" data-unity-runtime-viewport="dashboard">

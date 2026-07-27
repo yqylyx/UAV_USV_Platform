@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { sendIntegrationHeartbeat } from '@/api/integration'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
+import { useVisualSensorStore } from '@/stores/visualSensor'
 import type { UnityBridgeMessage, UnityRuntimeScope } from '@/stores/unityBridge'
 
 type UnityMessage = {
@@ -37,6 +38,7 @@ const emit = defineEmits<{
 const iframeRef = ref<HTMLIFrameElement | null>(null)
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
+const visualSensorStore = useVisualSensorStore()
 const loading = ref(true)
 const ready = ref(false)
 const controlsReady = ref(false)
@@ -127,10 +129,48 @@ function handleWindowMessage(event: MessageEvent) {
     reportRuntimeSnapshot()
   }
 
+  if (props.runtimeScope === 'SYSTEM_OVERVIEW' && message.type === 'visualSensorBridgeReady') {
+    visualSensorStore.markUnityBridgeReady(message.payload?.ready === true)
+  }
+
+  if (
+    props.runtimeScope === 'SYSTEM_OVERVIEW'
+    && message.type === 'visualSensorFrame'
+    && message.payload
+  ) {
+    visualSensorStore.ingestUnityFrame(message.payload)
+  }
+
+  if (message.type === 'platformBridgeReady' && message.payload) {
+    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, message.payload)
+    controlsReady.value = message.payload.controlsReady === true
+    if (props.runtimeScope === 'SYSTEM_OVERVIEW') {
+      visualSensorStore.markUnityBridgeReady(message.payload.visualSensorReady === true)
+    }
+    if (message.payload.ready !== true) {
+      const missing = [
+        message.payload.cameraReady === true ? '' : '相机控制',
+        message.payload.algorithmReady === true ? '' : '算法场景',
+        message.payload.visualSensorReady === true ? '' : '视觉传感器',
+      ].filter(Boolean)
+      markError(`Unity 平台桥未完整就绪：${missing.join('、') || '未知能力'}`)
+    } else {
+      flushUnityOutbox()
+      reportRuntimeSnapshot(true)
+    }
+  }
+
   if (message.type === 'bridgeReady') {
     controlsReady.value = message.payload?.controlsReady === true
     unityBridgeStore.setControlsReadyFor(props.runtimeScope, controlsReady.value)
     reportRuntimeSnapshot(true)
+  }
+
+  if (message.type === 'trajectoryVisibilityChanged' && message.payload) {
+    unityBridgeStore.setTrajectoryVisibilityFor(
+      props.runtimeScope,
+      message.payload.visible === true,
+    )
   }
 
   if (
@@ -140,11 +180,18 @@ function handleWindowMessage(event: MessageEvent) {
     void unityBridgeStore.handleCommandAckFor(props.runtimeScope, message.requestId ?? '', message.payload)
   }
 
+  const auditedPayload = message.type === 'visualSensorFrame'
+    ? {
+        ...message.payload,
+        jpegBase64: '',
+      }
+    : (message.payload ?? {})
+
   unityBridgeStore.noteMessageFor(props.runtimeScope, {
     type: message.type,
     requestId: message.requestId ?? '',
     timestamp: message.timestamp ?? Date.now(),
-    payload: message.payload ?? {},
+    payload: auditedPayload,
   })
 
   emit('unityMessage', message)
@@ -216,6 +263,15 @@ function handleIframeLoad() {
   readyEmitted = false
   controlsReady.value = false
   unityBridgeStore.setControlsReadyFor(props.runtimeScope, false)
+  unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, {
+    ready: false,
+    controlsReady: false,
+    cameraReady: false,
+    algorithmReady: false,
+    visualSensorReady: false,
+    buildId: '',
+    capabilities: [],
+  })
   errorMessage.value = ''
   loadHint.value = '正在加载真实 Unity WebGL 构建包'
   startIframeProbe()
@@ -275,7 +331,7 @@ function postEnvelope(message: UnityBridgeMessage) {
 
 function flushUnityOutbox() {
   const channel = unityBridgeStore.channels[props.runtimeScope]
-  if (!channel.connected || !iframeRef.value?.contentWindow) return
+  if (!channel.connected || !channel.platformReady || !iframeRef.value?.contentWindow) return
   let message = unityBridgeStore.peekNextFor(props.runtimeScope)
   while (message) {
     try {
@@ -369,6 +425,7 @@ onMounted(() => {
 watch(
   () => [
     unityBridgeStore.channels[props.runtimeScope].connected,
+    unityBridgeStore.channels[props.runtimeScope].platformReady,
     unityBridgeStore.channels[props.runtimeScope].outbox.length,
   ],
   flushUnityOutbox,

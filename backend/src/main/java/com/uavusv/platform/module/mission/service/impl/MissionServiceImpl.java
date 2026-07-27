@@ -304,8 +304,8 @@ public class MissionServiceImpl implements MissionService {
                 stage,
                 operator,
                 runtimeInstanceId,
-                "default",
-                "1.0"
+                mission.getAlgorithmCode(),
+                mission.getAlgorithmVersion()
         ));
         recordStatusEvent(mission, run, "任务启动请求已提交", "已创建第 " + run.getRunNo() + " 次执行批次，等待控制指令确认。", actionSource(source, operator));
         RuntimeCommandResponse command = issueMissionCommand(run, CommandType.START_MISSION, operator, source, "启动任务：" + mission.getName());
@@ -378,6 +378,8 @@ public class MissionServiceImpl implements MissionService {
                 request.name(),
                 request.type(),
                 request.executionMode(),
+                request.algorithmCode(),
+                request.algorithmVersion(),
                 request.status(),
                 MissionStage.PREPARE,
                 request.priority() == null ? 3 : request.priority(),
@@ -543,13 +545,25 @@ public class MissionServiceImpl implements MissionService {
     }
 
     private void validateReadyComposition(MissionSaveRequest request) {
-        if (request.status() != MissionStatus.READY || request.type() != MissionType.COOPERATIVE_ENCIRCLEMENT) return;
+        if (request.status() != MissionStatus.READY ||
+                (request.type() != MissionType.COOPERATIVE_ENCIRCLEMENT && request.type() != MissionType.COOPERATIVE_ESCORT)) return;
+        if (!List.of("UNITY_SIMPLE_ENCIRCLEMENT", "GB_SFLA_CS", "ESCORT_GUARD").contains(request.algorithmCode())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的任务算法：" + request.algorithmCode());
+        }
+        if (request.type() == MissionType.COOPERATIVE_ESCORT && !"ESCORT_GUARD".equals(request.algorithmCode())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "护航任务必须使用护航守卫算法");
+        }
+        if (request.type() == MissionType.COOPERATIVE_ENCIRCLEMENT && "ESCORT_GUARD".equals(request.algorithmCode())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "围捕任务不能使用护航守卫算法");
+        }
         List<Long> ids = request.devices() == null ? List.of() : request.devices().stream()
                 .map(MissionDeviceBindingRequest::deviceId).distinct().toList();
         List<Device> devices = deviceRepository.findAllById(ids);
         long uavCount = devices.stream().filter(device -> device.getType() == com.uavusv.platform.module.device.entity.DeviceType.UAV).count();
         long usvCount = devices.stream().filter(device -> device.getType() == com.uavusv.platform.module.device.entity.DeviceType.USV).count();
-        if (uavCount < 3 || usvCount < 3) throw new BusinessException(ErrorCode.BAD_REQUEST, "简单围捕任务需要绑定 3 台 UAV 和 3 台 USV");
+        if (uavCount != 3 || usvCount != 3 || devices.size() != 6) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "算法任务必须且只能绑定 UAV-01~03 与 USV-01~03 共 6 台载具");
+        }
     }
 
     private String normalizeActionSource(String source) {

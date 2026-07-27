@@ -27,6 +27,12 @@ public class MissionTask extends BaseEntity {
     @Column(name = "execution_mode", nullable = false, length = 32)
     private MissionExecutionMode executionMode;
 
+    @Column(name = "algorithm_code", nullable = false, length = 64)
+    private String algorithmCode = "UNITY_SIMPLE_ENCIRCLEMENT";
+
+    @Column(name = "algorithm_version", nullable = false, length = 32)
+    private String algorithmVersion = "1.0.0";
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private MissionStatus status;
@@ -80,6 +86,8 @@ public class MissionTask extends BaseEntity {
             String name,
             MissionType type,
             MissionExecutionMode executionMode,
+            String algorithmCode,
+            String algorithmVersion,
             MissionStatus status,
             MissionStage stage,
             Integer priority,
@@ -94,6 +102,8 @@ public class MissionTask extends BaseEntity {
         this.name = name;
         this.type = type;
         this.executionMode = executionMode;
+        this.algorithmCode = algorithmCode;
+        this.algorithmVersion = algorithmVersion;
         this.status = status;
         this.stage = stage;
         this.priority = priority;
@@ -113,6 +123,7 @@ public class MissionTask extends BaseEntity {
             String code,
             String name,
             MissionType type,
+            MissionExecutionMode executionMode,
             MissionStatus status,
             MissionStage stage,
             Integer priority,
@@ -123,7 +134,27 @@ public class MissionTask extends BaseEntity {
             LocalDateTime plannedEndAt,
             String description
     ) {
-        update(code, name, type, MissionExecutionMode.HYBRID_MIRROR, status, stage, priority,
+        update(code, name, type, executionMode,
+                "UNITY_SIMPLE_ENCIRCLEMENT", "1.0.0", status, stage, priority,
+                targetName, targetBehavior, missionArea, plannedStartAt, plannedEndAt, description);
+    }
+
+    public void update(
+            String code,
+            String name,
+            MissionType type,
+            MissionStatus status,
+            MissionStage stage,
+            Integer priority,
+            String targetName,
+            String targetBehavior,
+            String missionArea,
+            LocalDateTime plannedStartAt,
+            LocalDateTime plannedEndAt,
+            String description
+    ) {
+        update(code, name, type, MissionExecutionMode.HYBRID_MIRROR,
+                "UNITY_SIMPLE_ENCIRCLEMENT", "1.0.0", status, stage, priority,
                 targetName, targetBehavior, missionArea, plannedStartAt, plannedEndAt, description);
     }
 
@@ -165,6 +196,10 @@ public class MissionTask extends BaseEntity {
     public MissionExecutionMode getExecutionMode() {
         return executionMode;
     }
+
+    public String getAlgorithmCode() { return algorithmCode; }
+
+    public String getAlgorithmVersion() { return algorithmVersion; }
 
     public MissionStatus getStatus() {
         return status;

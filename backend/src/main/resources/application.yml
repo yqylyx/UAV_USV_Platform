@@ -37,6 +37,8 @@ app:
     ros-websocket-url: ${ROS_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv}
     heartbeat-timeout-seconds: 5
     telemetry-retention-days: 7
+  visual-sensor:
+    websocket-url: ${VISUAL_SENSOR_WEBSOCKET_URL:ws://127.0.0.1:8766/visual_sensors}
   integration:
     token: ${PLATFORM_INTEGRATION_TOKEN}
   control:

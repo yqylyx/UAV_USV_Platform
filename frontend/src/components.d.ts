@@ -11,6 +11,8 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AlgorithmManagerDialog: typeof import('./components/mission/AlgorithmManagerDialog.vue')['default']
+    AlgorithmTrajectoryMap: typeof import('./components/mission/AlgorithmTrajectoryMap.vue')['default']
     ConsoleLayout: typeof import('./components/layout/ConsoleLayout.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElButton: typeof import('element-plus/es')['ElButton']
