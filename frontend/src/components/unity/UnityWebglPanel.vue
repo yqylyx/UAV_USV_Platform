@@ -141,6 +141,14 @@ function handleWindowMessage(event: MessageEvent) {
     visualSensorStore.ingestUnityFrame(message.payload)
   }
 
+  if (
+    props.runtimeScope === 'SYSTEM_OVERVIEW'
+    && message.type === 'visualSensorStreamStats'
+    && message.payload
+  ) {
+    visualSensorStore.ingestUnityStreamStats(message.payload)
+  }
+
   if (message.type === 'platformBridgeReady' && message.payload) {
     unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, message.payload)
     controlsReady.value = message.payload.controlsReady === true

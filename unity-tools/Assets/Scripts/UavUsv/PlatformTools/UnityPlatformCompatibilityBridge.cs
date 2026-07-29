@@ -51,7 +51,7 @@ namespace UavUsv.PlatformTools
             public T payload;
         }
 
-        public const string BuildId = "unity-f24959c-platform-v2";
+        public const string BuildId = "unity-f24959c-platform-v3";
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [DllImport("__Internal")]
@@ -182,6 +182,9 @@ namespace UavUsv.PlatformTools
                     "local-capture-scenario",
                     "algorithm-scenario",
                     "visual-sensor",
+                    "gpu-visual-sensor",
+                    "visual-720p",
+                    "visual-1080p",
                     "gazebo-comparison"
                 }
             });

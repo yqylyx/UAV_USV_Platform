@@ -8,12 +8,14 @@ import {
 import type {
   UnityVisualSensorFrame,
   UnityVisualSensorMeta,
+  UnityVisualSensorStreamStats,
   VisualSensor,
   VisualSensorOverview,
   VisualSensorViewType,
 } from '@/types/visualSensor'
 
 const UNITY_FRAME_FRESH_MS = 15_000
+const UNITY_STREAM_FRESH_MS = 4_000
 
 const SENSOR_CATALOG: Array<{
   cameraId: string
@@ -64,6 +66,7 @@ interface VisualSensorState {
   overview: VisualSensorOverview | null
   frameUrls: Record<string, string>
   unityFrames: Record<string, UnityVisualSensorMeta>
+  streamStats: UnityVisualSensorStreamStats | null
   unityBridgeReady: boolean
   unityFocusedCameraId: string
   loading: boolean
@@ -75,6 +78,7 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
     overview: null,
     frameUrls: {},
     unityFrames: {},
+    streamStats: null,
     unityBridgeReady: false,
     unityFocusedCameraId: 'uav_01',
     loading: false,
@@ -88,10 +92,28 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
         base.sensors.map((sensor) => [sensor.cameraId, sensor]),
       )
       const now = Date.now()
+      const directStream = state.streamStats
+      const directStreamFresh = !!directStream
+        && directStream.active
+        && directStream.gpuDirect
+        && now - directStream.receivedAtMs <= UNITY_STREAM_FRESH_MS
       const sensors = fallback.sensors.map((fallbackSensor): VisualSensor => {
         const sensor = {
           ...fallbackSensor,
           ...backendSensors.get(fallbackSensor.cameraId),
+        }
+        if (directStreamFresh) {
+          return {
+            ...sensor,
+            status: 'ONLINE',
+            source: 'Unity WebGL GPU Direct',
+            width: directStream.streamWidth,
+            height: directStream.streamHeight,
+            fps: directStream.measuredFps || directStream.targetFps,
+            latencyMs: Math.max(0, Math.round(directStream.renderMs)),
+            timestampMs: directStream.timestampMs,
+            focused: sensor.cameraId === state.unityFocusedCameraId,
+          }
         }
         const unity = state.unityFrames[sensor.cameraId]
         const fresh = !!unity && now - unity.receivedAtMs <= UNITY_FRAME_FRESH_MS
@@ -113,15 +135,17 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
           focused: sensor.cameraId === state.unityFocusedCameraId,
         }
       })
-      const unityOnline = sensors.filter((sensor) => {
+      const unityOnline = directStreamFresh ? SENSOR_CATALOG.length : sensors.filter((sensor) => {
         const frame = state.unityFrames[sensor.cameraId]
         return !!frame && now - frame.receivedAtMs <= UNITY_FRAME_FRESH_MS
       }).length
       return {
         ...base,
         gatewayConnected: state.unityBridgeReady || base.gatewayConnected,
-        gatewayDetail: state.unityBridgeReady
-          ? 'Unity WebGL 六路视觉桥在线'
+        gatewayDetail: directStreamFresh
+          ? `Unity GPU 六路直出 · ${directStream.activeQuality.toUpperCase()}`
+          : state.unityBridgeReady
+            ? 'Unity WebGL 六路视觉桥在线'
           : 'Unity WebGL 设备相机初始化中',
         onlineCount: Math.max(base.onlineCount, unityOnline),
         totalCount: SENSOR_CATALOG.length,
@@ -185,6 +209,17 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
         // Ignore a malformed frame and keep the last valid Unity image.
       }
     },
+    ingestUnityStreamStats(payload: Record<string, unknown>) {
+      const stats = payload as unknown as Omit<UnityVisualSensorStreamStats, 'receivedAtMs'>
+      if (!stats || typeof stats.active !== 'boolean') return
+      this.streamStats = {
+        ...stats,
+        receivedAtMs: Date.now(),
+      }
+      if (stats.focusedCameraId) this.unityFocusedCameraId = stats.focusedCameraId
+      this.unityBridgeReady = stats.gpuDirect === true || this.unityBridgeReady
+      this.error = ''
+    },
     hasFreshUnityFrame(cameraId: string) {
       const frame = this.unityFrames[cameraId]
       return !!frame && Date.now() - frame.receivedAtMs <= UNITY_FRAME_FRESH_MS
@@ -212,6 +247,7 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
       Object.values(this.frameUrls).forEach((url) => URL.revokeObjectURL(url))
       this.frameUrls = {}
       this.unityFrames = {}
+      this.streamStats = null
       this.unityBridgeReady = false
     },
   },

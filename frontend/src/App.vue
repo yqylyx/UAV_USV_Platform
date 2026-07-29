@@ -11,13 +11,14 @@ const unityViewportStore = useUnityViewportStore()
 <template>
   <UnityRuntimeHost
     v-if="route.meta.requiresAuth"
-    viewport="dashboard"
+    :viewport="route.name === 'visual-sensors' ? 'visual-sensors-live' : 'dashboard'"
     runtime-scope="SYSTEM_OVERVIEW"
     runtime-instance-id="overview-unity-01"
-    :active="route.name === 'dashboard'"
+    :active="route.name === 'dashboard' || route.name === 'visual-sensors'"
+    :layer="route.name === 'visual-sensors' ? 24 : 20"
   />
   <UnityRuntimeHost
-    v-if="route.meta.requiresAuth"
+    v-if="route.meta.requiresAuth && route.name !== 'visual-sensors'"
     viewport="mission-execution"
     runtime-scope="MISSION_CENTER"
     :runtime-instance-id="unityViewportStore.missionInstanceId"

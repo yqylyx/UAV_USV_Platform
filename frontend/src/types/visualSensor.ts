@@ -48,3 +48,21 @@ export interface UnityVisualSensorMeta {
   sequence: number
   source: string
 }
+
+export interface UnityVisualSensorStreamStats {
+  active: boolean
+  gpuDirect: boolean
+  displayMode: 'grid' | 'focus' | 'off'
+  requestedQuality: '720p' | '1080p'
+  activeQuality: '720p' | '1080p'
+  focusedCameraId: string
+  cameraCount: number
+  streamWidth: number
+  streamHeight: number
+  targetFps: number
+  measuredFps: number
+  renderMs: number
+  adaptiveFallback: boolean
+  timestampMs: number
+  receivedAtMs: number
+}
