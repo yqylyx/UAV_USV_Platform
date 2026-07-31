@@ -204,16 +204,6 @@ onBeforeUnmount(() => {
               @dblclick="selectSensor(sensor.cameraId, true)"
             >
               <span class="cell-header">
-                <span class="device-title">
-                  <i class="device-icon" :class="sensor.deviceType.toLowerCase()">
-                    <Plane v-if="sensor.deviceType === 'UAV'" :size="17" />
-                    <Ship v-else :size="17" />
-                  </i>
-                  <span>
-                    <strong>{{ sensor.deviceCode }}</strong>
-                    <small>{{ viewLabel(sensor) }}</small>
-                  </span>
-                </span>
                 <span class="live-badge" :class="sensor.status.toLowerCase()">
                   <i />{{ statusLabel(sensor) }}
                 </span>
@@ -230,7 +220,7 @@ onBeforeUnmount(() => {
               <ChevronLeft :size="17" /> 返回六路总览
             </button>
             <span>
-              <strong>{{ focusedSensor.displayName }}</strong>
+              <strong>{{ viewLabel(focusedSensor) }}</strong>
               <small>{{ activeResolution }} · {{ activeFps }} FPS · GPU 直出</small>
             </span>
             <span class="live-badge online"><i />实时</span>
@@ -549,6 +539,19 @@ onBeforeUnmount(() => {
   padding: 7px 9px;
   background: linear-gradient(180deg, rgba(1, 13, 18, .9), rgba(1, 13, 18, .66));
   backdrop-filter: blur(3px);
+}
+
+.cell-header {
+  justify-content: flex-end;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.cell-header .live-badge {
+  padding: 4px 7px;
+  border: 1px solid rgba(92, 231, 183, .2);
+  border-radius: 999px;
+  background: rgba(1, 13, 18, .72);
 }
 
 .cell-footer {
