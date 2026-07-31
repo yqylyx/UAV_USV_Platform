@@ -11,6 +11,8 @@ import type {
   UnityVisualSensorStreamStats,
   VisualSensor,
   VisualSensorOverview,
+  VisualSensorRuntimeContext,
+  VisualSensorRuntimeScope,
   VisualSensorViewType,
 } from '@/types/visualSensor'
 
@@ -32,13 +34,29 @@ const SENSOR_CATALOG: Array<{
   { cameraId: 'usv_03', deviceCode: 'USV-03', deviceType: 'USV', viewType: 'FORWARD', displayName: 'USV-03 · 前视相机' },
 ]
 
-function fallbackOverview(): VisualSensorOverview {
+interface VisualSensorChannelState {
+  overview: VisualSensorOverview | null
+  frameUrls: Record<string, string>
+  unityFrames: Record<string, UnityVisualSensorMeta>
+  streamStats: UnityVisualSensorStreamStats | null
+  unityBridgeReady: boolean
+  unityFocusedCameraId: string
+  context: VisualSensorRuntimeContext
+}
+
+interface VisualSensorState {
+  channels: Record<VisualSensorRuntimeScope, VisualSensorChannelState>
+  loading: boolean
+  error: string
+}
+
+function fallbackOverview(focusedCameraId = 'uav_01'): VisualSensorOverview {
   return {
     gatewayConnected: false,
     gatewayDetail: '等待 Unity WebGL 视觉桥',
     onlineCount: 0,
     totalCount: SENSOR_CATALOG.length,
-    focusedCameraId: 'uav_01',
+    focusedCameraId,
     sensors: SENSOR_CATALOG.map((sensor) => ({
       ...sensor,
       status: 'WAITING',
@@ -48,8 +66,29 @@ function fallbackOverview(): VisualSensorOverview {
       fps: 0,
       latencyMs: -1,
       timestampMs: 0,
-      focused: sensor.cameraId === 'uav_01',
+      focused: sensor.cameraId === focusedCameraId,
     })),
+  }
+}
+
+function createContext(runtimeScope: VisualSensorRuntimeScope): VisualSensorRuntimeContext {
+  return {
+    runtimeScope,
+    runtimeInstanceId: runtimeScope === 'SYSTEM_OVERVIEW' ? 'overview-unity-01' : '',
+    missionId: null,
+    runId: null,
+  }
+}
+
+function createChannel(runtimeScope: VisualSensorRuntimeScope): VisualSensorChannelState {
+  return {
+    overview: null,
+    frameUrls: {},
+    unityFrames: {},
+    streamStats: null,
+    unityBridgeReady: false,
+    unityFocusedCameraId: 'uav_01',
+    context: createContext(runtimeScope),
   }
 }
 
@@ -62,139 +101,203 @@ function decodeJpeg(jpegBase64: string) {
   return new Blob([bytes], { type: 'image/jpeg' })
 }
 
-interface VisualSensorState {
-  overview: VisualSensorOverview | null
-  frameUrls: Record<string, string>
-  unityFrames: Record<string, UnityVisualSensorMeta>
-  streamStats: UnityVisualSensorStreamStats | null
-  unityBridgeReady: boolean
-  unityFocusedCameraId: string
-  loading: boolean
-  error: string
+function releaseChannelFrames(channel: VisualSensorChannelState) {
+  Object.values(channel.frameUrls).forEach((url) => URL.revokeObjectURL(url))
+  channel.frameUrls = {}
+  channel.unityFrames = {}
+  channel.streamStats = null
+}
+
+function contextKey(context: VisualSensorRuntimeContext) {
+  return [
+    context.runtimeScope,
+    context.runtimeInstanceId,
+    context.missionId ?? '',
+    context.runId ?? '',
+  ].join(':')
+}
+
+function payloadMatchesContext(
+  channel: VisualSensorChannelState,
+  payload: Record<string, unknown>,
+) {
+  if (channel.context.runtimeScope === 'SYSTEM_OVERVIEW') return true
+  const payloadInstanceId = String(payload.runtimeInstanceId ?? '')
+  if (
+    payloadInstanceId
+    && channel.context.runtimeInstanceId
+    && payloadInstanceId !== channel.context.runtimeInstanceId
+  ) return false
+  const payloadRunId = payload.runId
+  if (
+    channel.context.runId !== null
+    && payloadRunId !== undefined
+    && payloadRunId !== null
+    && String(payloadRunId) !== ''
+    && Number(payloadRunId) !== channel.context.runId
+  ) return false
+  return true
+}
+
+function buildDisplayOverview(channel: VisualSensorChannelState): VisualSensorOverview {
+  const base = channel.overview ?? fallbackOverview(channel.unityFocusedCameraId)
+  const fallback = fallbackOverview(channel.unityFocusedCameraId)
+  const backendSensors = new Map(base.sensors.map((sensor) => [sensor.cameraId, sensor]))
+  const now = Date.now()
+  const directStream = channel.streamStats
+  const directStreamFresh = !!directStream
+    && directStream.active
+    && directStream.gpuDirect
+    && now - directStream.receivedAtMs <= UNITY_STREAM_FRESH_MS
+  const sensors = fallback.sensors.map((fallbackSensor): VisualSensor => {
+    const sensor = {
+      ...fallbackSensor,
+      ...backendSensors.get(fallbackSensor.cameraId),
+    }
+    if (directStreamFresh) {
+      return {
+        ...sensor,
+        status: 'ONLINE',
+        source: 'Unity WebGL GPU Direct',
+        width: directStream.streamWidth,
+        height: directStream.streamHeight,
+        fps: directStream.measuredFps || directStream.targetFps,
+        latencyMs: Math.max(0, Math.round(directStream.renderMs)),
+        timestampMs: directStream.timestampMs,
+        focused: sensor.cameraId === channel.unityFocusedCameraId,
+      }
+    }
+    const unity = channel.unityFrames[sensor.cameraId]
+    const fresh = !!unity && now - unity.receivedAtMs <= UNITY_FRAME_FRESH_MS
+    if (!fresh) {
+      return {
+        ...sensor,
+        focused: sensor.cameraId === channel.unityFocusedCameraId,
+      }
+    }
+    return {
+      ...sensor,
+      status: 'ONLINE',
+      source: unity.source,
+      width: unity.width,
+      height: unity.height,
+      fps: unity.fps,
+      latencyMs: Math.max(0, now - unity.timestampMs),
+      timestampMs: unity.timestampMs,
+      focused: sensor.cameraId === channel.unityFocusedCameraId,
+    }
+  })
+  const unityOnline = directStreamFresh
+    ? SENSOR_CATALOG.length
+    : sensors.filter((sensor) => {
+        const frame = channel.unityFrames[sensor.cameraId]
+        return !!frame && now - frame.receivedAtMs <= UNITY_FRAME_FRESH_MS
+      }).length
+  return {
+    ...base,
+    gatewayConnected: channel.unityBridgeReady || base.gatewayConnected,
+    gatewayDetail: directStreamFresh
+      ? `Unity GPU 六路直出 · ${directStream.activeQuality.toUpperCase()}`
+      : channel.unityBridgeReady
+        ? 'Unity WebGL 六路视觉桥在线'
+        : 'Unity WebGL 设备相机初始化中',
+    onlineCount: Math.max(base.onlineCount, unityOnline),
+    totalCount: SENSOR_CATALOG.length,
+    focusedCameraId: channel.unityFocusedCameraId,
+    sensors,
+  }
 }
 
 export const useVisualSensorStore = defineStore('visual-sensor', {
   state: (): VisualSensorState => ({
-    overview: null,
-    frameUrls: {},
-    unityFrames: {},
-    streamStats: null,
-    unityBridgeReady: false,
-    unityFocusedCameraId: 'uav_01',
+    channels: {
+      SYSTEM_OVERVIEW: createChannel('SYSTEM_OVERVIEW'),
+      MISSION_CENTER: createChannel('MISSION_CENTER'),
+    },
     loading: false,
     error: '',
   }),
   getters: {
-    displayOverview(state): VisualSensorOverview {
-      const base = state.overview ?? fallbackOverview()
-      const fallback = fallbackOverview()
-      const backendSensors = new Map(
-        base.sensors.map((sensor) => [sensor.cameraId, sensor]),
-      )
-      const now = Date.now()
-      const directStream = state.streamStats
-      const directStreamFresh = !!directStream
-        && directStream.active
-        && directStream.gpuDirect
-        && now - directStream.receivedAtMs <= UNITY_STREAM_FRESH_MS
-      const sensors = fallback.sensors.map((fallbackSensor): VisualSensor => {
-        const sensor = {
-          ...fallbackSensor,
-          ...backendSensors.get(fallbackSensor.cameraId),
-        }
-        if (directStreamFresh) {
-          return {
-            ...sensor,
-            status: 'ONLINE',
-            source: 'Unity WebGL GPU Direct',
-            width: directStream.streamWidth,
-            height: directStream.streamHeight,
-            fps: directStream.measuredFps || directStream.targetFps,
-            latencyMs: Math.max(0, Math.round(directStream.renderMs)),
-            timestampMs: directStream.timestampMs,
-            focused: sensor.cameraId === state.unityFocusedCameraId,
-          }
-        }
-        const unity = state.unityFrames[sensor.cameraId]
-        const fresh = !!unity && now - unity.receivedAtMs <= UNITY_FRAME_FRESH_MS
-        if (!fresh) {
-          return {
-            ...sensor,
-            focused: sensor.cameraId === state.unityFocusedCameraId,
-          }
-        }
-        return {
-          ...sensor,
-          status: 'ONLINE',
-          source: unity.source,
-          width: unity.width,
-          height: unity.height,
-          fps: unity.fps,
-          latencyMs: Math.max(0, now - unity.timestampMs),
-          timestampMs: unity.timestampMs,
-          focused: sensor.cameraId === state.unityFocusedCameraId,
-        }
-      })
-      const unityOnline = directStreamFresh ? SENSOR_CATALOG.length : sensors.filter((sensor) => {
-        const frame = state.unityFrames[sensor.cameraId]
-        return !!frame && now - frame.receivedAtMs <= UNITY_FRAME_FRESH_MS
-      }).length
-      return {
-        ...base,
-        gatewayConnected: state.unityBridgeReady || base.gatewayConnected,
-        gatewayDetail: directStreamFresh
-          ? `Unity GPU 六路直出 · ${directStream.activeQuality.toUpperCase()}`
-          : state.unityBridgeReady
-            ? 'Unity WebGL 六路视觉桥在线'
-          : 'Unity WebGL 设备相机初始化中',
-        onlineCount: Math.max(base.onlineCount, unityOnline),
-        totalCount: SENSOR_CATALOG.length,
-        focusedCameraId: state.unityFocusedCameraId,
-        sensors,
-      }
-    },
+    displayOverview: (state) => buildDisplayOverview(state.channels.SYSTEM_OVERVIEW),
+    streamStats: (state) => state.channels.SYSTEM_OVERVIEW.streamStats,
+    unityBridgeReady: (state) => state.channels.SYSTEM_OVERVIEW.unityBridgeReady,
+    displayOverviewFor: (state) => (scope: VisualSensorRuntimeScope) =>
+      buildDisplayOverview(state.channels[scope]),
+    streamStatsFor: (state) => (scope: VisualSensorRuntimeScope) =>
+      state.channels[scope].streamStats,
+    unityBridgeReadyFor: (state) => (scope: VisualSensorRuntimeScope) =>
+      state.channels[scope].unityBridgeReady,
+    runtimeContextFor: (state) => (scope: VisualSensorRuntimeScope) =>
+      state.channels[scope].context,
   },
   actions: {
+    bindRuntime(context: VisualSensorRuntimeContext) {
+      const channel = this.channels[context.runtimeScope]
+      if (contextKey(channel.context) === contextKey(context)) return
+      releaseChannelFrames(channel)
+      channel.overview = context.runtimeScope === 'SYSTEM_OVERVIEW' ? channel.overview : null
+      channel.unityFocusedCameraId = 'uav_01'
+      channel.context = { ...context }
+    },
     async refreshOverview() {
       try {
-        this.overview = await fetchVisualSensors()
+        this.channels.SYSTEM_OVERVIEW.overview = await fetchVisualSensors()
         this.error = ''
       } catch {
-        if (!this.overview) this.overview = fallbackOverview()
-        // The backend gateway is an optional fallback. Unity WebGL frames must
-        // remain usable when ROS or the backend visual gateway is unavailable.
+        if (!this.channels.SYSTEM_OVERVIEW.overview) {
+          this.channels.SYSTEM_OVERVIEW.overview = fallbackOverview()
+        }
+        // The backend gateway is an optional system-overview fallback.
       }
     },
     async select(cameraId: string) {
-      this.unityFocusedCameraId = cameraId
+      return this.selectFor('SYSTEM_OVERVIEW', cameraId)
+    },
+    async selectFor(scope: VisualSensorRuntimeScope, cameraId: string) {
+      const channel = this.channels[scope]
+      channel.unityFocusedCameraId = cameraId
+      if (scope !== 'SYSTEM_OVERVIEW') return
       try {
-        this.overview = await focusVisualSensor(cameraId)
+        channel.overview = await focusVisualSensor(cameraId)
         this.error = ''
       } catch {
         // Keep the local Unity selection; backend focus is only a fallback.
       }
     },
-    markUnityBridgeReady(ready = true) {
-      this.unityBridgeReady = ready
+    markUnityBridgeReady(
+      scope: VisualSensorRuntimeScope,
+      ready = true,
+      context?: VisualSensorRuntimeContext,
+    ) {
+      if (context) this.bindRuntime(context)
+      const channel = this.channels[scope]
+      channel.unityBridgeReady = ready
       if (ready) this.error = ''
     },
-    ingestUnityFrame(payload: Record<string, unknown>) {
+    ingestUnityFrame(
+      scope: VisualSensorRuntimeScope,
+      payload: Record<string, unknown>,
+      context?: VisualSensorRuntimeContext,
+    ) {
+      if (context) this.bindRuntime(context)
+      const channel = this.channels[scope]
+      if (!payloadMatchesContext(channel, payload)) return
       const frame = payload as unknown as UnityVisualSensorFrame
       if (!SENSOR_CATALOG.some((sensor) => sensor.cameraId === frame.cameraId)) return
       if (!frame.jpegBase64 || frame.width <= 0 || frame.height <= 0) return
       try {
         const now = Date.now()
-        const previous = this.unityFrames[frame.cameraId]
+        const previous = channel.unityFrames[frame.cameraId]
         const interval = previous ? now - previous.receivedAtMs : 0
         const instantFps = interval > 0 ? 1_000 / interval : 0
         const fps = previous?.fps
           ? previous.fps * 0.72 + instantFps * 0.28
           : instantFps
         const nextUrl = URL.createObjectURL(decodeJpeg(frame.jpegBase64))
-        const previousUrl = this.frameUrls[frame.cameraId]
-        this.frameUrls[frame.cameraId] = nextUrl
+        const previousUrl = channel.frameUrls[frame.cameraId]
+        channel.frameUrls[frame.cameraId] = nextUrl
         if (previousUrl) URL.revokeObjectURL(previousUrl)
-        this.unityFrames[frame.cameraId] = {
+        channel.unityFrames[frame.cameraId] = {
           width: frame.width,
           height: frame.height,
           fps,
@@ -203,52 +306,64 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
           sequence: frame.sequence,
           source: frame.source || 'Unity WebGL',
         }
-        this.unityBridgeReady = true
+        channel.unityBridgeReady = true
         this.error = ''
       } catch {
         // Ignore a malformed frame and keep the last valid Unity image.
       }
     },
-    ingestUnityStreamStats(payload: Record<string, unknown>) {
+    ingestUnityStreamStats(
+      scope: VisualSensorRuntimeScope,
+      payload: Record<string, unknown>,
+      context?: VisualSensorRuntimeContext,
+    ) {
+      if (context) this.bindRuntime(context)
+      const channel = this.channels[scope]
+      if (!payloadMatchesContext(channel, payload)) return
       const stats = payload as unknown as Omit<UnityVisualSensorStreamStats, 'receivedAtMs'>
       if (!stats || typeof stats.active !== 'boolean') return
-      this.streamStats = {
+      channel.streamStats = {
         ...stats,
         receivedAtMs: Date.now(),
       }
-      if (stats.focusedCameraId) this.unityFocusedCameraId = stats.focusedCameraId
-      this.unityBridgeReady = stats.gpuDirect === true || this.unityBridgeReady
+      if (stats.focusedCameraId) channel.unityFocusedCameraId = stats.focusedCameraId
+      channel.unityBridgeReady = stats.gpuDirect === true || channel.unityBridgeReady
       this.error = ''
     },
-    hasFreshUnityFrame(cameraId: string) {
-      const frame = this.unityFrames[cameraId]
+    hasFreshUnityFrame(cameraId: string, scope: VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW') {
+      const frame = this.channels[scope].unityFrames[cameraId]
       return !!frame && Date.now() - frame.receivedAtMs <= UNITY_FRAME_FRESH_MS
     },
-    async refreshFrames(focusedOnly = false) {
-      const sensors = this.displayOverview.sensors
+    async refreshFrames(
+      focusedOnly = false,
+      scope: VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW',
+    ) {
+      // Mission-center vision is always read from its own live Unity canvas.
+      // The global backend JPEG endpoint is not run-scoped and must not be used.
+      if (scope !== 'SYSTEM_OVERVIEW') return
+      const channel = this.channels[scope]
+      const sensors = buildDisplayOverview(channel).sensors
       const targets = focusedOnly
-        ? sensors.filter((sensor) => sensor.cameraId === this.unityFocusedCameraId)
+        ? sensors.filter((sensor) => sensor.cameraId === channel.unityFocusedCameraId)
         : sensors
       await Promise.all(targets.map(async (sensor) => {
-        if (this.hasFreshUnityFrame(sensor.cameraId)) return
+        if (this.hasFreshUnityFrame(sensor.cameraId, scope)) return
         try {
           const blob = await fetchVisualSensorFrame(sensor.cameraId)
           if (!blob) return
           const nextUrl = URL.createObjectURL(blob)
-          const previousUrl = this.frameUrls[sensor.cameraId]
-          this.frameUrls[sensor.cameraId] = nextUrl
+          const previousUrl = channel.frameUrls[sensor.cameraId]
+          channel.frameUrls[sensor.cameraId] = nextUrl
           if (previousUrl) URL.revokeObjectURL(previousUrl)
         } catch {
           // Keep the last valid Unity or ROS frame during a short interruption.
         }
       }))
     },
-    disposeFrames() {
-      Object.values(this.frameUrls).forEach((url) => URL.revokeObjectURL(url))
-      this.frameUrls = {}
-      this.unityFrames = {}
-      this.streamStats = null
-      this.unityBridgeReady = false
+    disposeFrames(scope: VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW') {
+      const channel = this.channels[scope]
+      releaseChannelFrames(channel)
+      channel.unityBridgeReady = false
     },
   },
 })

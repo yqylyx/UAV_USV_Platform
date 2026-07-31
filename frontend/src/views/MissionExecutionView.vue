@@ -16,8 +16,10 @@ import { useMonitoringStore } from '@/stores/monitoring'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
+import { useVisualSensorStore } from '@/stores/visualSensor'
 import type { AlgorithmRuntimeFrame, MissionDetail } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
+import type { VisualSensorRuntimeContext } from '@/types/visualSensor'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +28,7 @@ const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const sessionStore = useMissionTrajectorySessionStore()
 const unityViewportStore = useUnityViewportStore()
+const visualSensorStore = useVisualSensorStore()
 
 const detail = ref<MissionDetail | null>(null)
 const selectedDeviceCode = ref('uav-01')
@@ -35,16 +38,86 @@ const busy = ref(false)
 const eventVisible = ref(false)
 const algorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
 const algorithmPolling = ref(false)
-const mode = ref<'2d' | '3d'>('2d')
+const mode = ref<'2d' | '3d' | 'vision'>('2d')
+const visualDisplayMode = ref<'grid' | 'focus'>('grid')
 const missionId = computed(() => Number(route.params.missionId))
 const runId = computed(() => Number(route.params.runId))
 const unityChannel = computed(() => unityBridgeStore.channels.MISSION_CENTER)
 const trajectoryFrame = computed(() => trajectoryStore.channels.MISSION_CENTER.frame)
+const missionVisualStats = computed(() => visualSensorStore.streamStatsFor('MISSION_CENTER'))
+const missionVisualConnected = computed(() =>
+  visualSensorStore.unityBridgeReadyFor('MISSION_CENTER')
+  && missionVisualStats.value?.active === true
+  && visualSensorStore.runtimeContextFor('MISSION_CENTER').runId === runId.value,
+)
+const unityRunSynchronized = computed(() =>
+  unityChannel.value.appliedRunId === runId.value
+  && !!algorithmFrame.value
+  && unityChannel.value.appliedSequence >= algorithmFrame.value.sequence,
+)
 const externalAlgorithm = computed(() => !!detail.value && ['GB_SFLA_CS', 'ESCORT_GUARD'].includes(detail.value.mission.algorithmCode))
 let algorithmPollTimer: number | null = null
 let algorithmAbortController: AbortController | null = null
 let loadedScenarioKey = ''
 let algorithmRecoveryPromise: Promise<void> | null = null
+
+function missionVisualContext(): VisualSensorRuntimeContext {
+  return {
+    runtimeScope: 'MISSION_CENTER',
+    runtimeInstanceId: unityViewportStore.missionInstanceId,
+    missionId: detail.value?.mission.id ?? (Number.isFinite(missionId.value) ? missionId.value : null),
+    runId: detail.value?.currentRun?.id ?? (Number.isFinite(runId.value) ? runId.value : null),
+  }
+}
+
+function cameraIdForDevice(deviceCode: string) {
+  return deviceCode.trim().toLowerCase().replace(/-/g, '_')
+}
+
+function sendMissionVisualSubscription(
+  enabled: boolean,
+  displayMode: 'grid' | 'focus' | 'off' = visualDisplayMode.value,
+) {
+  const context = missionVisualContext()
+  if (context.missionId === null || context.runId === null) return
+  visualSensorStore.bindRuntime(context)
+  const focusedCameraId = cameraIdForDevice(selectedDeviceCode.value || 'uav-01')
+  void visualSensorStore.selectFor('MISSION_CENTER', focusedCameraId)
+  unityBridgeStore.sendFor('MISSION_CENTER', 'visualSensorSubscribe', {
+    enabled,
+    missionId: context.missionId,
+    runId: context.runId,
+    runtimeInstanceId: context.runtimeInstanceId,
+    focusedCameraId,
+    displayMode,
+    quality: '720p',
+    targetFps: 30,
+    gpuDirect: true,
+    jpegFallback: false,
+    thumbnailFps: 0.2,
+    focusedFps: 1,
+  })
+}
+
+function selectDevice(deviceCode: string) {
+  selectedDeviceCode.value = deviceCode
+  if (mode.value !== 'vision') return
+  visualDisplayMode.value = 'focus'
+  sendMissionVisualSubscription(true, 'focus')
+}
+
+function showVisualGrid() {
+  visualDisplayMode.value = 'grid'
+  sendMissionVisualSubscription(true, 'grid')
+}
+
+function requestedViewMode(): '2d' | '3d' | 'vision' {
+  return route.query.view === 'vision'
+    ? 'vision'
+    : route.query.view === '3d'
+      ? '3d'
+      : '2d'
+}
 
 function currentAlgorithmConfig() {
   return Object.fromEntries((detail.value?.parameters ?? []).map(item => [item.key, item.value ?? '']))
@@ -78,11 +151,15 @@ function ensureMissionScenarioLoaded() {
   if (!mission || !currentRun || !['GB_SFLA_CS', 'ESCORT_GUARD'].includes(mission.algorithmCode)) return
   const key = `${mission.id}:${currentRun.id}:${mission.algorithmCode}:${unityViewportStore.missionInstanceId}`
   if (loadedScenarioKey === key) return
+  unityBridgeStore.clearPoseFramesFor('MISSION_CENTER')
   unityBridgeStore.sendFor('MISSION_CENTER', 'loadScenario', {
     algorithmCode: mission.algorithmCode,
     missionId: mission.id,
     runId: currentRun.id,
   })
+  if (algorithmFrame.value?.runId === currentRun.id) {
+    sendAlgorithmPoseFrame(algorithmFrame.value)
+  }
   loadedScenarioKey = key
 }
 
@@ -123,7 +200,7 @@ watch(trajectoryFrame, frame => {
   }
   operationalStates.value = next
   if (!runtimeNodes.value.some(node => node.code.toLowerCase() === selectedDeviceCode.value.toLowerCase())) {
-    selectedDeviceCode.value = runtimeNodes.value[0]?.code ?? ''
+    selectDevice(runtimeNodes.value[0]?.code ?? '')
   }
 }, { immediate: true })
 
@@ -145,9 +222,16 @@ async function loadDetail() {
   const requestedRun = loaded.runs.find(run => run.id === runId.value) ?? (loaded.currentRun?.id === runId.value ? loaded.currentRun : null)
   if (!requestedRun) throw new Error('未找到该任务运行批次')
   loaded.currentRun = requestedRun
+  if (algorithmFrame.value?.runId !== requestedRun.id) {
+    algorithmFrame.value = null
+    loadedScenarioKey = ''
+    trajectoryStore.clearFor('MISSION_CENTER')
+    unityBridgeStore.clearPoseFramesFor('MISSION_CENTER')
+  }
   detail.value = loaded
   sessionStore.bind(loaded.mission.id, requestedRun.id)
   unityViewportStore.prepareMission(loaded.mission.id, requestedRun.id, requestedRun.runtimeInstanceId)
+  visualSensorStore.bindRuntime(missionVisualContext())
 }
 
 async function refreshUntilStatus(expected: string) {
@@ -158,7 +242,23 @@ async function refreshUntilStatus(expected: string) {
   }
 }
 
+function sendAlgorithmPoseFrame(frame: AlgorithmRuntimeFrame) {
+  unityBridgeStore.sendFor('MISSION_CENTER', 'poseFrame', {
+    algorithmCode: frame.algorithmCode,
+    runId: frame.runId,
+    sequence: frame.sequence,
+    timestamp: frame.timestamp,
+    phase: frame.phase,
+    agents: frame.agents,
+    targets: frame.targets,
+    route: frame.route.map(point => ({ x: point[0], y: point[1] })),
+    obstacles: frame.obstacles,
+  })
+}
+
 function ingestAlgorithmFrame(frame: AlgorithmRuntimeFrame) {
+  if (frame.runId !== runId.value || frame.runId !== detail.value?.currentRun?.id) return
+  if (algorithmFrame.value && frame.sequence <= algorithmFrame.value.sequence) return
   algorithmFrame.value = frame
   const agents = [
     ...frame.agents.map(item => ({ code: item.code, type: item.type, x: item.x, y: item.y, z: item.z, yaw: item.heading, state: item.role })),
@@ -171,26 +271,24 @@ function ingestAlgorithmFrame(frame: AlgorithmRuntimeFrame) {
     coordinateSystem: 'MISSION_SCENE_XZ',
     mission: {
       phase: frame.phase,
-      elapsed: Math.round(frame.sequence / 6),
-      captureRadius: 7,
-      defenseRadius: 15,
+      elapsed: Math.round(frame.sequence / 10),
+      captureRadius: Number(
+        frame.metrics.usvFormationRadius
+        ?? frame.metrics.captureRadius
+        ?? 16,
+      ),
+      defenseRadius: Number(
+        frame.metrics.escortFormationRadius
+        ?? frame.metrics.uavFormationRadius
+        ?? 18,
+      ),
       captureReady: frame.metrics.captured === true,
       formationHolding: frame.phase === 'CAPTURED' || frame.phase === 'THREAT_RESPONSE',
     },
     agents,
   }
   trajectoryStore.ingestFor('MISSION_CENTER', payload)
-  unityBridgeStore.sendFor('MISSION_CENTER', 'poseFrame', {
-    algorithmCode: frame.algorithmCode,
-    runId: frame.runId,
-    sequence: frame.sequence,
-    timestamp: frame.timestamp,
-    phase: frame.phase,
-    agents: frame.agents,
-    targets: frame.targets,
-    route: frame.route.map(point => ({ x: point[0], y: point[1] })),
-    obstacles: frame.obstacles,
-  })
+  sendAlgorithmPoseFrame(frame)
 }
 
 watch([
@@ -349,10 +447,21 @@ async function sendVehicleCommand(command: VehicleQuickCommand) {
   } finally { busy.value = false }
 }
 
-function changeMode(next: '2d' | '3d') {
+function changeMode(next: '2d' | '3d' | 'vision') {
+  const leavingVision = mode.value === 'vision' && next !== 'vision'
   mode.value = next
-  if (next === '3d') unityViewportStore.show('mission-execution')
-  else unityViewportStore.park()
+  if (leavingVision) sendMissionVisualSubscription(false, 'off')
+  if (next === 'vision') {
+    visualDisplayMode.value = 'grid'
+    unityViewportStore.show('mission-execution')
+    sendMissionVisualSubscription(true, 'grid')
+    return
+  }
+  if (next === '3d') {
+    unityViewportStore.show('mission-execution')
+    return
+  }
+  unityViewportStore.park()
 }
 
 async function closeExecution() {
@@ -370,12 +479,18 @@ onMounted(async () => {
       await ensureAlgorithmRuntime()
     }
     startAlgorithmPolling()
+    changeMode(requestedViewMode())
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '任务运行加载失败')
     await router.replace({ name: 'missions' })
   }
 })
-onBeforeUnmount(() => { stopAlgorithmPolling(); unityViewportStore.park() })
+onBeforeUnmount(() => {
+  stopAlgorithmPolling()
+  if (mode.value === 'vision') sendMissionVisualSubscription(false, 'off')
+  visualSensorStore.disposeFrames('MISSION_CENTER')
+  unityViewportStore.park()
+})
 </script>
 
 <template>
@@ -390,13 +505,18 @@ onBeforeUnmount(() => { stopAlgorithmPolling(); unityViewportStore.park() })
     :selected-device-code="selectedDeviceCode"
     :feedback="commandFeedback"
     :operational-states="operationalStates"
+    :mode="mode"
+    :visual-display-mode="visualDisplayMode"
+    :visual-connected="missionVisualConnected"
+    :unity-run-synchronized="unityRunSynchronized"
     :busy="busy"
     @close="closeExecution"
-    @select="selectedDeviceCode = $event"
+    @select="selectDevice"
     @vehicle-command="sendVehicleCommand"
     @mission-action="runMissionAction"
     @events="eventVisible = true"
     @mode-change="changeMode"
+    @visual-grid="showVisualGrid"
     @place-threat="placeThreat"
   />
   <MissionEventDrawer v-model="eventVisible" :mission-id="detail?.mission.id ?? null" :run-id="detail?.currentRun?.id" />

@@ -169,11 +169,15 @@ async function confirmStart(){
   unityViewportStore.prepareMission(detail.value.mission.id,detail.value.currentRun.id,detail.value.currentRun.runtimeInstanceId)
   await router.push({name:'mission-run',params:{missionId:detail.value.mission.id,runId:detail.value.currentRun.id}})
 }
-async function openExecution(mission:Mission){
+async function openExecution(mission:Mission, view:'2d'|'3d'|'vision'='2d'){
   const loaded=await loadDetail(mission)
   if(!loaded.currentRun){ElMessage.warning('该任务还没有可查看的运行批次');return}
   unityViewportStore.prepareMission(loaded.mission.id,loaded.currentRun.id,loaded.currentRun.runtimeInstanceId)
-  await router.push({name:'mission-run',params:{missionId:loaded.mission.id,runId:loaded.currentRun.id}})
+  await router.push({
+    name:'mission-run',
+    params:{missionId:loaded.mission.id,runId:loaded.currentRun.id},
+    query:view==='2d'?undefined:{view},
+  })
 }
 async function repeatExecution(mission:Mission){
   await loadDetail(mission)
@@ -185,6 +189,7 @@ async function handleListAction(action:string,mission:Mission){
   if(action==='view')return openConfig(mission,true)
   if(action==='start')return openStart(mission)
   if(action==='execute')return openExecution(mission)
+  if(action==='visual')return openExecution(mission,'vision')
   if(action==='events'){await loadDetail(mission);eventVisible.value=true;return}
   if(action==='result'){showDeveloping('实验结果分析与导出');return}
   if(action==='delete'){try{await ElMessageBox.confirm(`确认删除任务“${mission.name}”？`,'删除任务',{type:'warning'});await deleteMission(mission.id);await load()}catch{return}}

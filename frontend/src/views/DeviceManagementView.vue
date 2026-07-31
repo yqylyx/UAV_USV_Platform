@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { Pencil, Plus, RotateCcw, Search, Trash2 } from '@lucide/vue'
+import { Pencil, Plus, Trash2 } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { createDevice, deleteDevice, updateDevice } from '@/api/device'
@@ -21,12 +21,6 @@ const editingId = ref<number | null>(null)
 const deleteTarget = ref<Device | null>(null)
 const deleteAcknowledged = ref(false)
 const deleteError = ref('')
-
-const filters = reactive({
-  keyword: '',
-  type: '' as DeviceType | '',
-  status: '' as DeviceStatus | '',
-})
 
 const form = reactive<DeviceSavePayload>({
   code: '',
@@ -75,10 +69,8 @@ const canManage = computed(() => authStore.user?.role === 'ADMIN')
 const dialogTitle = computed(() => (editingId.value ? '编辑设备' : '新增设备'))
 const deleteTitle = computed(() => (deleteTarget.value ? `删除 ${deleteTarget.value.name}` : '删除设备'))
 const onlineCount = computed(() => deviceStore.records.filter((device) => device.status === 'ONLINE').length)
-const missionUnitCount = computed(() => deviceStore.records.filter((device) => ['UAV', 'USV'].includes(device.type)).length)
 const bridgeNodeCount = computed(() => deviceStore.records.filter((device) => ['ROS_NODE', 'UNITY_NODE'].includes(device.type)).length)
 const attentionCount = computed(() => deviceStore.records.filter((device) => device.status !== 'ONLINE').length)
-const highlightedDevices = computed(() => deviceStore.records.slice(0, 3))
 
 function typeLabel(type: DeviceType) {
   return typeOptions.find((item) => item.value === type)?.label ?? type
@@ -165,17 +157,10 @@ function openEdit(row: Device | Record<string, unknown>) {
 }
 
 async function load(page = 0) {
-  deviceStore.keyword = filters.keyword.trim()
-  deviceStore.type = filters.type || undefined
-  deviceStore.status = filters.status || undefined
+  deviceStore.keyword = ''
+  deviceStore.type = undefined
+  deviceStore.status = undefined
   await deviceStore.refresh({ page })
-}
-
-async function resetFilters() {
-  filters.keyword = ''
-  filters.type = ''
-  filters.status = ''
-  await load(0)
 }
 
 async function submit() {
@@ -278,39 +263,6 @@ onMounted(() => load(0))
         <strong>{{ bridgeNodeCount }}</strong>
         <small>ROS / Unity</small>
       </article>
-    </section>
-
-    <section class="asset-highlight-grid">
-      <article
-        v-for="device in highlightedDevices"
-        :key="device.id"
-        class="asset-highlight-card"
-        :class="[typeClass(device.type), statusClass(device.status)]"
-      >
-        <el-tag class="asset-highlight-status" :type="statusTag(device.status)" effect="dark">
-          {{ statusLabel(device.status) }}
-        </el-tag>
-        <span>{{ typeLabel(device.type) }}</span>
-        <strong>{{ device.code }}</strong>
-        <small>{{ device.name }} · {{ endpoint(device) }}</small>
-      </article>
-      <article v-if="highlightedDevices.length === 0" class="asset-highlight-card empty">
-        <span>暂无设备</span>
-        <strong>等待登记</strong>
-        <small>新增 UAV、USV、ROS 或 Unity 节点后将在这里展示。</small>
-      </article>
-    </section>
-
-    <section class="console-panel filter-panel" aria-label="设备筛选">
-      <el-input v-model="filters.keyword" clearable placeholder="搜索编号、名称、地址" @keyup.enter="load(0)" />
-      <el-select v-model="filters.type" clearable placeholder="设备类型">
-        <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
-      </el-select>
-      <el-select v-model="filters.status" clearable placeholder="运行状态">
-        <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
-      </el-select>
-      <el-button type="primary" :icon="Search" :loading="deviceStore.loading" @click="load(0)">查询</el-button>
-      <el-button :icon="RotateCcw" @click="resetFilters">重置</el-button>
     </section>
 
     <section class="console-panel table-panel">

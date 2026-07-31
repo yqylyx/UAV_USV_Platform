@@ -5,6 +5,7 @@ import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useVisualSensorStore } from '@/stores/visualSensor'
 import type { UnityBridgeMessage, UnityRuntimeScope } from '@/stores/unityBridge'
+import type { VisualSensorRuntimeContext } from '@/types/visualSensor'
 
 type UnityMessage = {
   type: string
@@ -59,8 +60,15 @@ const iframeUrl = computed(() => {
     instanceId: props.runtimeInstanceId,
   })
   if (props.missionId) params.set('missionId', String(props.missionId))
+  if (props.runId) params.set('runId', String(props.runId))
   return `${props.iframeSrc}${separator}${params.toString()}`
 })
+const visualRuntimeContext = computed<VisualSensorRuntimeContext>(() => ({
+  runtimeScope: props.runtimeScope,
+  runtimeInstanceId: props.runtimeInstanceId,
+  missionId: props.missionId ?? null,
+  runId: props.runId ?? null,
+}))
 const statusText = computed(() => (ready.value ? 'UNITY WEBGL ONLINE' : 'WAITING FOR WEBGL'))
 
 function markReady() {
@@ -129,32 +137,44 @@ function handleWindowMessage(event: MessageEvent) {
     reportRuntimeSnapshot()
   }
 
-  if (props.runtimeScope === 'SYSTEM_OVERVIEW' && message.type === 'visualSensorBridgeReady') {
-    visualSensorStore.markUnityBridgeReady(message.payload?.ready === true)
+  if (message.type === 'visualSensorBridgeReady') {
+    visualSensorStore.markUnityBridgeReady(
+      props.runtimeScope,
+      message.payload?.ready === true,
+      visualRuntimeContext.value,
+    )
   }
 
   if (
-    props.runtimeScope === 'SYSTEM_OVERVIEW'
-    && message.type === 'visualSensorFrame'
+    message.type === 'visualSensorFrame'
     && message.payload
   ) {
-    visualSensorStore.ingestUnityFrame(message.payload)
+    visualSensorStore.ingestUnityFrame(
+      props.runtimeScope,
+      message.payload,
+      visualRuntimeContext.value,
+    )
   }
 
   if (
-    props.runtimeScope === 'SYSTEM_OVERVIEW'
-    && message.type === 'visualSensorStreamStats'
+    message.type === 'visualSensorStreamStats'
     && message.payload
   ) {
-    visualSensorStore.ingestUnityStreamStats(message.payload)
+    visualSensorStore.ingestUnityStreamStats(
+      props.runtimeScope,
+      message.payload,
+      visualRuntimeContext.value,
+    )
   }
 
   if (message.type === 'platformBridgeReady' && message.payload) {
     unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, message.payload)
     controlsReady.value = message.payload.controlsReady === true
-    if (props.runtimeScope === 'SYSTEM_OVERVIEW') {
-      visualSensorStore.markUnityBridgeReady(message.payload.visualSensorReady === true)
-    }
+    visualSensorStore.markUnityBridgeReady(
+      props.runtimeScope,
+      message.payload.visualSensorReady === true,
+      visualRuntimeContext.value,
+    )
     if (message.payload.ready !== true) {
       const missing = [
         message.payload.cameraReady === true ? '' : '相机控制',
@@ -179,6 +199,14 @@ function handleWindowMessage(event: MessageEvent) {
       props.runtimeScope,
       message.payload.visible === true,
     )
+  }
+
+  if (message.type === 'scenarioReady' && message.payload) {
+    unityBridgeStore.markScenarioReadyFor(props.runtimeScope, message.payload)
+  }
+
+  if (message.type === 'poseFrameApplied' && message.payload) {
+    unityBridgeStore.markPoseAppliedFor(props.runtimeScope, message.payload)
   }
 
   if (
@@ -437,6 +465,12 @@ watch(
     unityBridgeStore.channels[props.runtimeScope].outbox.length,
   ],
   flushUnityOutbox,
+)
+
+watch(
+  visualRuntimeContext,
+  context => visualSensorStore.bindRuntime(context),
+  { immediate: true },
 )
 
 onBeforeUnmount(() => {

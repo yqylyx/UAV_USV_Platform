@@ -276,7 +276,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .visual-center {
-  margin: 0 24px 28px;
+  width: 100%;
+  max-width: 2360px;
+  margin: 0 auto 28px;
   padding: 18px;
   border: 1px solid rgba(63, 190, 203, .25);
   border-radius: 12px;
@@ -462,6 +464,26 @@ onBeforeUnmount(() => {
 
 .unity-live-viewport.focus {
   aspect-ratio: 16 / 9;
+}
+
+@media (min-width: 861px) {
+  .unity-live-viewport.grid,
+  .unity-live-viewport.focus {
+    height: clamp(540px, calc(100dvh - 290px), 900px);
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+}
+
+@media (min-width: 1920px) and (min-height: 1000px) {
+  .visual-center {
+    padding: clamp(18px, 1.1vw, 26px);
+  }
+
+  .unity-live-viewport.grid,
+  .unity-live-viewport.focus {
+    height: clamp(680px, calc(100dvh - 300px), 980px);
+  }
 }
 
 .runtime-placeholder {

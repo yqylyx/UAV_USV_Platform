@@ -1,6 +1,14 @@
 export type VisualSensorStatus = 'ONLINE' | 'STALE' | 'WAITING'
 export type VisualSensorDeviceType = 'UAV' | 'USV'
 export type VisualSensorViewType = 'DOWN' | 'FORWARD'
+export type VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
+
+export interface VisualSensorRuntimeContext {
+  runtimeScope: VisualSensorRuntimeScope
+  runtimeInstanceId: string
+  missionId: number | null
+  runId: number | null
+}
 
 export interface VisualSensor {
   cameraId: string

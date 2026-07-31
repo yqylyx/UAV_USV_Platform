@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { Activity, Beaker, CalendarClock, Copy, FilePenLine, Play, ScrollText, Trash2 } from '@lucide/vue'
+import { Activity, Beaker, CalendarClock, Camera, Copy, FilePenLine, Play, ScrollText, Trash2 } from '@lucide/vue'
 import type { Mission, MissionStatus } from '@/types/mission'
 
 defineProps<{ missions: Mission[]; loading?: boolean }>()
 const emit = defineEmits<{
-  action: [action: 'configure' | 'view' | 'start' | 'execute' | 'events' | 'copy' | 'delete' | 'retry' | 'result', mission: Mission]
+  action: [action: 'configure' | 'view' | 'start' | 'execute' | 'visual' | 'events' | 'copy' | 'delete' | 'retry' | 'result', mission: Mission]
 }>()
 
 function actions(mission: Mission) {
   if (mission.status === 'DRAFT') return [['configure', '继续配置'], ['copy', '复制'], ['delete', '删除']] as const
   if (mission.status === 'READY') return [['view', '查看配置'], ['configure', '编辑配置'], ['start', '执行任务']] as const
-  if (mission.status === 'RUNNING' || mission.status === 'PAUSED') return [['execute', '查看执行'], ['events', '运行事件']] as const
+  if (mission.status === 'RUNNING' || mission.status === 'PAUSED') return [['execute', '查看执行'], ['visual', '设备视觉'], ['events', '运行事件']] as const
   if (mission.status === 'FAILED') return [['events', '异常记录'], ['retry', '再次执行']] as const
   return [['events', '执行记录'], ['retry', '再次执行']] as const
 }
@@ -52,6 +52,7 @@ function actionIcon(action: string) {
     view: ScrollText,
     start: Play,
     execute: Activity,
+    visual: Camera,
     events: ScrollText,
     copy: Copy,
     delete: Trash2,

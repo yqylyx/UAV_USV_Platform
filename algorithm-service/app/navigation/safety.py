@@ -14,6 +14,15 @@ DEFAULT_SCENE_MAP: Dict[str, object] = {
     ],
 }
 
+# Task Center experiments use a dedicated open-water coordinate frame.  It is
+# intentionally independent from the decorative shore, lighthouse and dock in
+# the System Overview Unity scene: those props must neither appear in the
+# experiment view nor act as invisible collision obstacles.
+TASK_CENTER_SCENE_MAP: Dict[str, object] = {
+    "bounds": [-55.0, 55.0, -40.0, 40.0],
+    "obstacles": [],
+}
+
 
 @dataclass(frozen=True)
 class SafePoint:
@@ -37,17 +46,20 @@ class SceneSafetyFilter:
         self.scene_map = scene_map or DEFAULT_SCENE_MAP
         self.bounds = tuple(float(value) for value in self.scene_map["bounds"])
         self.obstacles = list(self.scene_map.get("obstacles", []))
-        # Unity's USV hull is roughly six world units long after root scaling.
-        # These are visual footprints, not algorithm capture radii.
+        # These radii describe the rendered Unity footprints, not point-agent
+        # math.  The current USV hull is about nine metres long and the escort
+        # vessel about 13.5 metres, so the former 3.25/3.65 values could still
+        # produce visibly intersecting meshes even though the centres passed
+        # the old numerical check.
         self.footprint_radius = {
-            "UAV": 2.35,
-            "USV": 3.25,
-            "TARGET": 3.65,
-            "CAPTURE_TARGET": 3.65,
-            "ESCORT_TARGET": 3.65,
-            "THREAT_TARGET": 3.25,
+            "UAV": 3.0,
+            "USV": 4.8,
+            "TARGET": 4.8,
+            "CAPTURE_TARGET": 4.8,
+            "ESCORT_TARGET": 7.3,
+            "THREAT_TARGET": 4.8,
         }
-        self.clearance_margin = 0.75
+        self.clearance_margin = 1.0
         # Numerical guard band for the projected solver.  The public safety
         # distance stays unchanged; this absorbs the tiny residual created
         # when shoreline projection and pair separation alternate.
@@ -128,6 +140,60 @@ class SceneSafetyFilter:
             for code, (kind, point) in fixed.items()
         }
         codes = list(positions)
+        self._project_all_constraints(
+            codes,
+            positions,
+            kinds,
+            previous,
+            raw,
+            fixed_points,
+            reasons,
+            iterations,
+        )
+
+        # Endpoint-only separation is insufficient: two craft may exchange
+        # sides between frames while both endpoints remain legal.  Reject that
+        # swept crossing and keep the previous safe pose for this frame.  The
+        # planner receives the executed pose back and chooses a new route on
+        # the next step, producing a visible slow/hold response instead of
+        # tunnelling through another model.
+        swept_adjusted = self._guard_swept_paths(
+            codes,
+            positions,
+            kinds,
+            previous,
+            fixed_points,
+            reasons,
+        )
+        if swept_adjusted:
+            self._project_all_constraints(
+                codes,
+                positions,
+                kinds,
+                previous,
+                raw,
+                fixed_points,
+                reasons,
+                iterations,
+            )
+
+        result: Dict[str, SafePoint] = {}
+        for code, point in positions.items():
+            changed = hypot(point[0] - raw[code][0], point[1] - raw[code][1]) > 1e-4 or abs(point[2] - raw[code][2]) > 1e-4
+            result[code] = SafePoint(point[0], point[1], point[2], changed, reasons.get(code, ""))
+        return result
+
+    def _project_all_constraints(
+        self,
+        codes: Sequence[str],
+        positions: Dict[str, List[float]],
+        kinds: Mapping[str, str],
+        previous: Mapping[str, Sequence[float]],
+        raw: Mapping[str, Sequence[float]],
+        fixed_points: Mapping[str, Tuple[str, Sequence[float]]],
+        reasons: Dict[str, str],
+        iterations: int,
+    ) -> None:
         for _ in range(max(1, iterations)):
             largest_correction = 0.0
             for left_index, left_code in enumerate(codes):
@@ -169,11 +235,95 @@ class SceneSafetyFilter:
             if largest_correction < 1e-3:
                 break
 
-        result: Dict[str, SafePoint] = {}
-        for code, point in positions.items():
-            changed = hypot(point[0] - raw[code][0], point[1] - raw[code][1]) > 1e-4 or abs(point[2] - raw[code][2]) > 1e-4
-            result[code] = SafePoint(point[0], point[1], point[2], changed, reasons.get(code, ""))
-        return result
+    def _guard_swept_paths(
+        self,
+        codes: Sequence[str],
+        positions: Dict[str, List[float]],
+        kinds: Mapping[str, str],
+        previous: Mapping[str, Sequence[float]],
+        fixed_points: Mapping[str, Tuple[str, Sequence[float]]],
+        reasons: Dict[str, str],
+    ) -> bool:
+        adjusted = False
+        for left_index, left_code in enumerate(codes):
+            if left_code not in previous:
+                continue
+            left_previous = tuple(float(value) for value in previous[left_code])
+            for right_code in codes[left_index + 1:]:
+                if right_code not in previous:
+                    continue
+                right_previous = tuple(float(value) for value in previous[right_code])
+                required = self.required_separation(
+                    kinds[left_code],
+                    kinds[right_code],
+                    positions[left_code][2],
+                    positions[right_code][2],
+                )
+                if required <= 0.0:
+                    continue
+                swept = self.swept_distance(
+                    left_previous,
+                    positions[left_code],
+                    right_previous,
+                    positions[right_code],
+                )
+                if swept + 1e-4 >= required:
+                    continue
+                positions[left_code][:] = list(left_previous)
+                positions[right_code][:] = list(right_previous)
+                reasons[left_code] = "swept-agent-separation"
+                reasons[right_code] = "swept-agent-separation"
+                adjusted = True
+
+            for fixed_code, (fixed_kind, fixed_point) in fixed_points.items():
+                fixed_previous = tuple(
+                    float(value)
+                    for value in previous.get(fixed_code, fixed_point)
+                )
+                required = self.required_separation(
+                    kinds[left_code],
+                    fixed_kind,
+                    positions[left_code][2],
+                    float(fixed_point[2]),
+                )
+                if required <= 0.0:
+                    continue
+                swept = self.swept_distance(
+                    left_previous,
+                    positions[left_code],
+                    fixed_previous,
+                    fixed_point,
+                )
+                if swept + 1e-4 >= required:
+                    continue
+                positions[left_code][:] = list(left_previous)
+                reasons[left_code] = "swept-target-separation"
+                adjusted = True
+        return adjusted
+
+    @staticmethod
+    def swept_distance(
+        first_start: Sequence[float],
+        first_end: Sequence[float],
+        second_start: Sequence[float],
+        second_end: Sequence[float],
+    ) -> float:
+        """Minimum horizontal distance between two linear frame segments."""
+        rx = float(first_start[0]) - float(second_start[0])
+        ry = float(first_start[1]) - float(second_start[1])
+        vx = (
+            float(first_end[0]) - float(first_start[0])
+            - float(second_end[0]) + float(second_start[0])
+        )
+        vy = (
+            float(first_end[1]) - float(first_start[1])
+            - float(second_end[1]) + float(second_start[1])
+        )
+        denominator = vx * vx + vy * vy
+        if denominator <= 1e-12:
+            return hypot(rx, ry)
+        closest = max(0.0, min(1.0, -(rx * vx + ry * vy) / denominator))
+        return hypot(rx + vx * closest, ry + vy * closest)
 
     def public_obstacles(self) -> List[Dict[str, object]]:
         return [{key: value for key, value in item.items() if key != "height"} for item in self.obstacles]
@@ -201,7 +351,9 @@ class SceneSafetyFilter:
         px, py, pz = (float(value) for value in previous)
         x, y, z = (float(value) for value in proposed)
         distance = hypot(x - px, y - py)
-        max_step = 2.2 if kind.upper() == "UAV" else 1.35
+        # Backend emits ten frames per second.  These limits correspond to
+        # about 3.5 m/s for UAVs and 1.8 m/s for surface craft.
+        max_step = 0.35 if kind.upper() == "UAV" else 0.18
         if distance <= max_step or distance < 1e-8:
             return x, y, z
         scale = max_step / distance

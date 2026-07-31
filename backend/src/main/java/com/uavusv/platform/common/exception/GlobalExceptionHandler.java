@@ -66,7 +66,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(Exception exception) {
         log.error("Unhandled server exception", exception);
         return buildResponse(
-                ErrorCode.INTERNAL_SERVER_ERROR,
+                ErrorCode.INTERNAL_SERVER_ERROR
+                ,
                 ErrorCode.INTERNAL_SERVER_ERROR.getMessage()
         );
     }

@@ -46,9 +46,19 @@ INIT_RANDOMSTATE = 0  # 1: 随机分布, 0: 均匀分布
 plt1 = 1
 # --- 智能体与目标参数 ---
 CAPTURE_RADIUS = 100
-UAV_COUNT = 40
-USV_COUNT = 40
-TARGET_COUNT = 20
+CAPTURE_FORMATION_USV_RADIUS = 80
+CAPTURE_FORMATION_UAV_RADIUS = 105
+CAPTURE_FORMATION_UAV_ALTITUDE = 75
+CAPTURE_FORMATION_USV_TOLERANCE = 7
+CAPTURE_FORMATION_UAV_TOLERANCE = 8
+CAPTURE_FORMATION_ALTITUDE_TOLERANCE = 8
+# The surface triangle is oriented so every initial approach corridor reaches
+# its slot without crossing the protected centre, dock exclusion zone, or
+# lighthouse exclusion zone.
+CAPTURE_FORMATION_PHASE = -7.0 * np.pi / 18.0
+UAV_COUNT = 3
+USV_COUNT = 3
+TARGET_COUNT = 1
 TARGET_IS_STATIC = 0
 TARGET_RUN_NUM = 300
 # MIN_CAPTURE_AGENTS = int(np.sqrt(UAV_COUNT + USV_COUNT)-1)
@@ -288,6 +298,13 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
         self.desired_waypoints = {}
         self.last_assignments = {}
         self.last_objective = np.inf
+        self.plan_params_by_target = {}
+        self.formation_slot_assignment = {}
+        self.planning_step = 0
+        # The current demonstration has one target and a fixed 3+3 fleet.
+        # Re-optimising topology every five seconds is sufficient; waypoint
+        # translation and safety filtering still run at the 10 Hz output rate.
+        self.full_plan_interval = 50
         self._agent_map_cache = None
         self._target_reference_cache = {}
         self._speed_cache = {}
@@ -889,11 +906,11 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
     def _plan_bounds_clip(self, params):
         clipped = np.asarray(params, dtype=float).copy()
         clipped[0] = clipped[0] % (2 * np.pi)
-        clipped[1] = np.clip(clipped[1], 0.45, 0.72)
-        clipped[2] = np.clip(clipped[2], 0.25, 0.75)
+        clipped[1] = np.clip(clipped[1], 0.94, 1.06)
+        clipped[2] = np.clip(clipped[2], 0.90, 1.00)
         return clipped
 
-    def _plan_to_waypoints(self, agent_ids, target_id, params):
+    def _plan_to_waypoints_legacy(self, agent_ids, target_id, params):
         agent_ids = [int(agent_id) for agent_id in agent_ids]
         if not agent_ids:
             return {}
@@ -931,6 +948,88 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
             if int(agent_map[agent_id][6]) == 1:
                 waypoint[2] = USV_Z
             waypoints[agent_id] = waypoint
+        return waypoints
+
+    def _plan_to_waypoints(self, agent_ids, target_id, params):
+        """Build separated surface and aerial containment formations."""
+        agent_ids = [int(agent_id) for agent_id in agent_ids]
+        if not agent_ids:
+            return {}
+        params = self._plan_bounds_clip(params)
+        target_pos = self._target_reference_position(target_id)
+        agent_map = self._active_agent_map()
+        waypoints = {}
+
+        for agent_type in (1, 0):
+            typed_ids = [
+                agent_id
+                for agent_id in agent_ids
+                if int(agent_map[agent_id][6]) == agent_type
+            ]
+            if not typed_ids:
+                continue
+            radius = float(
+                params[1]
+                * (
+                    CAPTURE_FORMATION_USV_RADIUS
+                    if agent_type == 1
+                    else CAPTURE_FORMATION_UAV_RADIUS
+                )
+            )
+            # The formation orientation must remain stable between frames.
+            # Optimising a fresh phase on every step made all desired slots
+            # rotate around the target, which appeared as oscillation in 3-D
+            # and as teleporting labels in 2-D.
+            phase_offset = (
+                CAPTURE_FORMATION_PHASE
+                if agent_type == 1
+                else CAPTURE_FORMATION_PHASE + np.pi / 3.0
+            )
+            angles = (
+                phase_offset
+                + 2 * np.pi * np.arange(len(typed_ids)) / len(typed_ids)
+            )
+            altitude = (
+                USV_Z
+                if agent_type == 1
+                else target_pos[2] + params[2] * CAPTURE_FORMATION_UAV_ALTITUDE
+            )
+            slots = np.column_stack([
+                target_pos[0] + radius * np.cos(angles),
+                target_pos[1] + radius * np.sin(angles),
+                np.full(len(angles), altitude),
+            ])
+            cost_matrix = np.zeros((len(typed_ids), len(typed_ids)), dtype=float)
+            for row, agent_id in enumerate(typed_ids):
+                cost_matrix[row] = (
+                    np.linalg.norm(slots - np.asarray(agent_map[agent_id][:3]), axis=1)
+                    / max(self._max_speed(agent_id), 1e-9)
+                )
+            slot_key = (int(target_id), int(agent_type))
+            signature = tuple(sorted(typed_ids))
+            cached_slots = self.formation_slot_assignment.get(slot_key)
+            if cached_slots is None or cached_slots["signature"] != signature:
+                row_ind, col_ind = linear_sum_assignment(cost_matrix)
+                cached_slots = {
+                    "signature": signature,
+                    "slots": {
+                        typed_ids[int(row)]: int(col)
+                        for row, col in zip(row_ind, col_ind)
+                    },
+                }
+                self.formation_slot_assignment[slot_key] = cached_slots
+            for agent_id in typed_ids:
+                col = int(cached_slots["slots"][agent_id])
+                waypoint = np.asarray(slots[col], dtype=float)
+                delta = waypoint - target_pos
+                distance = float(np.linalg.norm(delta))
+                if distance > CAPTURE_RADIUS:
+                    waypoint = target_pos + delta * (
+                        (CAPTURE_RADIUS * 0.98) / max(distance, 1e-12)
+                    )
+                if agent_type == 1:
+                    waypoint[2] = USV_Z
+                waypoints[agent_id] = waypoint
         return waypoints
 
     def _local_plan_cost(self, agent_ids, target_id, params):
@@ -973,12 +1072,12 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
         population = []
         for index in range(self.sfla_population_size):
             if index == 0:
-                params = np.array([0.0, 0.55, 0.45], dtype=float)
+                params = np.array([0.0, 1.0, 0.96], dtype=float)
             else:
                 params = np.array([
                     self.rng.uniform(0, 2 * np.pi),
-                    self.rng.uniform(0.45, 0.72),
-                    self.rng.uniform(0.25, 0.75),
+                    self.rng.uniform(0.94, 1.06),
+                    self.rng.uniform(0.90, 1.00),
                 ])
             population.append(self._plan_bounds_clip(params))
 
@@ -1003,14 +1102,15 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
                 if candidate_cost >= costs[worst_index]:
                     candidate = self._plan_bounds_clip(np.array([
                         self.rng.uniform(0, 2 * np.pi),
-                        self.rng.uniform(0.45, 0.72),
-                        self.rng.uniform(0.25, 0.75),
+                        self.rng.uniform(0.94, 1.06),
+                        self.rng.uniform(0.90, 1.00),
                     ]))
                     candidate_cost = self._local_plan_cost(agent_ids, target_id, candidate)
                 if candidate_cost < costs[worst_index]:
                     population[worst_index] = candidate
 
         best = min(population, key=lambda params: self._local_plan_cost(agent_ids, target_id, params))
+        self.plan_params_by_target[int(target_id)] = np.asarray(best, dtype=float).copy()
         return self._plan_to_waypoints(agent_ids, target_id, best)
 
     def _build_sfla_waypoints(self, assignments):
@@ -1020,6 +1120,19 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
         waypoints = {}
         for target_id, agent_ids in grouped.items():
             waypoints.update(self._sfla_target_waypoints(agent_ids, target_id))
+        return waypoints
+
+    def _build_cached_waypoints(self, assignments):
+        grouped = {}
+        for agent_id, target_id in assignments.items():
+            grouped.setdefault(int(target_id), []).append(int(agent_id))
+        waypoints = {}
+        for target_id, agent_ids in grouped.items():
+            params = self.plan_params_by_target.get(
+                int(target_id),
+                np.asarray([0.0, 1.0, 0.96], dtype=float),
+            )
+            waypoints.update(self._plan_to_waypoints(agent_ids, target_id, params))
         return waypoints
 
     # ------------------------------------------------------------------
@@ -1037,10 +1150,30 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
 
     def step(self):
         self._begin_step_cache()
+        self.planning_step += 1
         active_target_ids = self._active_target_ids()
         if not active_target_ids or not self._active_agent_map():
             self.desired_waypoints = {}
             return {}
+
+        # Reuse the latest assignment between full optimiser passes. Desired
+        # waypoints are still rebuilt from the current target pose every frame,
+        # so the formation follows a moving target without periodic jumps.
+        active_target_set = {int(target_id) for target_id in active_target_ids}
+        cached_assignment_valid = (
+            bool(self.last_assignments)
+            and set(int(target_id) for target_id in self.last_assignments.values())
+            <= active_target_set
+            and self.planning_step % self.full_plan_interval != 1
+        )
+        if cached_assignment_valid:
+            assignment = self._repair_assignment_capacity(
+                dict(self.last_assignments),
+                active_target_ids,
+            )
+            self.desired_waypoints = self._build_cached_waypoints(assignment)
+            self.last_assignments = dict(assignment)
+            return assignment
 
         # 1. GB：真实状态同步与自适应结构优化。
         self._sync_real_balls()
@@ -1685,7 +1818,7 @@ class SwarmEnv3D:
         quality = (0.6 * internal_tightness + 0.4 * scale_factor)
         return quality
 
-    def _calculate_fixed_circle_position(self, target_pos, agent_id, guard_ids, agent_type):
+    def _calculate_fixed_circle_position_legacy(self, target_pos, agent_id, guard_ids, agent_type):
         """
         计算智能体在固定圆圈上的位置
         :param target_pos: 目标位置
@@ -1719,6 +1852,70 @@ class SwarmEnv3D:
 
         return np.array([desired_x, desired_y, desired_z])
 
+    def _calculate_fixed_circle_position(
+        self,
+        target_pos,
+        agent_id,
+        guard_ids,
+        agent_type,
+    ):
+        """Keep captured UAVs and USVs on their domain-specific formation."""
+        guard_types = {
+            int(agent[7]): int(agent[6])
+            for agent in self.agents
+        }
+        typed_guard_ids = sorted(
+            int(guard_id)
+            for guard_id in guard_ids
+            if guard_types.get(int(guard_id)) == int(agent_type)
+        )
+        if agent_id not in typed_guard_ids:
+            return None
+        target_id = next(
+            (
+                int(candidate_target_id)
+                for candidate_target_id, candidate_guards in self.guarding_agents.items()
+                if agent_id in candidate_guards
+            ),
+            0,
+        )
+        slot_record = getattr(
+            self.algorithm,
+            "formation_slot_assignment",
+            {},
+        ).get((target_id, int(agent_type)))
+        if (
+            slot_record is not None
+            and agent_id in slot_record.get("slots", {})
+        ):
+            index = int(slot_record["slots"][agent_id])
+        else:
+            index = typed_guard_ids.index(agent_id)
+        count = len(typed_guard_ids)
+        radius = (
+            CAPTURE_FORMATION_UAV_RADIUS
+            if agent_type == 0
+            else CAPTURE_FORMATION_USV_RADIUS
+        )
+        angle = (
+            (
+                CAPTURE_FORMATION_PHASE + np.pi / 3.0
+                if agent_type == 0
+                else CAPTURE_FORMATION_PHASE
+            )
+            + 2 * np.pi * index / count
+        )
+        altitude = (
+            target_pos[2] + CAPTURE_FORMATION_UAV_ALTITUDE
+            if agent_type == 0
+            else target_pos[2]
+        )
+        return np.asarray([
+            target_pos[0] + radius * np.cos(angle),
+            target_pos[1] + radius * np.sin(angle),
+            altitude,
+        ])
+
     def _update_capture_state(self):
         """在智能体和目标完成本步运动后检测围捕，并锁定守卫智能体。"""
         current_locked = set()
@@ -1726,8 +1923,27 @@ class SwarmEnv3D:
 
         for target_id in range(len(self.targets)):
             target_pos = self.targets[target_id, :3]
-            dists = np.linalg.norm(self.agents[:, :3] - target_pos, axis=1)
-            in_range_indices = np.where(dists <= CAPTURE_RADIUS)[0]
+            deltas = self.agents[:, :3] - target_pos
+            dists = np.linalg.norm(deltas, axis=1)
+            horizontal_dists = np.linalg.norm(deltas[:, :2], axis=1)
+            formation_ready = []
+            for index, agent in enumerate(self.agents):
+                agent_type = int(agent[6])
+                if agent_type == 1:
+                    ready = (
+                        abs(horizontal_dists[index] - CAPTURE_FORMATION_USV_RADIUS)
+                        <= CAPTURE_FORMATION_USV_TOLERANCE
+                    )
+                else:
+                    ready = (
+                        abs(horizontal_dists[index] - CAPTURE_FORMATION_UAV_RADIUS)
+                        <= CAPTURE_FORMATION_UAV_TOLERANCE
+                        and abs(deltas[index, 2] - CAPTURE_FORMATION_UAV_ALTITUDE)
+                        <= CAPTURE_FORMATION_ALTITUDE_TOLERANCE
+                    )
+                if ready:
+                    formation_ready.append(index)
+            in_range_indices = np.asarray(formation_ready, dtype=int)
             captor_ids = {
                 int(self.agents[index, 7])
                 for index in in_range_indices

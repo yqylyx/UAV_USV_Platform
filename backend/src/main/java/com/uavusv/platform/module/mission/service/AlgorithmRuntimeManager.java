@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uavusv.platform.common.exception.BusinessException;
 import com.uavusv.platform.common.exception.ErrorCode;
 import com.uavusv.platform.module.mission.dto.response.AlgorithmRuntimeStatusResponse;
+import com.uavusv.platform.module.mission.entity.MissionRun;
+import com.uavusv.platform.module.mission.repository.MissionRunRepository;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -32,21 +34,29 @@ import java.util.concurrent.atomic.AtomicReference;
 @Service
 public class AlgorithmRuntimeManager {
     private final ObjectMapper objectMapper;
+    private final MissionRunRepository missionRunRepository;
+    private final AlgorithmCatalogService algorithmCatalogService;
     private final String pythonCommand;
     private final Path runnerPath;
     private final Map<Long, RuntimeHandle> handles = new ConcurrentHashMap<>();
 
     public AlgorithmRuntimeManager(
             ObjectMapper objectMapper,
+            MissionRunRepository missionRunRepository,
+            AlgorithmCatalogService algorithmCatalogService,
             @Value("${app.algorithm.python-command:python}") String pythonCommand,
             @Value("${app.algorithm.runner-path:../algorithm-service/runner.py}") String runnerPath
     ) {
         this.objectMapper = objectMapper;
+        this.missionRunRepository = missionRunRepository;
+        this.algorithmCatalogService = algorithmCatalogService;
         this.pythonCommand = pythonCommand;
         this.runnerPath = resolveRunnerPath(runnerPath);
     }
 
     public synchronized AlgorithmRuntimeStatusResponse prepare(Long runId, String algorithmCode, Map<String, Object> config) {
+        MissionRun run = requireMatchingRun(runId, algorithmCode);
+        algorithmCatalogService.requireEnabled(run.getAlgorithmCode());
         if ("UNITY_SIMPLE_ENCIRCLEMENT".equals(algorithmCode)) {
             return new AlgorithmRuntimeStatusResponse(runId, algorithmCode, "UNITY_NATIVE", 0, null, null);
         }
@@ -148,6 +158,29 @@ public class AlgorithmRuntimeManager {
         return frames;
     }
 
+    private MissionRun requireMatchingRun(Long runId, String algorithmCode) {
+        if (runId == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "任务运行批次编号不能为空");
+        }
+        MissionRun run = missionRunRepository.findById(runId)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.NOT_FOUND,
+                        "任务运行批次不存在：" + runId
+                ));
+        if (algorithmCode == null || algorithmCode.isBlank()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "算法代码不能为空");
+        }
+        String snapshotAlgorithmCode = run.getAlgorithmCode();
+        if (!algorithmCode.equals(snapshotAlgorithmCode)) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "算法代码与任务运行快照不一致：请求=" + algorithmCode
+                            + "，运行快照=" + (snapshotAlgorithmCode == null ? "未设置" : snapshotAlgorithmCode)
+            );
+        }
+        return run;
+    }
+
     private void startReaders(RuntimeHandle handle) {
         Thread outputThread = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(handle.process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -181,7 +214,7 @@ public class AlgorithmRuntimeManager {
                     handle.stderrDone.await(2, TimeUnit.SECONDS);
                     String detail = handle.lastStderr.get();
                     handle.error.compareAndSet(null, detail == null
-                            ? "Algorithm process exited before runtimeReady"
+                            ? "算法进程在就绪前退出"
                             : detail);
                     handle.ready.countDown();
                 }

@@ -26,9 +26,19 @@ const frameStyle = reactive<Record<string, string>>({})
 let viewportElement: HTMLElement | null = null
 let resizeObserver: ResizeObserver | null = null
 let animationFrame = 0
+let lastWidth = 1280
+let lastHeight = 720
 
 function parkRuntime() {
-  Object.assign(frameStyle, { left: '0px', top: '0px', width: '2px', height: '2px' })
+  // Keep a real render target while the persistent WebGL instance is parked.
+  // Collapsing it to 2x2 forced Unity to recreate a low-resolution backbuffer
+  // and caused a blurred, stuttering first second when returning to 3-D.
+  Object.assign(frameStyle, {
+    left: '-10000px',
+    top: '0px',
+    width: `${lastWidth}px`,
+    height: `${lastHeight}px`,
+  })
 }
 
 function alignRuntime() {
@@ -48,11 +58,13 @@ function alignRuntime() {
     return
   }
   const rect = viewportElement.getBoundingClientRect()
+  lastWidth = Math.max(640, Math.round(rect.width))
+  lastHeight = Math.max(360, Math.round(rect.height))
   Object.assign(frameStyle, {
     left: `${Math.round(rect.left)}px`,
     top: `${Math.round(rect.top)}px`,
-    width: `${Math.max(2, Math.round(rect.width))}px`,
-    height: `${Math.max(2, Math.round(rect.height))}px`,
+    width: `${lastWidth}px`,
+    height: `${lastHeight}px`,
   })
 }
 

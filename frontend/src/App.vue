@@ -28,7 +28,7 @@ const unityViewportStore = useUnityViewportStore()
     :layer="95"
   />
   <RouterView v-slot="{ Component }">
-    <KeepAlive include="DashboardView">
+    <KeepAlive include="DashboardView,MissionWorkspaceView">
       <component :is="Component" />
     </KeepAlive>
   </RouterView>

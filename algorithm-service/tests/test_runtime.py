@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.adapters import CaptureAdapter, EscortAdapter
-from app.navigation import SceneSafetyFilter
+from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
 
 
 class AlgorithmRuntimeTests(unittest.TestCase):
@@ -37,6 +37,24 @@ class AlgorithmRuntimeTests(unittest.TestCase):
         self.assertEqual(6, len(second.agents))
         self.assertNotEqual((first.targets[0].x, first.targets[0].y), (second.targets[0].x, second.targets[0].y))
         self.assertEqual({"ESCORT_TARGET", "THREAT_TARGET"}, {target.type for target in second.targets})
+        self.assertIn(second.metrics["threatState"], {"APPROACHING", "DETECTED", "FORMING", "ORBITING"})
+
+    def test_escort_manual_threat_uses_new_727_state_machine(self):
+        adapter = EscortAdapter(23, {"seed": 42, "threatFrame": 10000})
+        waiting = adapter.step()
+        self.assertEqual("ESCORTING", waiting.phase)
+        self.assertFalse(waiting.metrics["threatVisible"])
+        self.assertEqual({"ESCORT_TARGET"}, {target.type for target in waiting.targets})
+
+        adapter.place_threat(21.0, 8.0)
+        response = adapter.step()
+        self.assertIn(response.phase, {"FORMING", "ORBITING"})
+        self.assertTrue(response.metrics["threatActive"])
+        self.assertEqual({"ESCORT_TARGET", "THREAT_TARGET"}, {target.type for target in response.targets})
+        self.assertEqual(
+            {"UAV-01", "UAV-02", "UAV-03", "USV-01", "USV-02", "USV-03"},
+            {agent.code for agent in response.agents},
+        )
 
     def test_usv_never_enters_dock(self):
         safety = SceneSafetyFilter()
@@ -70,7 +88,7 @@ class AlgorithmRuntimeTests(unittest.TestCase):
             process.stderr.close()
 
     def test_both_scenarios_preserve_visual_footprints(self):
-        safety = SceneSafetyFilter()
+        safety = SceneSafetyFilter(TASK_CENTER_SCENE_MAP)
         for adapter_type in (CaptureAdapter, EscortAdapter):
             with contextlib.redirect_stdout(sys.stderr):
                 adapter = adapter_type(12, {"seed": 42})
@@ -78,6 +96,13 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                 with contextlib.redirect_stdout(sys.stderr):
                     frame = adapter.step()
                 self.assertEqual([], frame.obstacles)
+                for item in [*frame.agents, *frame.targets]:
+                    self.assertTrue(math.isfinite(item.x))
+                    self.assertTrue(math.isfinite(item.y))
+                    self.assertGreaterEqual(item.x, safety.bounds[0] - 1e-3)
+                    self.assertLessEqual(item.x, safety.bounds[1] + 1e-3)
+                    self.assertGreaterEqual(item.y, safety.bounds[2] - 1e-3)
+                    self.assertLessEqual(item.y, safety.bounds[3] + 1e-3)
                 for index, first in enumerate(frame.agents):
                     for second in frame.agents[index + 1:]:
                         required = safety.required_separation(first.type, second.type, first.z, second.z)
@@ -95,7 +120,7 @@ class AlgorithmRuntimeTests(unittest.TestCase):
         with contextlib.redirect_stdout(sys.stderr):
             adapter = CaptureAdapter(21, {"seed": 42, "targetBehavior": "STATIC"})
         frames = []
-        for _ in range(260):
+        for _ in range(520):
             with contextlib.redirect_stdout(sys.stderr):
                 frame = adapter.step()
             frames.append(frame)
@@ -111,7 +136,7 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                 travel[first.code] += math.hypot(second.x - first.x, second.y - first.y)
                 limit = 6.01 if first.type == "UAV" else 3.51
                 self.assertLessEqual(self.heading_delta(first.heading, second.heading), limit)
-        self.assertGreater(min(travel.values()), 15.0)
+        self.assertGreater(min(travel.values()), 30.0)
 
     def test_escort_uses_single_step_long_route_and_stable_heading(self):
         adapter = EscortAdapter(22, {"seed": 42, "threatFrame": 10000, "escortSpeed": "LOW"})
@@ -127,6 +152,104 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                 second = next(item for item in current.agents if item.code == first.code)
                 limit = 6.01 if first.type == "UAV" else 3.51
                 self.assertLessEqual(self.heading_delta(first.heading, second.heading), limit)
+
+    def test_continuous_paths_respect_rendered_hulls_and_speed_limits(self):
+        safety = SceneSafetyFilter(TASK_CENTER_SCENE_MAP)
+        scenarios = (
+            (CaptureAdapter(31, {"seed": 42, "targetBehavior": "STATIC"}), 260),
+            (EscortAdapter(32, {"seed": 42, "threatFrame": 60}), 220),
+        )
+        for adapter, frame_count in scenarios:
+            previous = None
+            for _ in range(frame_count):
+                with contextlib.redirect_stdout(sys.stderr):
+                    current = adapter.step()
+                if previous is not None:
+                    previous_agents = {item.code: item for item in previous.agents}
+                    previous_targets = {item.code: item for item in previous.targets}
+                    for item in current.agents:
+                        old = previous_agents[item.code]
+                        displacement = math.hypot(item.x - old.x, item.y - old.y)
+                        speed_limit = 0.351 if item.type == "UAV" else 0.181
+                        self.assertLessEqual(
+                            displacement,
+                            speed_limit,
+                            f"{adapter.code} {item.code} exceeded per-frame speed",
+                        )
+                    for left_index, left in enumerate(current.agents):
+                        for right in current.agents[left_index + 1:]:
+                            required = safety.required_separation(
+                                left.type, right.type, left.z, right.z
+                            )
+                            if required <= 0:
+                                continue
+                            swept = safety.swept_distance(
+                                (
+                                    previous_agents[left.code].x,
+                                    previous_agents[left.code].y,
+                                ),
+                                (left.x, left.y),
+                                (
+                                    previous_agents[right.code].x,
+                                    previous_agents[right.code].y,
+                                ),
+                                (right.x, right.y),
+                            )
+                            self.assertGreaterEqual(
+                                swept + 1e-3,
+                                required,
+                                f"{adapter.code} {left.code}/{right.code} crossed between frames",
+                            )
+                    for craft in (item for item in current.agents if item.type == "USV"):
+                        for target in current.targets:
+                            if target.code not in previous_targets:
+                                continue
+                            required = safety.required_separation(
+                                craft.type, target.type, craft.z, target.z
+                            )
+                            swept = safety.swept_distance(
+                                (
+                                    previous_agents[craft.code].x,
+                                    previous_agents[craft.code].y,
+                                ),
+                                (craft.x, craft.y),
+                                (
+                                    previous_targets[target.code].x,
+                                    previous_targets[target.code].y,
+                                ),
+                                (target.x, target.y),
+                            )
+                            self.assertGreaterEqual(
+                                swept + 1e-3,
+                                required,
+                                f"{adapter.code} {craft.code}/{target.code} crossed between frames",
+                            )
+                previous = current
+
+    def test_capture_holds_large_domain_specific_formation_before_completion(self):
+        with contextlib.redirect_stdout(sys.stderr):
+            adapter = CaptureAdapter(33, {"seed": 42, "targetBehavior": "STATIC"})
+        final = None
+        for _ in range(520):
+            with contextlib.redirect_stdout(sys.stderr):
+                final = adapter.step()
+            if final.terminalStatus:
+                break
+        self.assertIsNotNone(final)
+        self.assertEqual("COMPLETED", final.terminalStatus)
+        target = next(item for item in final.targets if item.type == "CAPTURE_TARGET")
+        usv_radii = [
+            math.hypot(item.x - target.x, item.y - target.y)
+            for item in final.agents
+            if item.type == "USV"
+        ]
+        uav_radii = [
+            math.hypot(item.x - target.x, item.y - target.y)
+            for item in final.agents
+            if item.type == "UAV"
+        ]
+        self.assertAlmostEqual(22.0, sum(usv_radii) / len(usv_radii), delta=1.2)
+        self.assertAlmostEqual(30.0, sum(uav_radii) / len(uav_radii), delta=1.4)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,13 @@ export interface RuntimeNode {
   positionX: number | null
   positionY: number | null
   positionZ: number | null
+  latitude?: number | null
+  longitude?: number | null
+  batteryLevel?: number | null
+  linkQualityPercent?: number | null
+  telemetryAt?: string | null
+  telemetrySource?: string | null
+  telemetryStale?: boolean
   detail: string | null
 }
 

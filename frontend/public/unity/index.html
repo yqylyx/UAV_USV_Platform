@@ -333,7 +333,7 @@
         if (!embedded) return;
         var width = Math.max(1, window.innerWidth);
         var height = Math.max(1, window.innerHeight);
-        var pixelRatio = Math.min(window.devicePixelRatio || 1, 1.25);
+        var pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
         canvas.style.width = width + 'px';
         canvas.style.height = height + 'px';
         canvas.width = Math.floor(width * pixelRatio);
@@ -371,7 +371,7 @@
           productVersion: '0.1',
           autoSyncPersistentDataPath: true,
           showBanner: unityShowBanner,
-          devicePixelRatio: embedded ? Math.min(window.devicePixelRatio || 1, 1.25) : window.devicePixelRatio || 1,
+          devicePixelRatio: embedded ? Math.min(window.devicePixelRatio || 1, 2) : window.devicePixelRatio || 1,
           cacheControl: function () {
             return 'no-store';
           },
@@ -398,7 +398,7 @@
               postUnityMessage('sceneLoaded', {
                 mode: 'webgl',
                 productName: 'UAV_USV_WebGL',
-                buildId: 'unity-f24959c-platform-v2',
+                buildId: 'unity-f24959c-platform-v4',
               });
               fullscreenButton.onclick = function () {
                 unityInstance.SetFullscreen(1);

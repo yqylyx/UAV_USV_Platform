@@ -1,10 +1,19 @@
 <script setup lang="ts">
+import {
+  Anchor,
+  CircleStop,
+  LocateFixed,
+  Navigation,
+  PlaneLanding,
+  PlaneTakeoff,
+  Play,
+  RotateCcw,
+  ShieldAlert,
+} from '@lucide/vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
-import MissionGroupControl from '@/components/control/MissionGroupControl.vue'
-import UnifiedVehicleControl from '@/components/control/UnifiedVehicleControl.vue'
 import VehicleGlyph from '@/components/control/VehicleGlyph.vue'
 import type { VehicleQuickCommand } from '@/components/control/VehicleQuickControl.vue'
 import { sendIntegrationHeartbeat } from '@/api/integration'
@@ -31,7 +40,7 @@ const monitoringStore = useMonitoringStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const unityViewportStore = useUnityViewportStore()
-const selectedDeviceCode = ref('uav-01')
+const selectedDeviceCode = ref('')
 const selectedCameraMode = ref('overview')
 const unityConnection = ref('等待 WebGL 构建')
 const lastUnityEvent = ref('暂无 Unity 回传事件')
@@ -61,20 +70,19 @@ let freshnessTimer: number | null = null
 const unityInstanceId = 'overview-unity-01'
 
 const cameraModes = [
-  { label: '总览', value: 'overview' },
-  { label: '当前设备', value: 'device-follow' },
-  { label: '行动视角', value: 'action' },
+  { label: '全局态势', value: 'overview' },
+  { label: '设备跟随', value: 'device-follow' },
 ]
 
 let trajectoryToggleTimer: number | null = null
 
 const expectedObservationDevices = [
-  { code: 'usv-01', name: '协同无人艇 1', type: 'USV' as const },
-  { code: 'usv-02', name: '协同无人艇 2', type: 'USV' as const },
-  { code: 'usv-03', name: '协同无人艇 3', type: 'USV' as const },
   { code: 'uav-01', name: '协同无人机 1', type: 'UAV' as const },
   { code: 'uav-02', name: '协同无人机 2', type: 'UAV' as const },
   { code: 'uav-03', name: '协同无人机 3', type: 'UAV' as const },
+  { code: 'usv-01', name: '协同无人艇 1', type: 'USV' as const },
+  { code: 'usv-02', name: '协同无人艇 2', type: 'USV' as const },
+  { code: 'usv-03', name: '协同无人艇 3', type: 'USV' as const },
 ]
 
 function normalizeDeviceCode(code: string) {
@@ -116,6 +124,13 @@ const selectableDevices = computed(() => {
       positionX: null,
       positionY: null,
       positionZ: null,
+      latitude: null,
+      longitude: null,
+      batteryLevel: null,
+      linkQualityPercent: null,
+      telemetryAt: null,
+      telemetrySource: null,
+      telemetryStale: true,
       detail: 'Unity 场景可观察，等待实时遥测',
     } as RuntimeNode
   })
@@ -136,13 +151,18 @@ const unityCameraReady = computed(() =>
   && overviewUnityChannel.value.platformReady
   && overviewUnityChannel.value.cameraReady,
 )
+const unityControlReady = computed(() =>
+  overviewUnityChannel.value.connected
+  && overviewUnityChannel.value.platformReady,
+)
 
 function selectedOrDefaultDeviceCode(preferredType?: 'UAV' | 'USV') {
   const devices = selectableDevices.value.filter((device) => !preferredType || device.type === preferredType)
   const selected = devices.find(
     (device) => normalizeDeviceCode(device.code) === normalizeDeviceCode(selectedDeviceCode.value),
   )
-  const fallback = selected ?? devices[0] ?? selectableDevices.value[0]
+  const online = devices.find((device) => device.status === 'ONLINE')
+  const fallback = selected ?? online ?? devices[0] ?? selectableDevices.value[0]
   const code = normalizeDeviceCode(fallback?.code ?? (preferredType === 'USV' ? 'usv-01' : 'uav-01'))
   selectedDeviceCode.value = code
   return code
@@ -168,6 +188,9 @@ const realtimePoseCount = computed(
     ).length,
 )
 const onlineNodeCount = computed(() => displayedNodes.value.filter((node) => node.status === 'ONLINE').length)
+const onlineVehicleCount = computed(() =>
+  selectableDevices.value.filter((node) => node.status === 'ONLINE').length,
+)
 const taskStateText = computed(() => {
   if (!unityReady.value) return '等待 Unity'
   if (rosBridgeOnline.value && realtimePoseCount.value > 0) return '实时同步'
@@ -196,7 +219,7 @@ const readyDeviceCount = computed(() =>
   }).length,
 )
 const missionGroupProgress = computed(() => {
-  if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(overviewMissionStatus.value)) return 100
+  if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(overviewMissionStatus.value)) return 0
   if (overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED') return 72
   return Math.round((readyDeviceCount.value / Math.max(1, quickControlDevices.value.length)) * 48)
 })
@@ -223,9 +246,109 @@ const overviewFleetCards = computed(() =>
       state,
       stateLabel: labels[state] ?? state,
       feedback: commandFeedback.value[code],
+      batteryPercent: clampPercent(device.batteryLevel),
+      linkQuality: clampPercent(device.linkQualityPercent),
+      hasGeoCoordinate: device.latitude !== null && device.longitude !== null,
     }
   }),
 )
+
+type OverviewQuickAction = {
+  label: string
+  commandType: VehicleQuickCommand['commandType']
+  icon: typeof PlaneTakeoff
+  danger?: boolean
+}
+
+const selectedOverviewDevice = computed(() =>
+  overviewFleetCards.value.find((device) => device.code === normalizeDeviceCode(selectedDeviceCode.value))
+  ?? overviewFleetCards.value[0],
+)
+const overviewMissionRunning = computed(() =>
+  overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED',
+)
+const overviewMissionButtonLabel = computed(() =>
+  overviewMissionRunning.value ? '终止任务' : '启动围捕',
+)
+const selectedOverviewActions = computed<OverviewQuickAction[]>(() => {
+  if (selectedOverviewDevice.value?.type === 'USV') {
+    return [
+      { label: '离泊启动', commandType: 'USV_DEPART', icon: Navigation },
+      { label: '定点保持', commandType: 'USV_HOLD', icon: Anchor },
+      { label: '返航', commandType: 'USV_RETURN', icon: RotateCcw },
+      { label: '停止推进', commandType: 'USV_STOP', icon: CircleStop },
+      { label: '紧急停止', commandType: 'USV_EMERGENCY_STOP', icon: ShieldAlert, danger: true },
+    ]
+  }
+  return [
+    { label: '起飞', commandType: 'UAV_TAKEOFF', icon: PlaneTakeoff },
+    { label: '悬停', commandType: 'UAV_HOVER', icon: LocateFixed },
+    { label: '返航', commandType: 'UAV_RETURN', icon: RotateCcw },
+    { label: '降落', commandType: 'UAV_LAND', icon: PlaneLanding },
+    { label: '紧急降落', commandType: 'UAV_EMERGENCY_LAND', icon: ShieldAlert, danger: true },
+  ]
+})
+
+function clampPercent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null
+  return Math.min(100, Math.max(0, Math.round(value)))
+}
+
+function formatCoordinate(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value) ? '--' : value.toFixed(6)
+}
+
+function formatLocalPosition(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value) ? '--' : `${value.toFixed(1)}m`
+}
+
+function runtimeStatusLabel(status?: string | null) {
+  const labels: Record<string, string> = {
+    ONLINE: '在线',
+    OFFLINE: '离线',
+    UNKNOWN: '等待遥测',
+    MAINTENANCE: '维护中',
+  }
+  return labels[status ?? 'UNKNOWN'] ?? status ?? '等待遥测'
+}
+
+function telemetryTooltip(device: RuntimeNode) {
+  if (!device.telemetryAt) return '尚未收到设备遥测'
+  const source = device.telemetrySource || device.source || 'UNKNOWN'
+  const timestamp = new Date(device.telemetryAt).toLocaleString('zh-CN', { hour12: false })
+  return `${device.telemetryStale ? '遥测已超时' : '实时遥测'} · ${source} · ${timestamp}`
+}
+
+function linkBarActive(value: number | null, index: number) {
+  if (value === null) return false
+  return value >= index * 25
+}
+
+async function issueSelectedQuickCommand(action: OverviewQuickAction) {
+  const device = selectedOverviewDevice.value
+  if (!device) {
+    ElMessage.error('没有可控制的设备')
+    return
+  }
+  await sendVehicleCommand({
+    commandType: action.commandType,
+    deviceCodes: [device.code],
+    label: action.label,
+  })
+}
+
+async function handleOverviewMissionToggle() {
+  if (overviewMissionRunning.value) {
+    await handleMissionGroupAction('abort')
+    return
+  }
+  if (!overviewDeploymentAcknowledged.value) {
+    await handleMissionGroupAction('deploy')
+  }
+  if (overviewDeploymentAcknowledged.value) {
+    await handleMissionGroupAction('start')
+  }
+}
 
 function operationalStateAfterCommand(commandType: RuntimeCommandType) {
   const states: Partial<Record<RuntimeCommandType, string>> = {
@@ -474,23 +597,6 @@ async function selectDevice(deviceCode: string) {
   }
 }
 
-async function focusSelectedDevice() {
-  const deviceCode = selectedOrDefaultDeviceCode()
-  try {
-    await sendTrackedUnityCommand(
-      'FOCUS_DEVICE',
-      'Unity 视角聚焦当前设备',
-      'focusDevice',
-      { deviceCode },
-      deviceCode,
-    )
-    selectedDeviceSyncedToUnity = deviceCode
-    lastUnityEvent.value = `focusDevice:${deviceCode}`
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '视角重新居中失败')
-  }
-}
-
 async function switchCamera(mode: string) {
   const deviceCode = selectedOrDefaultDeviceCode()
   try {
@@ -568,11 +674,11 @@ async function sendVehicleCommand(
   if (!command.deviceCodes.length) {
     return { total: 0, acknowledged: 0, failed: 0, allAcknowledged: false }
   }
-  if (!unityBridgeStore.connected || !trajectoryLive.value) {
+  if (!unityControlReady.value) {
     const feedback = { ...commandFeedback.value }
     for (const deviceCode of command.deviceCodes) feedback[normalizeDeviceCode(deviceCode)] = 'FAILED'
     commandFeedback.value = feedback
-    if (notify) ElMessage.error(`${command.label}：${unityBridgeStore.connected ? 'Unity 实时遥测已中断' : 'Unity WebGL 尚未连接'}，未创建后端控制指令`)
+    if (notify) ElMessage.error(`${command.label}：Unity 控制桥尚未就绪，未创建后端控制指令`)
     return {
       total: command.deviceCodes.length,
       acknowledged: 0,
@@ -716,11 +822,11 @@ async function confirmReturn(action: 'return' | 'abort') {
   const abort = action === 'abort'
   await ElMessageBox.confirm(
     abort
-      ? '终止任务后，将向全部无人机和无人艇下发返航指令。是否继续？'
+      ? '终止后将停止系统总览中的简单围捕演示，不会启动返航，也不会影响任务中心。是否继续？'
       : '将向全部无人机和无人艇下发返航，并在确认后结束当前任务。是否继续？',
     abort ? '终止任务' : '全体返航',
     {
-      confirmButtonText: abort ? '确认终止并返航' : '确认全体返航',
+      confirmButtonText: abort ? '确认终止任务' : '确认全体返航',
       cancelButtonText: '取消',
       type: 'warning',
       customClass: 'mission-confirm-message-box',
@@ -761,8 +867,8 @@ async function runOverviewDemoCommand(action: 'start' | 'pause' | 'resume' | 'ca
 
 async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | 'resume' | 'return' | 'abort') {
   if (commandBusy.value) return
-  if (!trajectoryLive.value) {
-    ElMessage.error('Unity 实时遥测已中断，任务指令未下发')
+  if (!unityControlReady.value) {
+    ElMessage.error('Unity 控制桥尚未就绪，任务指令未下发')
     return
   }
   if (action === 'return' || action === 'abort') {
@@ -918,6 +1024,7 @@ function handleUnityError(message: string) {
 }
 
 onMounted(() => {
+  selectedOrDefaultDeviceCode()
   unityViewportStore.show('dashboard')
   freshnessTimer = window.setInterval(() => { freshnessClock.value = Date.now() }, 500)
   void monitoringStore.refresh({}, true).then(pushPoseFrameToUnity)
@@ -1012,109 +1119,173 @@ watch(
 </script>
 
 <template>
-  <ConsoleLayout title="系统总览" eyebrow="MISSION OVERVIEW">
+  <ConsoleLayout title="系统总览" eyebrow="MISSION OVERVIEW" :show-refresh="false" immersive>
     <section class="overview-console overview-hf" aria-label="海空协同仿真总览">
       <header class="overview-hf-statusbar">
         <div class="overview-current-view">
-          <span>{{ selectedDeviceCode.toUpperCase() }}</span>
           <strong>当前观察设备</strong>
-          <small>{{ selectedCameraMode === 'device-follow' ? '设备跟随视角' : cameraModes.find((item) => item.value === selectedCameraMode)?.label }}</small>
+          <span>{{ selectedDeviceCode.toUpperCase() }}</span>
+          <small>{{ selectedCameraMode === 'device-follow' ? '设备跟随' : '全局态势' }}</small>
         </div>
         <div class="overview-link-status">
           <b :class="{ online: rosBridgeOnline }"><i></i>ROS {{ rosBridgeOnline ? '在线' : '离线' }}</b>
           <b :class="{ online: unityReady }"><i></i>Unity {{ unityReady ? '在线' : '等待' }}</b>
-          <b class="pose"><i></i>{{ realtimePoseCount }}/6 位姿</b>
-          <b><i></i>{{ onlineNodeCount }}/{{ displayedNodes.length }} 节点</b>
+          <b class="pose"><i></i>{{ onlineVehicleCount }}/6 设备在线</b>
+          <b><i></i>{{ onlineNodeCount }}/{{ displayedNodes.length }} 节点正常</b>
         </div>
       </header>
 
-      <div class="overview-main-grid overview-hf-main">
-        <section class="overview-stage-panel">
-          <div class="overview-stage-header">
-            <div>
-              <h3>Unity 海空协同态势</h3>
-              <span>当前任务：{{ overviewMissionName }} · {{ taskStateText }}</span>
-            </div>
-            <div class="overview-camera-tabs" aria-label="Unity 视角切换">
-              <button
-                v-for="mode in cameraModes"
-                :key="mode.value"
-                type="button"
-                :class="{ active: selectedCameraMode === mode.value }"
-                :disabled="cameraCommandBusy || !unityCameraReady"
-                @click="switchCamera(mode.value)"
-              >
-                {{ mode.label }}
-              </button>
-              <button
-                type="button"
-                :class="{ active: !unityBridgeStore.trajectoryVisible }"
-                :disabled="!unityBridgeStore.connected || unityBridgeStore.trajectoryTogglePending"
-                :aria-pressed="!unityBridgeStore.trajectoryVisible"
-                @click="toggleUnityTrajectory"
-              >
-                {{ unityBridgeStore.trajectoryVisible ? '隐藏轨迹' : '显示轨迹' }}
-              </button>
-            </div>
-            <button class="overview-tool-button" type="button" :disabled="cameraCommandBusy || !unityCameraReady" @click="focusSelectedDevice">重新居中</button>
+      <section class="overview-stage-panel">
+        <div class="overview-stage-header">
+          <div class="overview-stage-title">
+            <h3>Unity 海空协同态势</h3>
+            <span>默认任务：{{ overviewMissionName }}</span>
           </div>
+          <div class="overview-camera-tabs" aria-label="Unity 视角切换">
+            <button
+              v-for="mode in cameraModes"
+              :key="mode.value"
+              type="button"
+              :class="{ active: selectedCameraMode === mode.value }"
+              :disabled="cameraCommandBusy || !unityCameraReady"
+              @click="switchCamera(mode.value)"
+            >
+              {{ mode.label }}
+            </button>
+            <button
+              type="button"
+              :class="{ active: !unityBridgeStore.trajectoryVisible }"
+              :disabled="!unityBridgeStore.connected || unityBridgeStore.trajectoryTogglePending"
+              :aria-pressed="!unityBridgeStore.trajectoryVisible"
+              @click="toggleUnityTrajectory"
+            >
+              {{ unityBridgeStore.trajectoryVisible ? '隐藏轨迹' : '显示轨迹' }}
+            </button>
+          </div>
+          <div class="overview-mission-toggle">
+            <span>{{ overviewMissionRunning ? '任务运行中' : '任务未启动' }}</span>
+            <button
+              type="button"
+              :class="{ danger: overviewMissionRunning }"
+              :disabled="commandBusy || !unityControlReady"
+              @click="handleOverviewMissionToggle"
+            >
+              <component :is="overviewMissionRunning ? CircleStop : Play" :size="18" />
+              {{ overviewMissionButtonLabel }}
+            </button>
+          </div>
+        </div>
 
+        <div class="overview-stage-viewport-shell">
           <div class="overview-unity-stage unity-runtime-viewport" data-unity-runtime-viewport="dashboard">
             <div v-if="!unityBridgeStore.connected" class="unity-runtime-placeholder">
               <strong>Unity WebGL 常驻实例启动中</strong>
               <span>{{ unityBridgeStore.error || '正在加载全局运行实例，请稍候' }}</span>
             </div>
           </div>
-        </section>
 
-        <aside class="overview-ops-panel">
-          <div class="overview-control-stack">
-            <UnifiedVehicleControl
-              :devices="selectableDevices"
-              :selected-device-code="selectedDeviceCode"
-              :feedback="commandFeedback"
-              :operational-states="operationalStates"
-              :busy="commandBusy || !trajectoryLive"
-              @select="selectDevice"
-              @command="sendVehicleCommand"
-            />
-            <MissionGroupControl
-              :mission-name="overviewMissionName"
-              :status="overviewMissionStatus"
-              :busy="commandBusy || !trajectoryLive"
-              :progress="missionGroupProgress"
-              :can-deploy="!['RUNNING', 'PAUSED'].includes(overviewMissionStatus)"
-              :can-start="overviewMissionStatus === 'READY' && overviewDeploymentAcknowledged"
-              :readiness-text="missionReadinessText"
-              @action="handleMissionGroupAction"
-            />
-          </div>
-        </aside>
-      </div>
+          <section
+            v-if="selectedOverviewDevice"
+            class="overview-selected-control"
+            :class="selectedOverviewDevice.type.toLowerCase()"
+            aria-label="当前设备快捷控制"
+          >
+            <header>
+              <span>当前设备</span>
+              <strong>{{ selectedOverviewDevice.code.toUpperCase() }}</strong>
+              <b :class="(selectedOverviewDevice.status || 'UNKNOWN').toLowerCase()">
+                {{ runtimeStatusLabel(selectedOverviewDevice.status) }}
+              </b>
+            </header>
+            <div class="overview-selected-actions">
+              <button
+                v-for="action in selectedOverviewActions"
+                :key="action.commandType"
+                type="button"
+                :class="{ danger: action.danger }"
+                :disabled="commandBusy || !unityControlReady"
+                @click="issueSelectedQuickCommand(action)"
+              >
+                <component :is="action.icon" :size="19" :stroke-width="1.9" />
+                <span>{{ action.label }}</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </section>
 
-      <section class="overview-fleet-ribbon" aria-label="六载具实时状态">
-        <article
-          v-for="device in overviewFleetCards"
-          :key="device.code"
-          :class="[device.type.toLowerCase(), { active: normalizeDeviceCode(selectedDeviceCode) === device.code }]"
-          @click="selectDevice(device.code)"
-        >
-          <header>
-            <strong>{{ device.code.toUpperCase() }}</strong>
-            <b :class="device.feedback?.toLowerCase()">{{ device.feedback === 'ACKNOWLEDGED' ? '已确认' : device.status }}</b>
-          </header>
-          <VehicleGlyph
-            class="overview-fleet-symbol"
-            :type="device.type === 'UAV' ? 'UAV' : 'USV'"
-            size="large"
-            :active="normalizeDeviceCode(selectedDeviceCode) === device.code"
-          />
-          <span>{{ device.stateLabel }}</span>
-          <footer>
-            <small>位姿 {{ device.positionX === null ? '--' : '实时' }}</small>
-            <small>电量 --</small>
-          </footer>
-        </article>
+      <section class="overview-device-deck" aria-label="六载具实时状态">
+        <header class="overview-section-title">
+          <h3>设备控制</h3>
+          <span>点击设备卡片切换观察视角与快捷指令</span>
+        </header>
+        <div class="overview-fleet-ribbon">
+          <button
+            v-for="device in overviewFleetCards"
+            :key="device.code"
+            type="button"
+            class="overview-fleet-card"
+            :class="[
+              device.type.toLowerCase(),
+              {
+                active: normalizeDeviceCode(selectedDeviceCode) === device.code,
+                stale: device.telemetryStale,
+              },
+            ]"
+            :title="telemetryTooltip(device)"
+            @click="selectDevice(device.code)"
+          >
+            <header>
+              <strong>{{ device.code.toUpperCase() }}</strong>
+              <b :class="(device.feedback || device.status || 'UNKNOWN').toLowerCase()">
+                {{ device.feedback === 'ACKNOWLEDGED' ? '已确认' : runtimeStatusLabel(device.status) }}
+              </b>
+            </header>
+
+            <div class="overview-card-identity">
+              <VehicleGlyph
+                class="overview-fleet-symbol"
+                :type="device.type === 'UAV' ? 'UAV' : 'USV'"
+                size="medium"
+                :active="normalizeDeviceCode(selectedDeviceCode) === device.code"
+              />
+              <div>
+                <strong>{{ device.stateLabel }}</strong>
+                <span>{{ device.telemetryStale ? '遥测等待/超时' : '实时遥测' }}</span>
+              </div>
+            </div>
+
+            <dl class="overview-card-coordinates">
+              <div>
+                <dt>{{ device.hasGeoCoordinate ? '经度' : '东向' }}</dt>
+                <dd>{{ device.hasGeoCoordinate ? formatCoordinate(device.longitude) : formatLocalPosition(device.positionX) }}</dd>
+              </div>
+              <div>
+                <dt>{{ device.hasGeoCoordinate ? '纬度' : '北向' }}</dt>
+                <dd>{{ device.hasGeoCoordinate ? formatCoordinate(device.latitude) : formatLocalPosition(device.positionZ) }}</dd>
+              </div>
+            </dl>
+
+            <footer>
+              <div class="overview-battery">
+                <span>电量</span>
+                <i><em :style="{ width: `${device.batteryPercent ?? 0}%` }"></em></i>
+                <strong>{{ device.batteryPercent === null ? '--' : `${device.batteryPercent}%` }}</strong>
+              </div>
+              <div class="overview-signal" title="链路质量基于运行心跳新鲜度">
+                <span>链路</span>
+                <i>
+                  <em
+                    v-for="bar in 4"
+                    :key="bar"
+                    :class="{ active: linkBarActive(device.linkQuality, bar) }"
+                  ></em>
+                </i>
+                <strong>{{ device.linkQuality === null ? '--' : `${device.linkQuality}%` }}</strong>
+              </div>
+            </footer>
+          </button>
+        </div>
       </section>
 
     </section>
