@@ -4815,6 +4815,10 @@ h2 {
   display: grid;
   min-width: 0;
   gap: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 .overview-hf-statusbar {
@@ -4977,7 +4981,7 @@ h2 {
 .overview-stage-viewport-shell {
   position: relative;
   min-width: 0;
-  margin: 0 8px 8px;
+  margin: 0 4px 8px;
 }
 
 .overview-hf .overview-unity-stage,
@@ -5420,25 +5424,25 @@ h2 {
 
 /*
  * Desktop overview viewport sizing.
- * Keep the complete WebGL stage and compact fleet deck inside the first screen
- * while avoiding an excessively wide, edge-to-edge panorama on ultrawide
- * displays. Mobile/tablet layouts retain the natural responsive flow above.
+ * Use the immersive workspace efficiently while retaining a small visual edge.
+ * The viewport height reserves exactly the status/header/fleet footprint so the
+ * complete WebGL stage and compact fleet deck remain inside the first screen.
  */
 @media (min-width: 901px) {
   .console-workspace:has(> .overview-hf) {
-    padding-right: clamp(18px, 1.5vw, 26px);
-    padding-left: clamp(18px, 1.5vw, 26px);
+    padding: 12px clamp(8px, 0.35vw, 12px) 16px;
   }
 
   .overview-hf {
-    width: min(100%, 1820px);
+    width: 100%;
+    max-width: 3200px;
     margin-right: auto;
     margin-left: auto;
   }
 
   .overview-hf .overview-unity-stage,
   .overview-hf .overview-unity-stage.unity-webgl-panel {
-    height: clamp(380px, calc(100vh - 400px), 700px);
+    height: clamp(380px, calc(100dvh - 388px), 760px);
     min-height: 380px;
     aspect-ratio: auto;
   }
@@ -5472,18 +5476,9 @@ h2 {
 }
 
 @media (min-width: 1920px) {
-  .console-workspace:has(> .overview-hf) {
-    padding-right: clamp(24px, 1.25vw, 36px);
-    padding-left: clamp(24px, 1.25vw, 36px);
-  }
-
-  .overview-hf {
-    width: min(100%, 2360px);
-  }
-
   .overview-hf .overview-unity-stage,
   .overview-hf .overview-unity-stage.unity-webgl-panel {
-    height: clamp(540px, calc(100dvh - 420px), 860px);
+    height: clamp(540px, calc(100dvh - 348px), 1040px);
     min-height: 540px;
   }
 }
@@ -5491,6 +5486,6 @@ h2 {
 @media (min-width: 1920px) and (min-height: 1000px) {
   .overview-hf .overview-unity-stage,
   .overview-hf .overview-unity-stage.unity-webgl-panel {
-    height: clamp(650px, calc(100dvh - 420px), 860px);
+    height: clamp(700px, calc(100dvh - 348px), 1040px);
   }
 }
