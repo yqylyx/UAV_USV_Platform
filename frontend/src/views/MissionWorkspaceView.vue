@@ -47,6 +47,7 @@ import type { MissionAction } from '@/api/mission'
 import { useMissionStore } from '@/stores/mission'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useRadarSensorStore } from '@/stores/radarSensor'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
@@ -58,20 +59,50 @@ import type {
   MissionDetail,
 } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
+import type { RadarOverview } from '@/types/sensor'
 import type { VisualSensorRuntimeContext } from '@/types/visualSensor'
 
-type WorkspaceMode = '2d' | '3d' | 'vision'
+type WorkspaceMode = '2d' | '3d' | 'vision' | 'radar'
 type VisualDisplayMode = 'grid' | 'focus'
 
 const route = useRoute()
 const router = useRouter()
 const missionStore = useMissionStore()
 const monitoringStore = useMonitoringStore()
+const radarStore = useRadarSensorStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const sessionStore = useMissionTrajectorySessionStore()
 const unityViewportStore = useUnityViewportStore()
 const visualSensorStore = useVisualSensorStore()
+let radarTimer: number | undefined
+
+const radarOverview = computed<RadarOverview>(() => radarStore.overview ?? {
+  connected: false,
+  onlineCount: 0,
+  totalCount: 0,
+  updatedAt: 0,
+  obstacleCount: 0,
+  detectionCount: 0,
+  nearestObstacleRange: null,
+  latestTargetId: '',
+  items: [],
+})
+const radarItems = computed(() => radarOverview.value.items.slice(0, 6))
+const radarPlotPoints = computed(() => {
+  const points = radarOverview.value.items
+    .filter(item => item.kind === 'POINTCLOUD' && item.x != null && item.y != null)
+    .slice(0, 240)
+  if (points.length === 0) return []
+  const maxAbs = Math.max(1, ...points.flatMap(item => [Math.abs(item.x ?? 0), Math.abs(item.y ?? 0)]))
+  const scale = 44 / maxAbs
+  return points.map(item => ({
+    id: item.id,
+    cx: 50 + (item.y ?? 0) * scale,
+    cy: 50 - (item.x ?? 0) * scale,
+    range: item.range,
+  }))
+})
 
 const detail = ref<MissionDetail | null>(null)
 const algorithms = ref<AlgorithmDefinition[]>([])
@@ -189,9 +220,34 @@ function queryNumber(value: unknown) {
 }
 
 function requestedViewMode(): WorkspaceMode {
+  if (route.query.view === 'radar') return 'radar'
   if (route.query.view === 'vision') return 'vision'
   if (route.query.view === '3d') return '3d'
   return '2d'
+}
+
+function formatRadarRange(value: number | null) {
+  return value == null ? '-- m' : `${value.toFixed(1)} m`
+}
+
+function formatRadarTime(value: number) {
+  if (!value) return '--'
+  return new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(value))
+}
+
+function stopRadarPolling() {
+  if (radarTimer) window.clearInterval(radarTimer)
+  radarTimer = undefined
+}
+
+function startRadarPolling() {
+  stopRadarPolling()
+  void radarStore.refresh(true)
+  radarTimer = window.setInterval(() => void radarStore.refresh(true), 2500)
 }
 
 function missionForAlgorithm(code: string) {
@@ -672,11 +728,13 @@ function selectObservationDevice(deviceCode: string) {
 
 function changeMode(next: WorkspaceMode) {
   const leavingVision = mode.value === 'vision' && next !== 'vision'
+  stopRadarPolling()
   mode.value = next
   void router.replace({ query: next === '2d' ? {} : { view: next } })
   if (leavingVision) sendMissionVisualSubscription(false, 'off')
-  if (next === '2d') {
+  if (next === '2d' || next === 'radar') {
     unityViewportStore.park()
+    if (next === 'radar') startRadarPolling()
     return
   }
   if (next === 'vision' && !currentRunId.value) {
@@ -765,6 +823,7 @@ onActivated(() => {
 onDeactivated(() => {
   resumeAfterDeactivation = true
   stopAlgorithmPolling()
+  stopRadarPolling()
   if (mode.value === 'vision') sendMissionVisualSubscription(false, 'off')
   visualSensorStore.disposeFrames('MISSION_CENTER')
   unityViewportStore.park()
@@ -772,6 +831,7 @@ onDeactivated(() => {
 
 onBeforeUnmount(() => {
   stopAlgorithmPolling()
+  stopRadarPolling()
   if (mode.value === 'vision') sendMissionVisualSubscription(false, 'off')
   visualSensorStore.disposeFrames('MISSION_CENTER')
   unityViewportStore.park()
@@ -828,6 +888,7 @@ onBeforeUnmount(() => {
             <button :class="{ active: mode === '2d' }" @click="changeMode('2d')"><Layers3 :size="16" />2D 轨迹</button>
             <button :class="{ active: mode === '3d' }" @click="changeMode('3d')"><Box :size="16" />3D Unity</button>
             <button :class="{ active: mode === 'vision' }" @click="changeMode('vision')"><Camera :size="16" />设备视觉</button>
+            <button :class="{ active: mode === 'radar' }" @click="changeMode('radar')"><Radio :size="16" />雷达感知</button>
           </nav>
           <span class="run-sync"><i />{{ runSyncText }}</span>
           <div class="run-actions">
@@ -874,6 +935,50 @@ onBeforeUnmount(() => {
           >
             <span class="unity-badge"><i />UNITY WEBGL ONLINE</span>
           </div>
+          <section v-else-if="mode === 'radar'" class="radar-panel">
+            <header>
+              <span>RADAR PERCEPTION</span>
+              <strong>Radar / pointcloud summary</strong>
+              <i :class="{ online: radarOverview.connected }" />
+            </header>
+            <div class="radar-metrics">
+              <article><span>Online</span><strong>{{ radarOverview.onlineCount }}/{{ radarOverview.totalCount || '--' }}</strong></article>
+              <article><span>Nearest obstacle</span><strong>{{ formatRadarRange(radarOverview.nearestObstacleRange) }}</strong></article>
+              <article><span>Points</span><strong>{{ radarOverview.detectionCount }}</strong></article>
+              <article><span>Latest target</span><strong>{{ radarOverview.latestTargetId || '--' }}</strong></article>
+            </div>
+            <div class="radar-plot" aria-label="2D pointcloud overview">
+              <svg viewBox="0 0 100 100" role="img">
+                <circle class="plot-ring" cx="50" cy="50" r="44" />
+                <circle class="plot-ring muted" cx="50" cy="50" r="29" />
+                <circle class="plot-ring muted" cx="50" cy="50" r="14" />
+                <line class="plot-axis" x1="50" y1="6" x2="50" y2="94" />
+                <line class="plot-axis" x1="6" y1="50" x2="94" y2="50" />
+                <circle class="plot-origin" cx="50" cy="50" r="2.4" />
+                <circle
+                  v-for="point in radarPlotPoints"
+                  :key="point.id"
+                  class="plot-point"
+                  :cx="point.cx"
+                  :cy="point.cy"
+                  r="1.35"
+                >
+                  <title>{{ point.id }} {{ formatRadarRange(point.range) }}</title>
+                </circle>
+              </svg>
+              <div v-if="radarPlotPoints.length === 0" class="radar-plot-empty">Waiting for pointcloud_frame</div>
+            </div>
+            <div class="radar-table">
+              <div class="radar-row head"><span>ID</span><span>Type</span><span>Range</span><span>Time</span></div>
+              <div v-for="item in radarItems" :key="`${item.deviceId}-${item.kind}-${item.id}`" class="radar-row">
+                <span>{{ item.id }}</span>
+                <span>{{ item.kind }}</span>
+                <span>{{ formatRadarRange(item.range) }}</span>
+                <span>{{ formatRadarTime(item.timestampMs) }}</span>
+              </div>
+              <div v-if="radarItems.length === 0" class="radar-empty">Waiting for radar_frame / pointcloud_frame</div>
+            </div>
+          </section>
           <div
             v-else-if="currentRunId"
             class="unity-viewport vision"
@@ -1201,6 +1306,155 @@ button:disabled {
   background: rgba(2, 20, 28, .86);
   font-size: 9px;
   font-weight: 800;
+}
+
+.radar-panel {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  box-sizing: border-box;
+  height: auto;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(76, 185, 197, .24);
+  border-radius: 8px;
+  background: rgba(5, 24, 31, .82);
+}
+
+.radar-panel header,
+.radar-metrics,
+.radar-row {
+  display: grid;
+  align-items: center;
+}
+
+.radar-panel header {
+  grid-template-columns: 1fr auto 9px;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.radar-panel header span {
+  color: #4cd6e9;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .13em;
+}
+
+.radar-panel header strong {
+  color: #dff9f5;
+  font-size: 13px;
+}
+
+.radar-panel header i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #607b7e;
+}
+
+.radar-panel header i.online {
+  background: #5ce7b7;
+  box-shadow: 0 0 9px rgba(92, 231, 183, .75);
+}
+
+.radar-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.radar-metrics article {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(72, 145, 155, .18);
+  border-radius: 6px;
+  background: #071a21;
+}
+
+.radar-metrics span,
+.radar-row span {
+  color: #769a9b;
+  font-size: 10px;
+}
+
+.radar-metrics strong {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #e7fffb;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar-plot {
+  position: relative;
+  min-height: 0;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(72, 145, 155, .18);
+  border-radius: 6px;
+  background: linear-gradient(rgba(73, 160, 170, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(73, 160, 170, .06) 1px, transparent 1px), #04161d;
+  background-size: 24px 24px;
+}
+
+.radar-plot svg {
+  width: 100%;
+  height: 100%;
+}
+
+.plot-ring,
+.plot-axis {
+  fill: none;
+  stroke: rgba(117, 203, 205, .22);
+  stroke-width: .5;
+}
+
+.plot-ring.muted { stroke: rgba(117, 203, 205, .12); }
+.plot-origin { fill: #65ddcf; filter: drop-shadow(0 0 5px rgba(101, 221, 207, .8)); }
+.plot-point { fill: #5ce7b7; opacity: .82; }
+
+.radar-plot-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #628487;
+  font-size: 11px;
+}
+
+.radar-table {
+  border: 1px solid rgba(72, 145, 155, .18);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.radar-row {
+  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  min-height: 32px;
+  border-bottom: 1px solid rgba(72, 145, 155, .13);
+}
+
+.radar-row:last-child { border-bottom: 0; }
+
+.radar-row span {
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar-row.head { background: rgba(76, 185, 197, .08); }
+.radar-row.head span { color: #9ec3c3; font-weight: 900; }
+
+.radar-empty {
+  padding: 18px;
+  color: #628487;
+  font-size: 11px;
+  text-align: center;
 }
 
 .visual-waiting {

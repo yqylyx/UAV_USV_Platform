@@ -41,6 +41,7 @@ public class RuntimeStateService {
     public static final String ROS_CODE = "ros-bridge-01";
     public static final String UNITY_CODE = "unity-client-01";
 
+    private static final String ROS_POSE_DETAIL_PREFIX = "Gazebo pose sequence ";
     private static final EnumSet<DeviceType> RUNTIME_TYPES = EnumSet.of(
             DeviceType.UAV, DeviceType.USV, DeviceType.ROS_NODE, DeviceType.UNITY_NODE
     );
@@ -95,6 +96,10 @@ public class RuntimeStateService {
         LocalDateTime now = LocalDateTime.now();
         observations.put(ROS_CODE, new Observation(now, true, "ROS_WEBSOCKET", "ros-websocket",
                 frame.sequence(), rosHost, rosPort, null, "正在接收 Gazebo 位姿数据"));
+        if (frame.hasFleetVehicles()) {
+            observeFleetPoses(frame, now);
+            return;
+        }
         observePose(USV_CODE, frame.boat(), frame.sequence(), now);
         observePose(UAV_CODE, frame.drone(), frame.sequence(), now);
     }
@@ -265,6 +270,26 @@ public class RuntimeStateService {
         RuntimePose pose = new RuntimePose(p[0], p[1], p[2], q[0], q[1], q[2], q[3]);
         observations.put(code, new Observation(observedAt, true, "ROS_WEBSOCKET", "gazebo",
                 sequence, rosHost, rosPort, pose, "Gazebo 位姿序号 " + sequence));
+    }
+
+    private void observeFleetPoses(RosPoseFrame frame, LocalDateTime observedAt) {
+        if (frame.usvs() != null) {
+            frame.usvs().forEach(vehicle -> observeVehiclePose(vehicle, frame.sequence(), observedAt));
+        }
+        if (frame.uavs() != null) {
+            frame.uavs().forEach(vehicle -> observeVehiclePose(vehicle, frame.sequence(), observedAt));
+        }
+    }
+
+    private void observeVehiclePose(RosPoseFrame.VehiclePoseData vehicle, long sequence, LocalDateTime observedAt) {
+        if (vehicle == null || vehicle.id() == null || vehicle.id().isBlank()) {
+            return;
+        }
+        String code = vehicle.id().trim().toLowerCase().replace('_', '-');
+        if (!code.matches("(uav|usv)-0[1-3]")) {
+            return;
+        }
+        observePose(code, vehicle.poseData(), sequence, observedAt);
     }
 
     private record Observation(

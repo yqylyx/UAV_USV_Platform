@@ -12,8 +12,6 @@ import com.uavusv.platform.module.monitoring.repository.DeviceTelemetryRepositor
 import com.uavusv.platform.module.monitoring.repository.RuntimeDeviceStatusRepository;
 import com.uavusv.platform.module.monitoring.service.GeoCoordinateService;
 import com.uavusv.platform.module.monitoring.service.MonitoringService;
-import com.uavusv.platform.module.runtimecontrol.entity.SimulationStatus;
-import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -40,7 +38,6 @@ public class MonitoringServiceImpl implements MonitoringService {
     private final DeviceRepository deviceRepository;
     private final RuntimeDeviceStatusRepository runtimeStatusRepository;
     private final DeviceTelemetryRepository telemetryRepository;
-    private final SimulationSessionRepository sessionRepository;
     private final GeoCoordinateService geoCoordinateService;
     private final int telemetryStaleSeconds;
 
@@ -48,14 +45,12 @@ public class MonitoringServiceImpl implements MonitoringService {
             DeviceRepository deviceRepository,
             RuntimeDeviceStatusRepository runtimeStatusRepository,
             DeviceTelemetryRepository telemetryRepository,
-            SimulationSessionRepository sessionRepository,
             GeoCoordinateService geoCoordinateService,
             @Value("${app.runtime.telemetry-stale-seconds:10}") int telemetryStaleSeconds
     ) {
         this.deviceRepository = deviceRepository;
         this.runtimeStatusRepository = runtimeStatusRepository;
         this.telemetryRepository = telemetryRepository;
-        this.sessionRepository = sessionRepository;
         this.geoCoordinateService = geoCoordinateService;
         this.telemetryStaleSeconds = telemetryStaleSeconds;
     }
@@ -65,14 +60,13 @@ public class MonitoringServiceImpl implements MonitoringService {
         List<Device> nodes = loadRuntimeDevices();
         Map<Long, RuntimeDeviceStatus> runtimeStatuses = loadRuntimeStatuses(nodes);
         LocalDateTime refreshedAt = LocalDateTime.now();
-        boolean runtimeActive = hasActiveRuntimeSession();
 
         return new RuntimeSummaryResponse(
                 nodes.size(),
-                runtimeActive ? countByStatus(nodes, runtimeStatuses, DeviceStatus.ONLINE) : 0,
-                runtimeActive ? countByStatus(nodes, runtimeStatuses, DeviceStatus.OFFLINE) : nodes.size(),
-                runtimeActive ? countByStatus(nodes, runtimeStatuses, DeviceStatus.MAINTENANCE) : 0,
-                runtimeActive ? countByStatus(nodes, runtimeStatuses, DeviceStatus.UNKNOWN) : 0,
+                countByStatus(nodes, runtimeStatuses, DeviceStatus.ONLINE),
+                countByStatus(nodes, runtimeStatuses, DeviceStatus.OFFLINE),
+                countByStatus(nodes, runtimeStatuses, DeviceStatus.MAINTENANCE),
+                countByStatus(nodes, runtimeStatuses, DeviceStatus.UNKNOWN),
                 countByType(nodes, DeviceType.ROS_NODE),
                 countByType(nodes, DeviceType.UNITY_NODE),
                 nodes.stream().filter(device -> device.getType() == DeviceType.UAV || device.getType() == DeviceType.USV).count(),
@@ -86,37 +80,18 @@ public class MonitoringServiceImpl implements MonitoringService {
         List<Device> devices = loadRuntimeDevices();
         Map<Long, RuntimeDeviceStatus> runtimeStatuses = loadRuntimeStatuses(devices);
         Map<Long, DeviceTelemetry> latestTelemetry = loadLatestTelemetry(devices);
-        boolean runtimeActive = hasActiveRuntimeSession();
         return devices.stream()
                 .filter(device -> type == null || device.getType() == type)
-                .map(device -> runtimeActive
-                        ? RuntimeNodeResponse.from(
-                                device,
-                                runtimeStatuses.get(device.getId()),
-                                latestTelemetry.get(device.getId()),
-                                geoCoordinateService,
-                                now,
-                                telemetryStaleSeconds
-                        )
-                        : RuntimeNodeResponse.offline(
-                                device,
-                                latestTelemetry.get(device.getId()),
-                                geoCoordinateService,
-                                now,
-                                telemetryStaleSeconds,
-                                "平台仿真未运行，等待点击运行后接入真实心跳"
-                        ))
+                .map(device -> RuntimeNodeResponse.from(
+                        device,
+                        runtimeStatuses.get(device.getId()),
+                        latestTelemetry.get(device.getId()),
+                        geoCoordinateService,
+                        now,
+                        telemetryStaleSeconds
+                ))
                 .filter(node -> status == null || node.status() == status)
                 .toList();
-    }
-
-    private boolean hasActiveRuntimeSession() {
-        return sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(EnumSet.of(
-                SimulationStatus.STARTING,
-                SimulationStatus.RUNNING,
-                SimulationStatus.PARTIAL,
-                SimulationStatus.STOPPING
-        )).isPresent();
     }
 
     private List<Device> loadRuntimeDevices() {

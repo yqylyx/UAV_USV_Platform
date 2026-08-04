@@ -13,12 +13,16 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import { useRadarSensorStore } from '@/stores/radarSensor'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useVisualSensorStore } from '@/stores/visualSensor'
+import type { RadarOverview } from '@/types/sensor'
 import type { VisualSensor } from '@/types/visualSensor'
 
 const store = useVisualSensorStore()
+const radarStore = useRadarSensorStore()
 const unityBridgeStore = useUnityBridgeStore()
+const activePanel = ref<'vision' | 'radar'>('vision')
 const mode = ref<'grid' | 'focus'>('grid')
 const quality = ref<'720p' | '1080p'>('720p')
 const targetFps = 30
@@ -27,9 +31,46 @@ let overviewTimer: number | undefined
 const overview = computed(() => store.displayOverview)
 const sensors = computed(() => overview.value.sensors)
 const stats = computed(() => store.streamStats)
+const frameUrls = computed(() => store.channels.SYSTEM_OVERVIEW.frameUrls)
+const hasBackendFrames = computed(() => Object.keys(frameUrls.value).length > 0)
+const radarOverview = computed<RadarOverview>(() => radarStore.overview ?? {
+  connected: false,
+  onlineCount: 0,
+  totalCount: 0,
+  updatedAt: 0,
+  obstacleCount: 0,
+  detectionCount: 0,
+  nearestObstacleRange: null,
+  latestTargetId: '',
+  items: [],
+})
+const radarItems = computed(() => radarOverview.value.items.slice(0, 6))
+const pointCloudItems = computed(() =>
+  radarOverview.value.items
+    .filter((item) => item.kind === 'POINTCLOUD' && item.x != null && item.y != null)
+    .slice(0, 240),
+)
+const radarPlotPoints = computed(() => {
+  const points = pointCloudItems.value
+  if (points.length === 0) return []
+  const maxAbs = Math.max(
+    1,
+    ...points.flatMap((item) => [Math.abs(item.x ?? 0), Math.abs(item.y ?? 0)]),
+  )
+  const scale = 44 / maxAbs
+  return points.map((item) => ({
+    id: item.id,
+    cx: 50 + (item.y ?? 0) * scale,
+    cy: 50 - (item.x ?? 0) * scale,
+    range: item.range,
+  }))
+})
 const focusedSensor = computed(() =>
   sensors.value.find((sensor) => sensor.cameraId === overview.value.focusedCameraId)
   ?? sensors.value[0],
+)
+const focusedFrameUrl = computed(() =>
+  focusedSensor.value ? frameUrls.value[focusedSensor.value.cameraId] : '',
 )
 const activeFps = computed(() => {
   const value = stats.value?.measuredFps ?? 0
@@ -53,6 +94,19 @@ function statusLabel(sensor: VisualSensor) {
 
 function viewLabel(sensor: VisualSensor) {
   return sensor.viewType === 'DOWN' ? '垂直下视' : '艇艏前视'
+}
+
+function formatRadarRange(value: number | null) {
+  return value == null ? '-- m' : `${value.toFixed(1)} m`
+}
+
+function formatRadarTime(value: number) {
+  if (!value) return '--'
+  return new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(value))
 }
 
 function sendSubscription(cameraId = overview.value.focusedCameraId || 'uav_01') {
@@ -83,7 +137,13 @@ function chooseQuality(next: '720p' | '1080p') {
 onMounted(() => {
   sendSubscription()
   void store.refreshOverview()
-  overviewTimer = window.setInterval(() => store.refreshOverview(), 2500)
+  void store.refreshFrames()
+  void radarStore.refresh(true)
+  overviewTimer = window.setInterval(() => {
+    void store.refreshOverview()
+    void store.refreshFrames()
+    void radarStore.refresh(true)
+  }, 2500)
 })
 
 watch([mode, quality], () => sendSubscription())
@@ -114,10 +174,23 @@ onBeforeUnmount(() => {
         <Camera :size="15" />
         {{ overview.onlineCount }}/{{ overview.totalCount }} 路在线
       </div>
+      <div class="sensor-status-chip" :class="{ online: radarOverview.connected }">
+        <Radio :size="15" />
+        Radar {{ radarOverview.onlineCount }}/{{ radarOverview.totalCount || '--' }}
+      </div>
     </template>
 
     <section class="visual-center">
-      <header class="visual-toolbar">
+      <nav class="view-switch panel-switch" role="tablist" aria-label="感知视图">
+        <button :class="{ active: activePanel === 'vision' }" type="button" @click="activePanel = 'vision'">
+          <Grid2X2 :size="16" /> 视觉感知
+        </button>
+        <button :class="{ active: activePanel === 'radar' }" type="button" @click="activePanel = 'radar'">
+          <Radio :size="16" /> 雷达感知
+        </button>
+      </nav>
+
+      <header v-show="activePanel === 'vision'" class="visual-toolbar">
         <div class="toolbar-copy">
           <span class="section-kicker">LIVE OPTICAL FEEDS</span>
           <h2>六路设备视觉回传</h2>
@@ -142,18 +215,10 @@ onBeforeUnmount(() => {
               1080P
             </button>
           </div>
-          <div class="view-switch" role="tablist" aria-label="视觉布局">
-            <button :class="{ active: mode === 'grid' }" type="button" @click="mode = 'grid'">
-              <Grid2X2 :size="16" /> 六路总览
-            </button>
-            <button :class="{ active: mode === 'focus' }" type="button" @click="mode = 'focus'">
-              <Expand :size="16" /> 单路聚焦
-            </button>
-          </div>
         </div>
       </header>
 
-      <div class="stream-metrics">
+      <div v-show="activePanel === 'vision'" class="stream-metrics">
         <div>
           <Gauge :size="16" />
           <span>实测帧率</span>
@@ -176,22 +241,29 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="stats?.adaptiveFallback" class="adaptive-notice">
+      <div v-if="activePanel === 'vision' && stats?.adaptiveFallback" class="adaptive-notice">
         当前设备无法稳定维持六路 1080P / {{ targetFps }} FPS，已自动切换六路 720P，
         以保持连续画面和低延迟。
       </div>
 
-      <div class="live-layout" :class="mode">
+      <div v-show="activePanel === 'vision'" class="live-layout" :class="mode">
         <div
           class="unity-live-viewport"
           :class="mode"
-          data-unity-runtime-viewport="visual-sensors-live"
+          :data-unity-runtime-viewport="activePanel === 'vision' ? 'visual-sensors-live' : undefined"
         >
-          <div v-if="!store.unityBridgeReady" class="runtime-placeholder">
+          <div v-if="!store.unityBridgeReady && !hasBackendFrames" class="runtime-placeholder">
             <Radio :size="34" />
             <strong>正在初始化 Unity 六路视觉</strong>
             <span>加载完成后将直接显示设备相机实时画面</span>
           </div>
+
+          <img
+            v-if="mode === 'focus' && !streamOnline && focusedFrameUrl"
+            class="backend-focus-frame"
+            :src="focusedFrameUrl"
+            alt="ROS visual sensor frame"
+          />
 
           <div v-if="mode === 'grid'" class="sensor-grid-overlay">
             <button
@@ -200,9 +272,14 @@ onBeforeUnmount(() => {
               class="sensor-overlay-cell"
               :class="{ selected: sensor.focused }"
               type="button"
-              @click="selectSensor(sensor.cameraId)"
-              @dblclick="selectSensor(sensor.cameraId, true)"
+              @click="selectSensor(sensor.cameraId, true)"
             >
+              <img
+                v-if="!streamOnline && frameUrls[sensor.cameraId]"
+                class="backend-grid-frame"
+                :src="frameUrls[sensor.cameraId]"
+                alt="ROS visual sensor frame"
+              />
               <span class="cell-header">
                 <span class="live-badge" :class="sensor.status.toLowerCase()">
                   <i />{{ statusLabel(sensor) }}
@@ -210,7 +287,7 @@ onBeforeUnmount(() => {
               </span>
               <span class="cell-footer">
                 <span>{{ activeResolution }} · {{ activeFps }} FPS</span>
-                <span>双击聚焦 <Expand :size="12" /></span>
+                <span>点击聚焦 <Expand :size="12" /></span>
               </span>
             </button>
           </div>
@@ -256,7 +333,73 @@ onBeforeUnmount(() => {
         </aside>
       </div>
 
-      <footer class="visual-footnote">
+      <section v-show="activePanel === 'radar'" class="radar-panel">
+        <header>
+          <span>RADAR PERCEPTION</span>
+          <strong>Radar / pointcloud summary</strong>
+          <i :class="{ online: radarOverview.connected }" />
+        </header>
+        <div class="radar-metrics">
+          <article>
+            <span>Online</span>
+            <strong>{{ radarOverview.onlineCount }}/{{ radarOverview.totalCount || '--' }}</strong>
+          </article>
+          <article>
+            <span>Nearest obstacle</span>
+            <strong>{{ formatRadarRange(radarOverview.nearestObstacleRange) }}</strong>
+          </article>
+          <article>
+            <span>Points</span>
+            <strong>{{ radarOverview.detectionCount }}</strong>
+          </article>
+          <article>
+            <span>Latest target</span>
+            <strong>{{ radarOverview.latestTargetId || '--' }}</strong>
+          </article>
+        </div>
+        <div class="radar-plot" aria-label="2D pointcloud overview">
+          <svg viewBox="0 0 100 100" role="img">
+            <circle class="plot-ring" cx="50" cy="50" r="44" />
+            <circle class="plot-ring muted" cx="50" cy="50" r="29" />
+            <circle class="plot-ring muted" cx="50" cy="50" r="14" />
+            <line class="plot-axis" x1="50" y1="6" x2="50" y2="94" />
+            <line class="plot-axis" x1="6" y1="50" x2="94" y2="50" />
+            <circle class="plot-origin" cx="50" cy="50" r="2.4" />
+            <circle
+              v-for="point in radarPlotPoints"
+              :key="point.id"
+              class="plot-point"
+              :cx="point.cx"
+              :cy="point.cy"
+              r="1.35"
+            >
+              <title>{{ point.id }} {{ formatRadarRange(point.range) }}</title>
+            </circle>
+          </svg>
+          <div v-if="radarPlotPoints.length === 0" class="radar-plot-empty">
+            Waiting for pointcloud_frame
+          </div>
+        </div>
+        <div class="radar-table">
+          <div class="radar-row head">
+            <span>ID</span>
+            <span>Type</span>
+            <span>Range</span>
+            <span>Time</span>
+          </div>
+          <div v-for="item in radarItems" :key="`${item.deviceId}-${item.kind}-${item.id}`" class="radar-row">
+            <span>{{ item.id }}</span>
+            <span>{{ item.kind }}</span>
+            <span>{{ formatRadarRange(item.range) }}</span>
+            <span>{{ formatRadarTime(item.timestampMs) }}</span>
+          </div>
+          <div v-if="radarItems.length === 0" class="radar-empty">
+            Waiting for radar_frame / pointcloud_frame
+          </div>
+        </div>
+      </section>
+
+      <footer v-show="activePanel === 'vision'" class="visual-footnote">
         <span><i :class="{ online: streamOnline }" />{{ overview.gatewayDetail }}</span>
         <span>六路同源实时渲染 · 目标 {{ targetFps }} FPS · 无 JPEG/Base64 帧搬运</span>
       </footer>
@@ -429,6 +572,197 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 
+.backend-grid-frame,
+.backend-focus-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .86;
+}
+
+.backend-grid-frame {
+  z-index: 1;
+}
+
+.backend-focus-frame {
+  z-index: 10;
+}
+
+.radar-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  box-sizing: border-box;
+  height: clamp(520px, calc(100dvh - 190px), 980px);
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(76, 185, 197, .24);
+  border-radius: 8px;
+  background: rgba(5, 24, 31, .82);
+}
+
+.radar-panel header,
+.radar-metrics,
+.radar-row {
+  display: grid;
+  align-items: center;
+}
+
+.radar-panel header {
+  grid-template-columns: 1fr auto 9px;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.radar-panel header span {
+  color: #4cd6e9;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .13em;
+}
+
+.radar-panel header strong {
+  color: #dff9f5;
+  font-size: 13px;
+}
+
+.radar-panel header i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #607b7e;
+}
+
+.radar-panel header i.online {
+  background: #5ce7b7;
+  box-shadow: 0 0 9px rgba(92, 231, 183, .75);
+}
+
+.radar-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.radar-metrics article {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(72, 145, 155, .18);
+  border-radius: 6px;
+  background: #071a21;
+}
+
+.panel-switch {
+  width: fit-content;
+  margin: 0 auto 14px;
+}
+
+.radar-metrics span,
+.radar-row span {
+  color: #769a9b;
+  font-size: 10px;
+}
+
+.radar-metrics strong {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #e7fffb;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar-table {
+  border: 1px solid rgba(72, 145, 155, .18);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.radar-plot {
+  position: relative;
+  min-height: 0;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(72, 145, 155, .18);
+  border-radius: 6px;
+  background:
+    linear-gradient(rgba(73, 160, 170, .07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(73, 160, 170, .06) 1px, transparent 1px),
+    #04161d;
+  background-size: 24px 24px;
+}
+
+.radar-plot svg {
+  width: 100%;
+  height: 100%;
+}
+
+.plot-ring,
+.plot-axis {
+  fill: none;
+  stroke: rgba(117, 203, 205, .22);
+  stroke-width: .5;
+}
+
+.plot-ring.muted {
+  stroke: rgba(117, 203, 205, .12);
+}
+
+.plot-origin {
+  fill: #65ddcf;
+  filter: drop-shadow(0 0 5px rgba(101, 221, 207, .8));
+}
+
+.plot-point {
+  fill: #5ce7b7;
+  opacity: .82;
+}
+
+.radar-plot-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #628487;
+  font-size: 11px;
+}
+
+.radar-row {
+  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  min-height: 32px;
+  border-bottom: 1px solid rgba(72, 145, 155, .13);
+}
+
+.radar-row:last-child {
+  border-bottom: 0;
+}
+
+.radar-row span {
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar-row.head {
+  background: rgba(76, 185, 197, .08);
+}
+
+.radar-row.head span {
+  color: #9ec3c3;
+  font-weight: 900;
+}
+
+.radar-empty {
+  padding: 18px;
+  color: #628487;
+  font-size: 11px;
+  text-align: center;
+}
+
 .live-layout.focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 218px;
@@ -510,6 +844,7 @@ onBeforeUnmount(() => {
 }
 
 .sensor-overlay-cell {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -534,6 +869,8 @@ onBeforeUnmount(() => {
 
 .cell-header,
 .cell-footer {
+  position: relative;
+  z-index: 2;
   justify-content: space-between;
   gap: 8px;
   padding: 7px 9px;

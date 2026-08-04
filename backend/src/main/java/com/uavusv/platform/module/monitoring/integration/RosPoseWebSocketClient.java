@@ -7,6 +7,7 @@ import com.uavusv.platform.module.monitoring.dto.request.RosPoseFrame;
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.event.RosCommandAckReceivedEvent;
+import com.uavusv.platform.module.sensor.service.SensorRuntimeService;
 import com.uavusv.platform.module.visualsensor.service.VisualSensorService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -19,9 +20,14 @@ import org.springframework.stereotype.Component;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -36,11 +42,14 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
     private final RuntimeStateService runtimeStateService;
     private final ApplicationEventPublisher eventPublisher;
     private final VisualSensorService visualSensorService;
+    private final SensorRuntimeService sensorRuntimeService;
     private final URI endpoint;
     private final HttpClient httpClient;
     private final ScheduledExecutorService reconnectExecutor;
     private final AtomicBoolean connecting = new AtomicBoolean(false);
     private final StringBuilder messageBuffer = new StringBuilder();
+    private final ByteArrayOutputStream binaryMessageBuffer = new ByteArrayOutputStream();
+    private final Set<String> observedMessageTypes = ConcurrentHashMap.newKeySet();
     private volatile WebSocket socket;
     private volatile boolean shuttingDown;
 
@@ -49,12 +58,14 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
             RuntimeStateService runtimeStateService,
             ApplicationEventPublisher eventPublisher,
             VisualSensorService visualSensorService,
+            SensorRuntimeService sensorRuntimeService,
             @Value("${app.runtime.ros-websocket-url}") String endpoint
     ) {
         this.objectMapper = objectMapper;
         this.runtimeStateService = runtimeStateService;
         this.eventPublisher = eventPublisher;
         this.visualSensorService = visualSensorService;
+        this.sensorRuntimeService = sensorRuntimeService;
         this.endpoint = URI.create(endpoint);
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
         this.reconnectExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -81,7 +92,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
                     connecting.set(false);
                     if (error != null) {
                         runtimeStateService.observeRosConnection(false, "无法连接 " + endpoint);
-                        log.debug("ROS WebSocket connection failed: {}", error.getMessage());
+                        log.warn("ROS WebSocket connection failed for {}: {}", endpoint, error.getMessage());
                         scheduleConnect(2);
                     }
                 });
@@ -101,14 +112,32 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
         if (last) {
             String payload = messageBuffer.toString();
             messageBuffer.setLength(0);
-            try {
-                handleMessage(payload);
-            } catch (Exception exception) {
-                log.warn("Ignored invalid ROS pose frame: {}", exception.getMessage());
-            }
+            handlePayload(payload);
         }
         webSocket.request(1);
         return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
+        byte[] chunk = new byte[data.remaining()];
+        data.get(chunk);
+        binaryMessageBuffer.writeBytes(chunk);
+        if (last) {
+            String payload = binaryMessageBuffer.toString(StandardCharsets.UTF_8);
+            binaryMessageBuffer.reset();
+            handlePayload(payload);
+        }
+        webSocket.request(1);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private void handlePayload(String payload) {
+        try {
+            handleMessage(payload);
+        } catch (Exception exception) {
+            log.warn("Ignored invalid ROS WebSocket frame: {}", exception.getMessage());
+        }
     }
 
     @Override
@@ -166,7 +195,12 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
 
     private void handleMessage(String payload) throws Exception {
         JsonNode root = objectMapper.readTree(payload);
-        String type = root.path("type").asText("pose_frame");
+        String type = root.hasNonNull("type")
+                ? root.path("type").asText()
+                : root.path("message_type").asText("pose_frame");
+        if (observedMessageTypes.add(type)) {
+            log.info("Receiving ROS WebSocket message type {}", type);
+        }
         if ("command_ack".equals(type)) {
             eventPublisher.publishEvent(new RosCommandAckReceivedEvent(
                     root.path("commandKey").asText(),
@@ -186,10 +220,18 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
             );
             return;
         }
+        if ("radar_frame".equals(type)) {
+            sensorRuntimeService.observeRadarFrame(root.has("frame") ? root.path("frame") : root);
+            return;
+        }
+        if ("pointcloud_frame".equals(type)) {
+            sensorRuntimeService.observePointCloudFrame(root.has("frame") ? root.path("frame") : root);
+            return;
+        }
         if ("pose_frame".equals(type) || (root.has("boat") && root.has("drone"))) {
             JsonNode frameNode = root.has("frame") ? root.path("frame") : root;
             RosPoseFrame frame = objectMapper.treeToValue(frameNode, RosPoseFrame.class);
-            if (frame.boat() != null && frame.drone() != null) {
+            if (frame.hasFleetVehicles() || (frame.boat() != null && frame.drone() != null)) {
                 runtimeStateService.observeRosFrame(frame);
             }
         }
