@@ -47,7 +47,9 @@ const lastUnityEvent = ref('暂无 Unity 回传事件')
 const unityCommandState = ref('等待控制指令')
 const commandBusy = ref(false)
 const cameraCommandBusy = ref(false)
+const cameraZoomPercent = ref(100)
 let selectedDeviceSyncedToUnity = ''
+let overviewCameraInitialized = false
 const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
 const operationalStates = ref<Record<string, string | undefined>>({
   'uav-01': 'UNKNOWN',
@@ -75,6 +77,25 @@ const cameraModes = [
 ]
 
 let trajectoryToggleTimer: number | null = null
+
+function sendCameraControl(action: 'fitAll' | 'setZoom', value = 0) {
+  if (!unityCameraReady.value) return
+  unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'cameraControl', { action, value })
+}
+
+function fitUnityOverview() {
+  cameraZoomPercent.value = 100
+  selectedCameraMode.value = 'overview'
+  sendCameraControl('fitAll')
+}
+
+function setUnityZoom(event: Event) {
+  const target = event.target as HTMLInputElement
+  const value = Number(target.value)
+  if (!Number.isFinite(value)) return
+  cameraZoomPercent.value = value
+  sendCameraControl('setZoom', value)
+}
 
 const expectedObservationDevices = [
   { code: 'uav-01', name: '协同无人机 1', type: 'UAV' as const },
@@ -168,13 +189,16 @@ function selectedOrDefaultDeviceCode(preferredType?: 'UAV' | 'USV') {
   return code
 }
 
-function syncSelectedDeviceToUnity(force = false) {
+function ensureOverviewCamera(force = false) {
   const deviceCode = selectedOrDefaultDeviceCode()
   if (!unityCameraReady.value) return
-  if (!force && selectedDeviceSyncedToUnity === deviceCode) return
-  selectedDeviceSyncedToUnity = deviceCode
-  unityBridgeStore.send('selectDevice', { deviceCode })
-  lastUnityEvent.value = `selectDevice:${deviceCode}:sync`
+  if (!force && overviewCameraInitialized) return
+  overviewCameraInitialized = true
+  selectedCameraMode.value = 'overview'
+  cameraZoomPercent.value = 100
+  selectedDeviceSyncedToUnity = ''
+  unityBridgeStore.send('switchCamera', { mode: 'overview', deviceCode })
+  lastUnityEvent.value = 'switchCamera:overview:initial'
 }
 
 const rosBridgeOnline = computed(() =>
@@ -993,6 +1017,15 @@ function handleUnityMessage(message: UnityMessage) {
     if (!success) ElMessage.error(status)
   }
 
+  if (message.type === 'cameraAdjusted') {
+    const zoom = Number(payload.zoomPercent)
+    if (Number.isFinite(zoom)) cameraZoomPercent.value = Math.round(zoom)
+    const success = payload.success === true
+    const status = String(payload.status ?? (success ? '相机观察范围已调整' : '相机调整失败'))
+    unityCommandState.value = status
+    if (!success) ElMessage.error(status)
+  }
+
   if (message.type === 'trajectoryVisibilityChanged') {
     const success = payload.success === true
     const visible = payload.visible !== false
@@ -1031,7 +1064,11 @@ onMounted(() => {
   monitoringStore.connectEvents()
 })
 
-onActivated(() => unityViewportStore.show('dashboard'))
+onActivated(() => {
+  unityViewportStore.show('dashboard')
+  overviewCameraInitialized = false
+  ensureOverviewCamera()
+})
 onDeactivated(() => {
   if (unityViewportStore.target === 'dashboard') unityViewportStore.park()
 })
@@ -1062,10 +1099,11 @@ watch(
   ] as const,
   ([ready]) => {
     if (!ready) {
+      overviewCameraInitialized = false
       selectedDeviceSyncedToUnity = ''
       return
     }
-    syncSelectedDeviceToUnity()
+    ensureOverviewCamera()
   },
   { immediate: true },
 )
@@ -1182,6 +1220,25 @@ watch(
               <strong>Unity WebGL 常驻实例启动中</strong>
               <span>{{ unityBridgeStore.error || '正在加载全局运行实例，请稍候' }}</span>
             </div>
+          </div>
+
+          <div class="overview-camera-tools" aria-label="Unity 相机缩放控制">
+            <span>滚轮缩放 · 右键旋转 · Shift 拖动平移</span>
+            <input
+              :value="cameraZoomPercent"
+              type="range"
+              min="42"
+              max="225"
+              step="1"
+              :disabled="!unityCameraReady"
+              aria-label="Unity 相机缩放比例"
+              @input="setUnityZoom"
+            >
+            <b>{{ cameraZoomPercent }}%</b>
+            <button type="button" :disabled="!unityCameraReady" @click="fitUnityOverview">
+              <RotateCcw :size="14" />
+              适配全貌
+            </button>
           </div>
 
           <section

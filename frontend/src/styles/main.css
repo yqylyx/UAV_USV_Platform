@@ -3805,6 +3805,57 @@ h2 {
   border: 1px solid rgba(90, 198, 220, 0.28);
 }
 
+.overview-camera-tools {
+  position: absolute;
+  right: 16px;
+  bottom: 82px;
+  z-index: 40;
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px 5px 11px;
+  color: #9ebbc5;
+  font-size: 10px;
+  background: rgba(3, 17, 27, 0.9);
+  border: 1px solid rgba(78, 177, 202, 0.4);
+  border-radius: 7px;
+  box-shadow: 0 8px 24px rgba(0, 8, 14, 0.38);
+  backdrop-filter: blur(10px);
+}
+
+.overview-camera-tools input[type='range'] {
+  width: 112px;
+  accent-color: #67dfd2;
+  cursor: ew-resize;
+}
+
+.overview-camera-tools b {
+  min-width: 34px;
+  color: #dffcf8;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.overview-camera-tools button {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  color: #dffcf8;
+  cursor: pointer;
+  background: rgba(20, 69, 80, 0.7);
+  border: 1px solid rgba(103, 223, 210, 0.42);
+  border-radius: 5px;
+}
+
+.overview-camera-tools button:disabled,
+.overview-camera-tools input:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .unity-runtime-viewport {
   position: relative;
   overflow: hidden;

@@ -162,9 +162,10 @@
 
         var needsCommandBridge =
           type === 'selectdevice' ||
-          type === 'focusdevice' ||
-          type === 'switchcamera' ||
-          type === 'sendcontrolcommand' ||
+           type === 'focusdevice' ||
+           type === 'switchcamera' ||
+           type === 'cameracontrol' ||
+           type === 'sendcontrolcommand' ||
           type === 'toggletrajectory';
         var needsAlgorithmBridge =
           type === 'loadscenario' ||
@@ -333,11 +334,15 @@
         if (!embedded) return;
         var width = Math.max(1, window.innerWidth);
         var height = Math.max(1, window.innerHeight);
-        var pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
         canvas.style.width = width + 'px';
         canvas.style.height = height + 'px';
-        canvas.width = Math.floor(width * pixelRatio);
-        canvas.height = Math.floor(height * pixelRatio);
+      }
+
+      function embeddedRenderPixelRatio() {
+        var nativeRatio = Math.min(window.devicePixelRatio || 1, 2);
+        var widthRatio = 1920 / Math.max(1, window.innerWidth);
+        var heightRatio = 1080 / Math.max(1, window.innerHeight);
+        return Math.min(nativeRatio, widthRatio, heightRatio);
       }
 
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
@@ -355,6 +360,9 @@
       loadingBar.style.display = 'block';
       resizeEmbeddedCanvas();
       window.addEventListener('resize', resizeEmbeddedCanvas);
+      if (window.ResizeObserver) {
+        new ResizeObserver(resizeEmbeddedCanvas).observe(container);
+      }
 
       if (!hasWebGL()) {
         reportFatal('Your browser does not support WebGL or hardware acceleration is disabled. Enable hardware acceleration in Chrome/Edge and verify WebGL/WebGL2 in chrome://gpu or edge://gpu.');
@@ -369,9 +377,10 @@
           companyName: 'UAV-USV',
           productName: 'UAV_USV_WebGL',
           productVersion: '0.1',
+          matchWebGLToCanvasSize: true,
           autoSyncPersistentDataPath: true,
           showBanner: unityShowBanner,
-          devicePixelRatio: embedded ? Math.min(window.devicePixelRatio || 1, 2) : window.devicePixelRatio || 1,
+          devicePixelRatio: embedded ? embeddedRenderPixelRatio() : window.devicePixelRatio || 1,
           cacheControl: function () {
             return 'no-store';
           },
@@ -398,7 +407,7 @@
               postUnityMessage('sceneLoaded', {
                 mode: 'webgl',
                 productName: 'UAV_USV_WebGL',
-                buildId: 'unity-f24959c-platform-v4',
+                buildId: 'unity-20260804-175129-camera-v5',
               });
               fullscreenButton.onclick = function () {
                 unityInstance.SetFullscreen(1);

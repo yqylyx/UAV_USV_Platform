@@ -25,12 +25,20 @@ namespace UavUsv.PlatformTools
         private Transform lighthouse;
         private ObservationMode mode;
         private float desiredFieldOfView = 52f;
+        private const float MinZoomScale = .42f;
+        private const float MaxZoomScale = 2.25f;
+        private float zoomScale = 1f;
+        private float orbitYaw;
+        private float orbitPitch;
+        private Vector3 panOffset;
+        private float lastPrimaryClickAt = -10f;
 
         public string CurrentDeviceCode { get; private set; } = string.Empty;
         public string CurrentModeName => ModeName(mode);
         public string CurrentProfileName => selectedSubject && IsUav(selectedSubject)
             ? "uav-overwatch"
             : selectedSubject ? "usv-chase" : CurrentModeName;
+        public float ZoomPercent => Mathf.Round(zoomScale * 100f);
 
         public void Initialize(Camera camera, UavUsv.ChaseCamera chase)
         {
@@ -107,6 +115,7 @@ namespace UavUsv.PlatformTools
         public void SetOverview()
         {
             mode = ObservationMode.Overview;
+            ResetInteraction();
             ActivateObserver();
         }
 
@@ -114,7 +123,39 @@ namespace UavUsv.PlatformTools
         {
             RefreshSceneTargets();
             mode = ObservationMode.Lighthouse;
+            ResetInteraction();
             ActivateObserver();
+        }
+
+        public void FitAll()
+        {
+            mode = ObservationMode.Overview;
+            ResetInteraction();
+            ActivateObserver();
+        }
+
+        public void AdjustZoom(float steps)
+        {
+            if (Mathf.Abs(steps) < .001f)
+                return;
+            zoomScale = Mathf.Clamp(
+                zoomScale * Mathf.Exp(-steps * .115f),
+                MinZoomScale,
+                MaxZoomScale
+            );
+        }
+
+        public void SetZoomPercent(float percent)
+        {
+            zoomScale = Mathf.Clamp(percent * .01f, MinZoomScale, MaxZoomScale);
+        }
+
+        public void ResetInteraction()
+        {
+            zoomScale = 1f;
+            orbitYaw = 0f;
+            orbitPitch = 0f;
+            panOffset = Vector3.zero;
         }
 
         public void ReleaseToOriginalCamera()
@@ -166,6 +207,7 @@ namespace UavUsv.PlatformTools
             if (mode == ObservationMode.None || !observedCamera)
                 return;
 
+            HandleInteractiveInput();
             RefreshSceneTargets();
             Vector3 desiredPosition;
             Vector3 focusPoint;
@@ -176,6 +218,8 @@ namespace UavUsv.PlatformTools
                 CalculateLighthouseView(out desiredPosition, out focusPoint);
             else
                 CalculateOverview(out desiredPosition, out focusPoint);
+
+            ApplyInteractiveTransform(ref desiredPosition, ref focusPoint);
 
             desiredPosition.y = Mathf.Max(desiredPosition.y, 2.4f);
             Quaternion desiredRotation = Quaternion.LookRotation(
@@ -194,6 +238,58 @@ namespace UavUsv.PlatformTools
             );
         }
 
+        private void HandleInteractiveInput()
+        {
+            float wheel = Input.mouseScrollDelta.y;
+            if (Mathf.Abs(wheel) > .001f)
+                AdjustZoom(wheel);
+
+            if (Input.GetMouseButton(1))
+            {
+                orbitYaw += Input.GetAxis("Mouse X") * 2.2f;
+                orbitPitch = Mathf.Clamp(
+                    orbitPitch - Input.GetAxis("Mouse Y") * 1.8f,
+                    -28f,
+                    38f
+                );
+            }
+
+            bool panning = Input.GetMouseButton(2) ||
+                           (Input.GetKey(KeyCode.LeftShift) && Input.GetMouseButton(0));
+            if (panning)
+            {
+                float distance = Mathf.Max(8f, Vector3.Distance(transform.position, panOffset));
+                float scale = Mathf.Clamp(distance * .0018f, .025f, .34f);
+                Vector3 right = transform.right;
+                Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+                panOffset += (-right * Input.GetAxis("Mouse X") -
+                              forward * Input.GetAxis("Mouse Y")) * scale;
+                panOffset.y = 0f;
+            }
+
+            if (Input.GetMouseButtonDown(0) && !Input.GetKey(KeyCode.LeftShift))
+            {
+                float now = Time.unscaledTime;
+                if (now - lastPrimaryClickAt <= .32f)
+                    FitAll();
+                lastPrimaryClickAt = now;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Home))
+                FitAll();
+        }
+
+        private void ApplyInteractiveTransform(ref Vector3 position, ref Vector3 focus)
+        {
+            focus += panOffset;
+            position += panOffset;
+            Vector3 offset = position - focus;
+            float distance = Mathf.Max(4f, offset.magnitude) * zoomScale;
+            Quaternion rotation = Quaternion.Euler(orbitPitch, orbitYaw, 0f);
+            Vector3 direction = rotation * offset.normalized;
+            position = focus + direction * distance;
+        }
+
         private void CalculateDeviceView(out Vector3 position, out Vector3 focus)
         {
             Vector3 groupCenter;
@@ -202,22 +298,92 @@ namespace UavUsv.PlatformTools
 
             Vector3 forward = DeviceForward(selectedSubject);
             Vector3 subject = selectedSubject.position;
+            GetVisualMetrics(
+                selectedSubject,
+                out float visualRadius,
+                out float visualTop,
+                out float visualCenterHeight
+            );
             if (IsUav(selectedSubject))
             {
-                float height = Mathf.Clamp(25f + spread * .22f, 25f, 48f);
-                float back = Mathf.Clamp(6f + spread * .055f, 6f, 13f);
+                float height = Mathf.Clamp(
+                    Mathf.Max(25f + spread * .22f, visualTop + 18f),
+                    25f,
+                    60f
+                );
+                float back = Mathf.Clamp(
+                    Mathf.Max(8f + spread * .055f, visualRadius * 2.1f),
+                    8f,
+                    24f
+                );
                 position = subject - forward * back + Vector3.up * height;
-                focus = Vector3.Lerp(subject, groupCenter, .72f) + Vector3.up * .8f;
+                focus = Vector3.Lerp(subject, groupCenter, .72f) +
+                    Vector3.up * Mathf.Max(1.2f, visualCenterHeight);
                 desiredFieldOfView = Mathf.Clamp(55f + spread * .16f, 55f, 72f);
                 return;
             }
 
-            float distance = Mathf.Clamp(10.5f + spread * .31f, 10.5f, 34f);
-            float heightUsv = Mathf.Clamp(4.6f + spread * .095f, 4.6f, 13f);
-            Vector3 subjectLook = subject + forward * 5.5f + Vector3.up * 1.6f;
+            float distance = Mathf.Clamp(
+                Mathf.Max(14f + spread * .31f, visualRadius * 2.35f),
+                14f,
+                48f
+            );
+            float heightUsv = Mathf.Clamp(
+                Mathf.Max(7f + spread * .095f, visualTop + 4f),
+                7f,
+                24f
+            );
+            Vector3 subjectLook = subject +
+                forward * Mathf.Max(5.5f, visualRadius) +
+                Vector3.up * Mathf.Max(2.4f, visualCenterHeight);
             position = subject - forward * distance + Vector3.up * heightUsv;
-            focus = Vector3.Lerp(subjectLook, groupCenter + Vector3.up * 1.4f, .56f);
+            focus = Vector3.Lerp(
+                subjectLook,
+                groupCenter + Vector3.up * Mathf.Max(2.2f, visualCenterHeight),
+                .56f
+            );
             desiredFieldOfView = Mathf.Clamp(52f + spread * .2f, 52f, 72f);
+        }
+
+        private static void GetVisualMetrics(
+            Transform subject,
+            out float radius,
+            out float top,
+            out float centerHeight)
+        {
+            radius = 0f;
+            top = 0f;
+            centerHeight = 0f;
+            if (!subject)
+                return;
+
+            Renderer[] renderers = subject.GetComponentsInChildren<Renderer>(false);
+            Bounds bounds = default;
+            bool found = false;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (!renderer || !renderer.enabled ||
+                    !renderer.gameObject.activeInHierarchy)
+                    continue;
+
+                if (!found)
+                {
+                    bounds = renderer.bounds;
+                    found = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(renderer.bounds);
+                }
+            }
+
+            if (!found)
+                return;
+
+            radius = Mathf.Max(bounds.extents.x, bounds.extents.z);
+            top = Mathf.Max(0f, bounds.max.y - subject.position.y);
+            centerHeight = Mathf.Max(0f, bounds.center.y - subject.position.y);
         }
 
         private void CalculateOverview(out Vector3 position, out Vector3 focus)
@@ -225,11 +391,59 @@ namespace UavUsv.PlatformTools
             Vector3 groupCenter;
             float spread;
             CalculateGroupFrame(out groupCenter, out spread);
-            float distance = Mathf.Clamp(58f + spread * .9f, 58f, 220f);
-            Vector3 offset = Quaternion.Euler(58f, -35f, 0f) * Vector3.back * distance;
             focus = groupCenter + Vector3.up * 1.2f;
-            position = focus + offset;
-            desiredFieldOfView = 54f;
+            desiredFieldOfView = 58f;
+            Vector3 viewOffsetDirection =
+                (Quaternion.Euler(62f, -35f, 0f) * Vector3.back).normalized;
+            float distance = CalculateOverviewDistance(
+                focus,
+                viewOffsetDirection,
+                spread,
+                desiredFieldOfView
+            );
+            position = focus + viewOffsetDirection * distance;
+        }
+
+        private float CalculateOverviewDistance(
+            Vector3 focus,
+            Vector3 viewOffsetDirection,
+            float spread,
+            float verticalFieldOfView)
+        {
+            float aspect = observedCamera
+                ? Mathf.Max(.75f, observedCamera.aspect)
+                : 16f / 9f;
+            float halfVertical = verticalFieldOfView * .5f * Mathf.Deg2Rad;
+            float tanVertical = Mathf.Max(.25f, Mathf.Tan(halfVertical));
+            float tanHorizontal = Mathf.Max(.25f, tanVertical * aspect);
+            Quaternion viewRotation = Quaternion.LookRotation(
+                -viewOffsetDirection,
+                Vector3.up
+            );
+            Quaternion inverseView = Quaternion.Inverse(viewRotation);
+            float requiredDistance = Mathf.Max(110f, 78f + spread * 1.65f);
+
+            for (int i = 0; i < sceneTargets.Count; i++)
+            {
+                Transform item = sceneTargets[i];
+                if (!item)
+                    continue;
+
+                Vector3 local = inverseView * (item.position - focus);
+                GetVisualMetrics(item, out float radius, out float top, out _);
+                float padding = Mathf.Max(7f, radius * 1.35f, top * .8f);
+                float verticalDistance =
+                    (Mathf.Abs(local.y) + padding) / tanVertical - local.z;
+                float horizontalDistance =
+                    (Mathf.Abs(local.x) + padding) / tanHorizontal - local.z;
+                requiredDistance = Mathf.Max(
+                    requiredDistance,
+                    verticalDistance,
+                    horizontalDistance
+                );
+            }
+
+            return Mathf.Clamp(requiredDistance * 1.18f, 110f, 560f);
         }
 
         private void CalculateLighthouseView(out Vector3 position, out Vector3 focus)

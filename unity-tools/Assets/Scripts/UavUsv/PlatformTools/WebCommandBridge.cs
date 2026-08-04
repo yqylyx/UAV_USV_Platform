@@ -29,6 +29,8 @@ namespace UavUsv.PlatformTools
             public string deviceCode;
             public string mode;
             public string command;
+            public string action;
+            public float value;
             public bool visible;
         }
 
@@ -51,6 +53,7 @@ namespace UavUsv.PlatformTools
             public string status;
             public string source = "unity-webgl";
             public bool visible;
+            public float zoomPercent;
         }
 
         private WebDeviceObserverCamera observer;
@@ -130,7 +133,54 @@ namespace UavUsv.PlatformTools
                 case "toggletrajectory":
                     SetTrajectoryVisibility(message.requestId, payload.visible);
                     break;
+                case "cameracontrol":
+                    ControlCamera(message.requestId, payload.action, payload.value);
+                    break;
             }
+        }
+
+        private void ControlCamera(string requestId, string rawAction, float value)
+        {
+            string action = (rawAction ?? string.Empty).Trim().ToLowerInvariant();
+            bool success = true;
+            string status;
+            switch (action)
+            {
+                case "fitall":
+                case "reset":
+                    observer.FitAll();
+                    status = "Global view fitted to the complete fleet";
+                    break;
+                case "zoomdelta":
+                    observer.AdjustZoom(value);
+                    status = "Camera zoom adjusted";
+                    break;
+                case "setzoom":
+                    observer.SetZoomPercent(value);
+                    status = "Camera zoom set";
+                    break;
+                default:
+                    success = false;
+                    status = "Unknown camera action: " + rawAction;
+                    break;
+            }
+
+            var response = new ResponseEnvelope
+            {
+                type = "cameraAdjusted",
+                requestId = requestId ?? string.Empty,
+                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                payload = new ResponsePayload
+                {
+                    success = success,
+                    deviceCode = observer.CurrentDeviceCode,
+                    mode = observer.CurrentModeName,
+                    profile = observer.CurrentProfileName,
+                    status = status,
+                    zoomPercent = observer.ZoomPercent
+                }
+            };
+            Emit(JsonUtility.ToJson(response));
         }
 
         private bool EnsureObserver()
