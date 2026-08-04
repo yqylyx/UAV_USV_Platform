@@ -5,8 +5,11 @@ import com.uavusv.platform.module.sensor.dto.RadarItemResponse;
 import com.uavusv.platform.module.sensor.dto.RadarOverviewResponse;
 import org.springframework.stereotype.Service;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,7 +18,7 @@ import java.util.Map;
 @Service
 public class SensorRuntimeService {
 
-    private static final long FRESH_RADAR_MILLIS = 5_000;
+    private static final long FRESH_RADAR_MILLIS = 30_000;
 
     private final Clock clock;
     private final Map<String, RadarState> radars = new LinkedHashMap<>();
@@ -43,10 +46,11 @@ public class SensorRuntimeService {
     public synchronized void observePointCloudFrame(JsonNode frame) {
         JsonNode data = frame.has("data") ? frame.path("data") : frame;
         String streamId = text(data, "stream_id", text(data, "streamId", "pointcloud"));
-        String deviceId = text(data, "vehicle_id", text(data, "vehicleId", streamId));
+        String deviceId = text(data, "vehicle_id",
+                text(data, "vehicleId", text(data, "sensor_id", streamId)));
         long now = clock.millis();
         long timestampMs = timestampMs(data, timestampMs(frame, now));
-        List<RadarItemResponse> points = parsePointCloud(data.path("xyz"), streamId, deviceId, timestampMs);
+        List<RadarItemResponse> points = parsePointCloud(data, streamId, deviceId, timestampMs);
         radars.put(deviceId, new RadarState(now, timestampMs, List.of(), points));
     }
 
@@ -111,16 +115,40 @@ public class SensorRuntimeService {
         return items;
     }
 
-    private List<RadarItemResponse> parsePointCloud(JsonNode xyz, String streamId, String deviceId, long timestampMs) {
-        if (!xyz.isArray()) {
-            return List.of();
+    private List<RadarItemResponse> parsePointCloud(JsonNode data, String streamId, String deviceId, long timestampMs) {
+        JsonNode xyz = data.path("xyz");
+        if (xyz.isArray()) {
+            List<Double> values = new ArrayList<>(xyz.size());
+            xyz.forEach(value -> values.add(value.asDouble()));
+            return pointCloudItems(values, streamId, deviceId, timestampMs);
         }
+
+        String encoded = data.path("data_base64").asText("");
+        if (encoded.isBlank()) return List.of();
+        if (!"xyz_f32_le_base64".equals(data.path("encoding").asText())) {
+            throw new IllegalArgumentException("Unsupported lidar encoding");
+        }
+        int pointCount = data.path("point_count").asInt(-1);
+        int stride = data.path("point_stride_bytes").asInt(-1);
+        byte[] bytes = Base64.getDecoder().decode(encoded);
+        if (pointCount < 0 || stride != 12 || bytes.length != pointCount * stride) {
+            throw new IllegalArgumentException("Invalid lidar frame length");
+        }
+        ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+        List<Double> values = new ArrayList<>(pointCount * 3);
+        while (buffer.hasRemaining()) values.add((double) buffer.getFloat());
+        return pointCloudItems(values, streamId, deviceId, timestampMs);
+    }
+
+    private List<RadarItemResponse> pointCloudItems(
+            List<Double> xyz, String streamId, String deviceId, long timestampMs
+    ) {
         List<RadarItemResponse> points = new ArrayList<>();
         int pointCount = xyz.size() / 3;
         for (int index = 0; index < pointCount; index++) {
-            double x = xyz.get(index * 3).asDouble();
-            double y = xyz.get(index * 3 + 1).asDouble();
-            double z = xyz.get(index * 3 + 2).asDouble();
+            double x = xyz.get(index * 3);
+            double y = xyz.get(index * 3 + 1);
+            double z = xyz.get(index * 3 + 2);
             points.add(new RadarItemResponse(
                     streamId + "-" + (index + 1),
                     deviceId,

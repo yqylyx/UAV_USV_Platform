@@ -37,6 +37,7 @@ declare module 'vue' {
     MissionListPanel: typeof import('./components/mission/MissionListPanel.vue')['default']
     MissionStartCheckDialog: typeof import('./components/mission/MissionStartCheckDialog.vue')['default']
     MissionTrajectoryMap: typeof import('./components/mission/MissionTrajectoryMap.vue')['default']
+    PointCloudCanvas: typeof import('./components/sensor/PointCloudCanvas.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     UnifiedVehicleControl: typeof import('./components/control/UnifiedVehicleControl.vue')['default']

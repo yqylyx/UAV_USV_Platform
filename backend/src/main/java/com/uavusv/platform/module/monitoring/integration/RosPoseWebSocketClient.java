@@ -224,7 +224,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
             sensorRuntimeService.observeRadarFrame(root.has("frame") ? root.path("frame") : root);
             return;
         }
-        if ("pointcloud_frame".equals(type)) {
+        if ("pointcloud_frame".equals(type) || "lidar_frame".equals(type)) {
             sensorRuntimeService.observePointCloudFrame(root.has("frame") ? root.path("frame") : root);
             return;
         }

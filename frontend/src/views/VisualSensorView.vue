@@ -13,6 +13,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import PointCloudCanvas from '@/components/sensor/PointCloudCanvas.vue'
 import { useRadarSensorStore } from '@/stores/radarSensor'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useVisualSensorStore } from '@/stores/visualSensor'
@@ -45,26 +46,9 @@ const radarOverview = computed<RadarOverview>(() => radarStore.overview ?? {
   items: [],
 })
 const radarItems = computed(() => radarOverview.value.items.slice(0, 6))
-const pointCloudItems = computed(() =>
-  radarOverview.value.items
-    .filter((item) => item.kind === 'POINTCLOUD' && item.x != null && item.y != null)
-    .slice(0, 240),
-)
-const radarPlotPoints = computed(() => {
-  const points = pointCloudItems.value
-  if (points.length === 0) return []
-  const maxAbs = Math.max(
-    1,
-    ...points.flatMap((item) => [Math.abs(item.x ?? 0), Math.abs(item.y ?? 0)]),
-  )
-  const scale = 44 / maxAbs
-  return points.map((item) => ({
-    id: item.id,
-    cx: 50 + (item.y ?? 0) * scale,
-    cy: 50 - (item.x ?? 0) * scale,
-    range: item.range,
-  }))
-})
+const hasPointCloud = computed(() => radarOverview.value.items.some(
+  (item) => item.kind === 'POINTCLOUD' && item.x != null && item.y != null,
+))
 const focusedSensor = computed(() =>
   sensors.value.find((sensor) => sensor.cameraId === overview.value.focusedCameraId)
   ?? sensors.value[0],
@@ -358,25 +342,8 @@ onBeforeUnmount(() => {
           </article>
         </div>
         <div class="radar-plot" aria-label="2D pointcloud overview">
-          <svg viewBox="0 0 100 100" role="img">
-            <circle class="plot-ring" cx="50" cy="50" r="44" />
-            <circle class="plot-ring muted" cx="50" cy="50" r="29" />
-            <circle class="plot-ring muted" cx="50" cy="50" r="14" />
-            <line class="plot-axis" x1="50" y1="6" x2="50" y2="94" />
-            <line class="plot-axis" x1="6" y1="50" x2="94" y2="50" />
-            <circle class="plot-origin" cx="50" cy="50" r="2.4" />
-            <circle
-              v-for="point in radarPlotPoints"
-              :key="point.id"
-              class="plot-point"
-              :cx="point.cx"
-              :cy="point.cy"
-              r="1.35"
-            >
-              <title>{{ point.id }} {{ formatRadarRange(point.range) }}</title>
-            </circle>
-          </svg>
-          <div v-if="radarPlotPoints.length === 0" class="radar-plot-empty">
+          <PointCloudCanvas :items="radarOverview.items" />
+          <div v-if="!hasPointCloud" class="radar-plot-empty">
             Waiting for pointcloud_frame
           </div>
         </div>
@@ -692,32 +659,6 @@ onBeforeUnmount(() => {
     linear-gradient(90deg, rgba(73, 160, 170, .06) 1px, transparent 1px),
     #04161d;
   background-size: 24px 24px;
-}
-
-.radar-plot svg {
-  width: 100%;
-  height: 100%;
-}
-
-.plot-ring,
-.plot-axis {
-  fill: none;
-  stroke: rgba(117, 203, 205, .22);
-  stroke-width: .5;
-}
-
-.plot-ring.muted {
-  stroke: rgba(117, 203, 205, .12);
-}
-
-.plot-origin {
-  fill: #65ddcf;
-  filter: drop-shadow(0 0 5px rgba(101, 221, 207, .8));
-}
-
-.plot-point {
-  fill: #5ce7b7;
-  opacity: .82;
 }
 
 .radar-plot-empty {

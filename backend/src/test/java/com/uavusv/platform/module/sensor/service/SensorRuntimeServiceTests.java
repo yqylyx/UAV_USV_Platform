@@ -75,4 +75,29 @@ class SensorRuntimeServiceTests {
         assertThat(overview.items().get(0).z()).isEqualTo(0.45);
         assertThat(overview.items().get(0).timestampMs()).isEqualTo(1784692800250L);
     }
+
+    @Test
+    void decodesBase64LittleEndianLidarFrame() throws Exception {
+        SensorRuntimeService service = new SensorRuntimeService();
+        service.observePointCloudFrame(objectMapper.readTree("""
+                {
+                  "type": "lidar_frame",
+                  "sensor_id": "usv_01",
+                  "encoding": "xyz_f32_le_base64",
+                  "point_stride_bytes": 12,
+                  "point_count": 2,
+                  "timestamp_ms": 1785830414555,
+                  "data_base64": "AACgPwAAIMAAAEA/AACQQAAAqEAAAIC/"
+                }
+                """));
+
+        var overview = service.radarOverview();
+
+        assertThat(overview.detectionCount()).isEqualTo(2);
+        assertThat(overview.items().get(0).deviceId()).isEqualTo("usv_01");
+        assertThat(overview.items().get(0).x()).isEqualTo(1.25);
+        assertThat(overview.items().get(0).y()).isEqualTo(-2.5);
+        assertThat(overview.items().get(0).z()).isEqualTo(0.75);
+        assertThat(overview.items().get(1).x()).isEqualTo(4.5);
+    }
 }
