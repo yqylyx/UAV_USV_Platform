@@ -39,6 +39,8 @@ interface UnityBridgeChannel {
   commandKeys: Record<string, string>
   scenarioRunId: number | null
   scenarioAlgorithmCode: string
+  scenarioReadyRunId: number | null
+  scenarioReadyAlgorithmCode: string
   appliedRunId: number | null
   appliedSequence: number
 }
@@ -70,6 +72,8 @@ function createChannel(): UnityBridgeChannel {
     commandKeys: {},
     scenarioRunId: null,
     scenarioAlgorithmCode: '',
+    scenarioReadyRunId: null,
+    scenarioReadyAlgorithmCode: '',
     appliedRunId: null,
     appliedSequence: 0,
   }
@@ -132,6 +136,8 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
         channel.commandKeys = {}
         channel.scenarioRunId = null
         channel.scenarioAlgorithmCode = ''
+        channel.scenarioReadyRunId = null
+        channel.scenarioReadyAlgorithmCode = ''
         channel.appliedRunId = null
         channel.appliedSequence = 0
         rejectPendingCommandAcks(scope, 'Unity WebGL 连接已断开')
@@ -151,6 +157,8 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       channel.commandKeys = {}
       channel.scenarioRunId = null
       channel.scenarioAlgorithmCode = ''
+      channel.scenarioReadyRunId = null
+      channel.scenarioReadyAlgorithmCode = ''
       channel.appliedRunId = null
       channel.appliedSequence = 0
       rejectPendingCommandAcks(scope, message)
@@ -211,8 +219,11 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
     ) {
       const channel = this.channels[scope]
       const runId = Number(payload.runId)
-      if (Number.isFinite(runId)) channel.scenarioRunId = runId
-      channel.scenarioAlgorithmCode = String(
+      if (Number.isFinite(runId)) {
+        channel.scenarioRunId = runId
+        channel.scenarioReadyRunId = runId
+      }
+      channel.scenarioReadyAlgorithmCode = String(
         payload.algorithmCode ?? channel.scenarioAlgorithmCode,
       )
       channel.appliedRunId = null
@@ -248,6 +259,8 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
         const runId = Number(payload.runId)
         channel.scenarioRunId = Number.isFinite(runId) ? runId : null
         channel.scenarioAlgorithmCode = String(payload.algorithmCode ?? '')
+        channel.scenarioReadyRunId = null
+        channel.scenarioReadyAlgorithmCode = ''
         channel.appliedRunId = null
         channel.appliedSequence = 0
         channel.outbox = channel.outbox.filter(

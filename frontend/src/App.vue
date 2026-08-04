@@ -24,7 +24,7 @@ const unityViewportStore = useUnityViewportStore()
     :runtime-instance-id="unityViewportStore.missionInstanceId"
     :mission-id="unityViewportStore.missionId || undefined"
     :run-id="unityViewportStore.runId || undefined"
-    :active="unityViewportStore.target === 'mission-execution'"
+    :active="route.name === 'missions' && unityViewportStore.target === 'mission-execution'"
     :layer="95"
   />
   <RouterView v-slot="{ Component }">

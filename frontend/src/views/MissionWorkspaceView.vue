@@ -112,6 +112,16 @@ const unityChannel = computed(() => unityBridgeStore.channels.MISSION_CENTER)
 const trajectoryFrame = computed(() => trajectoryStore.channels.MISSION_CENTER.frame)
 const currentRunId = computed(() => detail.value?.currentRun?.id ?? null)
 const activeAlgorithmCode = computed(() => detail.value?.mission.algorithmCode ?? '')
+const missionSceneReady = computed(() => {
+  const runId = currentRunId.value
+  if (loading.value || runId === null) return false
+  const requestedAlgorithm = activeAlgorithmCode.value.trim().toUpperCase()
+  const readyAlgorithm = unityChannel.value.scenarioReadyAlgorithmCode.trim().toUpperCase()
+  return unityChannel.value.connected
+    && unityChannel.value.platformReady
+    && unityChannel.value.scenarioReadyRunId === runId
+    && readyAlgorithm === requestedAlgorithm
+})
 const activeMission = computed(() => detail.value?.mission ?? null)
 const activeRun = computed(() => ['RUNNING', 'PAUSED'].includes(activeMission.value?.status ?? ''))
 const rosOnline = computed(() =>
@@ -731,7 +741,8 @@ function changeMode(next: WorkspaceMode) {
     unityViewportStore.park()
     return
   }
-  unityViewportStore.show('mission-execution')
+  if (missionSceneReady.value) unityViewportStore.show('mission-execution')
+  else unityViewportStore.park()
   if (next === 'vision') {
     visualDisplayMode.value = selectedDeviceCode.value ? 'focus' : 'grid'
     sendMissionVisualSubscription(true, visualDisplayMode.value)
@@ -782,6 +793,16 @@ watch(
     () => unityViewportStore.missionInstanceId,
   ],
   ensureMissionScenarioLoaded,
+  { immediate: true },
+)
+
+watch(
+  [mode, missionSceneReady],
+  ([currentMode, ready]) => {
+    if (currentMode !== '3d' && currentMode !== 'vision') return
+    if (ready) unityViewportStore.show('mission-execution')
+    else unityViewportStore.park()
+  },
   { immediate: true },
 )
 
@@ -839,6 +860,11 @@ onBeforeUnmount(() => {
     </template>
 
     <section class="mission-workspace" :aria-busy="loading">
+      <div v-if="loading" class="mission-entry-cover" role="status">
+        <span class="mission-loading-mark" />
+        <strong>任务中心加载中</strong>
+        <small>正在同步算法、任务状态与 Unity 运行环境</small>
+      </div>
       <header class="algorithm-toolbar">
         <div class="algorithm-picker">
           <label for="mission-algorithm">当前算法</label>
@@ -923,7 +949,12 @@ onBeforeUnmount(() => {
             class="unity-viewport"
             data-unity-runtime-viewport="mission-execution"
           >
-            <span class="unity-badge"><i />UNITY WEBGL ONLINE</span>
+            <span v-if="missionSceneReady" class="unity-badge"><i />UNITY WEBGL ONLINE</span>
+            <div v-else class="mission-scene-cover" role="status">
+              <Box :size="34" />
+              <strong>{{ currentRunId ? '正在同步当前任务场景' : '等待任务 RUN' }}</strong>
+              <span>{{ currentRunId ? 'Unity 确认当前算法与 RUN 后将自动显示 3D 画面' : '开始任务后可查看对应的 3D Unity 过程' }}</span>
+            </div>
           </div>
           <section v-else-if="mode === 'radar'" class="radar-panel">
             <header>
@@ -957,7 +988,12 @@ onBeforeUnmount(() => {
             class="unity-viewport vision"
             data-unity-runtime-viewport="mission-execution"
           >
-            <span class="unity-badge"><i />六路视觉 {{ missionVisualConnected ? 'LIVE' : 'CONNECTING' }}</span>
+            <span v-if="missionSceneReady" class="unity-badge"><i />六路视觉 {{ missionVisualConnected ? 'LIVE' : 'CONNECTING' }}</span>
+            <div v-else class="mission-scene-cover" role="status">
+              <Camera :size="34" />
+              <strong>正在同步当前任务视觉场景</strong>
+              <span>场景确认后将显示本次 RUN 的设备视角</span>
+            </div>
           </div>
           <div v-else class="visual-waiting">
             <Camera :size="38" />
@@ -1000,6 +1036,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .mission-workspace {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(clamp(560px, calc(100dvh - 300px), 900px), 1fr) auto;
   gap: 10px;
@@ -1008,6 +1045,39 @@ onBeforeUnmount(() => {
   min-height: calc(100dvh - 106px);
   margin: 0 auto;
   color: #dff5f3;
+}
+
+.mission-entry-cover {
+  position: absolute;
+  z-index: 110;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  min-height: 420px;
+  color: #dff8f5;
+  border: 1px solid rgba(74, 193, 202, .22);
+  border-radius: 8px;
+  background: rgba(2, 16, 23, .98);
+}
+
+.mission-entry-cover small,
+.mission-scene-cover span {
+  color: #789da2;
+}
+
+.mission-loading-mark {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(92, 218, 211, .2);
+  border-top-color: #5cdad3;
+  border-radius: 50%;
+  animation: mission-spin .8s linear infinite;
+}
+
+@keyframes mission-spin {
+  to { transform: rotate(360deg); }
 }
 
 .mission-health,
@@ -1262,6 +1332,24 @@ button:disabled {
 
 .unity-viewport.vision {
   background: #02090d;
+}
+
+.mission-scene-cover {
+  position: absolute;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  color: #dff8f5;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(25, 113, 122, .16), transparent 35%),
+    #03131b;
+}
+
+.mission-scene-cover svg {
+  color: #58d8d2;
 }
 
 .unity-badge {

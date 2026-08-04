@@ -48,6 +48,7 @@ const unityCommandState = ref('等待控制指令')
 const commandBusy = ref(false)
 const cameraCommandBusy = ref(false)
 const cameraZoomPercent = ref(100)
+const cameraToolsVisible = ref(false)
 let selectedDeviceSyncedToUnity = ''
 let overviewCameraInitialized = false
 const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
@@ -77,6 +78,16 @@ const cameraModes = [
 ]
 
 let trajectoryToggleTimer: number | null = null
+let cameraToolsTimer: number | null = null
+
+function revealCameraTools() {
+  cameraToolsVisible.value = true
+  if (cameraToolsTimer !== null) window.clearTimeout(cameraToolsTimer)
+  cameraToolsTimer = window.setTimeout(() => {
+    cameraToolsVisible.value = false
+    cameraToolsTimer = null
+  }, 3200)
+}
 
 function sendCameraControl(action: 'fitAll' | 'setZoom', value = 0) {
   if (!unityCameraReady.value) return
@@ -86,6 +97,7 @@ function sendCameraControl(action: 'fitAll' | 'setZoom', value = 0) {
 function fitUnityOverview() {
   cameraZoomPercent.value = 100
   selectedCameraMode.value = 'overview'
+  revealCameraTools()
   sendCameraControl('fitAll')
 }
 
@@ -94,6 +106,7 @@ function setUnityZoom(event: Event) {
   const value = Number(target.value)
   if (!Number.isFinite(value)) return
   cameraZoomPercent.value = value
+  revealCameraTools()
   sendCameraControl('setZoom', value)
 }
 
@@ -1020,10 +1033,17 @@ function handleUnityMessage(message: UnityMessage) {
   if (message.type === 'cameraAdjusted') {
     const zoom = Number(payload.zoomPercent)
     if (Number.isFinite(zoom)) cameraZoomPercent.value = Math.round(zoom)
+    revealCameraTools()
     const success = payload.success === true
     const status = String(payload.status ?? (success ? '相机观察范围已调整' : '相机调整失败'))
     unityCommandState.value = status
     if (!success) ElMessage.error(status)
+  }
+
+  if (message.type === 'cameraInteraction' && payload.status === 'wheel-zoom') {
+    const zoom = Number(payload.zoomPercent)
+    if (Number.isFinite(zoom)) cameraZoomPercent.value = Math.round(zoom)
+    revealCameraTools()
   }
 
   if (message.type === 'trajectoryVisibilityChanged') {
@@ -1077,6 +1097,7 @@ onBeforeUnmount(() => {
   if (unityViewportStore.target === 'dashboard') unityViewportStore.park()
   if (freshnessTimer !== null) window.clearInterval(freshnessTimer)
   if (trajectoryToggleTimer !== null) window.clearTimeout(trajectoryToggleTimer)
+  if (cameraToolsTimer !== null) window.clearTimeout(cameraToolsTimer)
   stopUnityHeartbeat()
   monitoringStore.disconnectEvents()
 })
@@ -1222,8 +1243,12 @@ watch(
             </div>
           </div>
 
-          <div class="overview-camera-tools" aria-label="Unity 相机缩放控制">
-            <span>滚轮缩放 · 右键旋转 · Shift 拖动平移</span>
+          <div
+            class="overview-camera-tools"
+            :class="{ visible: cameraToolsVisible }"
+            aria-label="Unity 相机缩放控制"
+          >
+            <span>滚轮缩放</span>
             <input
               :value="cameraZoomPercent"
               type="range"

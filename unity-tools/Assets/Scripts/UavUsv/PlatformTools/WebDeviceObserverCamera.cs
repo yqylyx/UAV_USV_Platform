@@ -242,7 +242,10 @@ namespace UavUsv.PlatformTools
         {
             float wheel = Input.mouseScrollDelta.y;
             if (Mathf.Abs(wheel) > .001f)
+            {
                 AdjustZoom(wheel);
+                WebCommandBridge.PublishCameraInteraction(ZoomPercent);
+            }
 
             if (Input.GetMouseButton(1))
             {

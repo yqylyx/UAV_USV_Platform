@@ -3807,9 +3807,9 @@ h2 {
 
 .overview-camera-tools {
   position: absolute;
-  right: 16px;
-  bottom: 82px;
-  z-index: 40;
+  right: 12px;
+  bottom: 12px;
+  z-index: 60;
   display: flex;
   min-height: 36px;
   align-items: center;
@@ -3822,6 +3822,19 @@ h2 {
   border-radius: 7px;
   box-shadow: 0 8px 24px rgba(0, 8, 14, 0.38);
   backdrop-filter: blur(10px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s;
+}
+
+.overview-camera-tools.visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition-delay: 0s;
 }
 
 .overview-camera-tools input[type='range'] {

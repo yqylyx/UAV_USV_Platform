@@ -89,6 +89,24 @@ namespace UavUsv.PlatformTools
         }
 
         [Preserve]
+        public static void PublishCameraInteraction(float zoomPercent)
+        {
+            var response = new ResponseEnvelope
+            {
+                type = "cameraInteraction",
+                requestId = string.Empty,
+                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                payload = new ResponsePayload
+                {
+                    success = true,
+                    status = "wheel-zoom",
+                    zoomPercent = zoomPercent
+                }
+            };
+            Emit(JsonUtility.ToJson(response));
+        }
+
+        [Preserve]
         public void ReceiveFromVue(string json)
         {
             VueMessage message;
