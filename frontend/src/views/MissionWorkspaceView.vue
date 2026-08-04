@@ -20,7 +20,6 @@ import {
   Play,
   Radio,
   Settings2,
-  Square,
   XOctagon,
 } from '@lucide/vue'
 
@@ -147,9 +146,8 @@ const statusLabel = computed(() => {
 })
 const primaryActionLabel = computed(() => {
   if (busy.value) return '处理中'
-  if (activeRun.value && selectedAlgorithmCode.value !== activeAlgorithmCode.value) return '切换并执行'
-  if (activeRun.value) return '重新执行'
-  return '开始任务'
+  if (activeRun.value) return '运行中'
+  return '启动'
 })
 const recentEvents = computed(() => detail.value?.events.slice(0, 3) ?? [])
 const missionVisualStats = computed(() => visualSensorStore.streamStatsFor('MISSION_CENTER'))
@@ -452,6 +450,32 @@ function startAlgorithmPolling(forceRunning = false) {
   algorithmPollTimer = window.setInterval(() => void pollAlgorithmFrames(), 100)
 }
 
+function expectedStatusForAction(
+  action: 'pause' | 'resume' | 'complete' | 'cancel',
+): MissionDetail['mission']['status'] {
+  return action === 'pause'
+    ? 'PAUSED'
+    : action === 'resume'
+      ? 'RUNNING'
+      : action === 'complete'
+        ? 'COMPLETED'
+        : 'CANCELLED'
+}
+
+async function refreshUntilStatus(expectedStatus: MissionDetail['mission']['status']) {
+  const missionId = detail.value?.mission.id
+  if (!missionId) return
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const latest = await fetchMission(missionId)
+    detail.value = latest
+    if (latest.mission.status === expectedStatus) {
+      await missionStore.refresh({ page: missionStore.page, size: missionStore.size })
+      return
+    }
+    await new Promise(resolve => window.setTimeout(resolve, 300))
+  }
+}
+
 async function loadMissionWorkspace(mission: Mission, requestedRunId?: number | null) {
   stopAlgorithmPolling()
   const loaded = await fetchMission(mission.id)
@@ -589,6 +613,21 @@ async function applyMissionAction(
       sessionStore.stop()
       stopAlgorithmPolling()
     }
+    const expectedStatus = expectedStatusForAction(action)
+    detail.value = {
+      ...detail.value,
+      mission: {
+        ...detail.value.mission,
+        status: expectedStatus as typeof detail.value.mission.status,
+      },
+      currentRun: detail.value.currentRun
+        ? {
+            ...detail.value.currentRun,
+            status: expectedStatus as typeof detail.value.currentRun.status,
+          }
+        : null,
+    }
+    void refreshUntilStatus(expectedStatus as typeof detail.value.mission.status).catch(() => undefined)
     ElMessage.success(
       action === 'pause'
         ? '任务已暂停'
@@ -889,7 +928,7 @@ onBeforeUnmount(() => {
           <span>{{ sceneScale }}</span>
           <em :class="activeMission?.status.toLowerCase()">{{ statusLabel }}</em>
         </div>
-        <button class="primary-button" type="button" :disabled="busy || !currentAlgorithm" @click="startSelectedAlgorithm">
+        <button class="primary-button" type="button" :disabled="busy || !currentAlgorithm || !!activeRun" @click="startSelectedAlgorithm">
           <Play :size="17" />{{ primaryActionLabel }}
         </button>
       </header>
@@ -915,9 +954,6 @@ onBeforeUnmount(() => {
               <Play v-if="activeMission?.status === 'PAUSED'" :size="15" />
               <Pause v-else :size="15" />
               {{ activeMission?.status === 'PAUSED' ? '继续' : '暂停' }}
-            </button>
-            <button :disabled="busy || !activeRun" @click="applyMissionAction('complete')">
-              <Square :size="15" />完成
             </button>
             <button class="danger" :disabled="busy || !activeRun" @click="applyMissionAction('cancel')">
               <XOctagon :size="15" />终止

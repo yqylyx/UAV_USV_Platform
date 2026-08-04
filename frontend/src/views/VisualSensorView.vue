@@ -34,6 +34,7 @@ const sensors = computed(() => overview.value.sensors)
 const stats = computed(() => store.streamStats)
 const frameUrls = computed(() => store.channels.SYSTEM_OVERVIEW.frameUrls)
 const hasBackendFrames = computed(() => Object.keys(frameUrls.value).length > 0)
+const useRosFrames = computed(() => overview.value.gatewayConnected && hasBackendFrames.value)
 const radarOverview = computed<RadarOverview>(() => radarStore.overview ?? {
   connected: false,
   onlineCount: 0,
@@ -236,14 +237,14 @@ onBeforeUnmount(() => {
           :class="mode"
           :data-unity-runtime-viewport="activePanel === 'vision' ? 'visual-sensors-live' : undefined"
         >
-          <div v-if="!store.unityBridgeReady && !hasBackendFrames" class="runtime-placeholder">
+          <div v-if="!store.unityBridgeReady && !useRosFrames" class="runtime-placeholder">
             <Radio :size="34" />
             <strong>正在初始化 Unity 六路视觉</strong>
             <span>加载完成后将直接显示设备相机实时画面</span>
           </div>
 
           <img
-            v-if="mode === 'focus' && !streamOnline && focusedFrameUrl"
+            v-if="mode === 'focus' && useRosFrames && focusedFrameUrl"
             class="backend-focus-frame"
             :src="focusedFrameUrl"
             alt="ROS visual sensor frame"
@@ -259,7 +260,7 @@ onBeforeUnmount(() => {
               @click="selectSensor(sensor.cameraId, true)"
             >
               <img
-                v-if="!streamOnline && frameUrls[sensor.cameraId]"
+                v-if="useRosFrames && frameUrls[sensor.cameraId]"
                 class="backend-grid-frame"
                 :src="frameUrls[sensor.cameraId]"
                 alt="ROS visual sensor frame"
