@@ -9,12 +9,8 @@ import {
   watch,
 } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import {
-  Box,
-  Camera,
-  CircleCheck,
-  Clock3,
   Layers3,
   Pause,
   Play,
@@ -24,11 +20,8 @@ import {
 } from '@lucide/vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
-import PointCloudCanvas from '@/components/sensor/PointCloudCanvas.vue'
 import AlgorithmManagerDialog from '@/components/mission/AlgorithmManagerDialog.vue'
-import AlgorithmTrajectoryMap from '@/components/mission/AlgorithmTrajectoryMap.vue'
-import MissionEventDrawer from '@/components/mission/MissionEventDrawer.vue'
-import MissionTrajectoryMap from '@/components/mission/MissionTrajectoryMap.vue'
+import AlgorithmTrajectoryMap from '@/components/mission/CooperativeSituationHud.vue'
 import {
   controlAlgorithmRun,
   fetchAlgorithmFrames,
@@ -45,13 +38,12 @@ import {
 } from '@/api/mission'
 import type { MissionAction } from '@/api/mission'
 import { useMissionStore } from '@/stores/mission'
+import { useActiveExperimentStore } from '@/stores/activeExperiment'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
 import { useMonitoringStore } from '@/stores/monitoring'
-import { useRadarSensorStore } from '@/stores/radarSensor'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
-import { useVisualSensorStore } from '@/stores/visualSensor'
 import type {
   AlgorithmDefinition,
   AlgorithmRuntimeFrame,
@@ -59,51 +51,24 @@ import type {
   MissionDetail,
 } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
-import type { RadarOverview } from '@/types/sensor'
-import type { VisualSensorRuntimeContext } from '@/types/visualSensor'
-
-type WorkspaceMode = '2d' | '3d' | 'vision' | 'radar'
-type VisualDisplayMode = 'grid' | 'focus'
 
 const route = useRoute()
-const router = useRouter()
 const missionStore = useMissionStore()
+const activeExperimentStore = useActiveExperimentStore()
 const monitoringStore = useMonitoringStore()
-const radarStore = useRadarSensorStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const sessionStore = useMissionTrajectorySessionStore()
 const unityViewportStore = useUnityViewportStore()
-const visualSensorStore = useVisualSensorStore()
-let radarTimer: number | undefined
-
-const radarOverview = computed<RadarOverview>(() => radarStore.overview ?? {
-  connected: false,
-  onlineCount: 0,
-  totalCount: 0,
-  updatedAt: 0,
-  obstacleCount: 0,
-  detectionCount: 0,
-  nearestObstacleRange: null,
-  latestTargetId: '',
-  items: [],
-})
-const radarItems = computed(() => radarOverview.value.items.slice(0, 6))
-const hasPointCloud = computed(() => radarOverview.value.items.some(
-  item => item.kind === 'POINTCLOUD' && item.x != null && item.y != null,
-))
 
 const detail = ref<MissionDetail | null>(null)
 const algorithms = ref<AlgorithmDefinition[]>([])
 const selectedAlgorithmCode = ref('GB_SFLA_CS')
 const selectedDeviceCode = ref('')
-const mode = ref<WorkspaceMode>('2d')
-const visualDisplayMode = ref<VisualDisplayMode>('grid')
 const busy = ref(false)
 const loading = ref(true)
 const algorithmBusy = ref(false)
 const algorithmManagerVisible = ref(false)
-const eventVisible = ref(false)
 const algorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
 const algorithmPolling = ref(false)
 
@@ -111,16 +76,6 @@ const unityChannel = computed(() => unityBridgeStore.channels.MISSION_CENTER)
 const trajectoryFrame = computed(() => trajectoryStore.channels.MISSION_CENTER.frame)
 const currentRunId = computed(() => detail.value?.currentRun?.id ?? null)
 const activeAlgorithmCode = computed(() => detail.value?.mission.algorithmCode ?? '')
-const missionSceneReady = computed(() => {
-  const runId = currentRunId.value
-  if (loading.value || runId === null) return false
-  const requestedAlgorithm = activeAlgorithmCode.value.trim().toUpperCase()
-  const readyAlgorithm = unityChannel.value.scenarioReadyAlgorithmCode.trim().toUpperCase()
-  return unityChannel.value.connected
-    && unityChannel.value.platformReady
-    && unityChannel.value.scenarioReadyRunId === runId
-    && readyAlgorithm === requestedAlgorithm
-})
 const activeMission = computed(() => detail.value?.mission ?? null)
 const activeRun = computed(() => ['RUNNING', 'PAUSED'].includes(activeMission.value?.status ?? ''))
 const rosOnline = computed(() =>
@@ -149,23 +104,8 @@ const primaryActionLabel = computed(() => {
   if (activeRun.value) return '运行中'
   return '启动'
 })
-const recentEvents = computed(() => detail.value?.events.slice(0, 3) ?? [])
-const missionVisualStats = computed(() => visualSensorStore.streamStatsFor('MISSION_CENTER'))
-const missionVisualConnected = computed(() =>
-  visualSensorStore.unityBridgeReadyFor('MISSION_CENTER')
-  && missionVisualStats.value?.active === true
-  && visualSensorStore.runtimeContextFor('MISSION_CENTER').runId === currentRunId.value,
-)
-const unityRunSynchronized = computed(() =>
-  currentRunId.value !== null
-  && unityChannel.value.appliedRunId === currentRunId.value
-  && !!algorithmFrame.value
-  && unityChannel.value.appliedSequence >= algorithmFrame.value.sequence,
-)
 const runSyncText = computed(() => {
   if (!detail.value?.currentRun) return '等待创建 RUN'
-  if (mode.value === 'vision') return missionVisualConnected.value ? '六路任务视觉已连接' : '任务视觉连接中'
-  if (mode.value === '3d' && !unityRunSynchronized.value) return '3D 正在同步当前 RUN'
   return `RUN ${detail.value.currentRun.runNo} · 同步帧 ${algorithmFrame.value?.sequence ?? 0}`
 })
 const sceneScale = computed(() =>
@@ -217,37 +157,6 @@ function queryNumber(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-function requestedViewMode(): WorkspaceMode {
-  if (route.query.view === 'radar') return 'radar'
-  if (route.query.view === 'vision') return 'vision'
-  if (route.query.view === '3d') return '3d'
-  return '2d'
-}
-
-function formatRadarRange(value: number | null) {
-  return value == null ? '-- m' : `${value.toFixed(1)} m`
-}
-
-function formatRadarTime(value: number) {
-  if (!value) return '--'
-  return new Intl.DateTimeFormat('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(new Date(value))
-}
-
-function stopRadarPolling() {
-  if (radarTimer) window.clearInterval(radarTimer)
-  radarTimer = undefined
-}
-
-function startRadarPolling() {
-  stopRadarPolling()
-  void radarStore.refresh(true)
-  radarTimer = window.setInterval(() => void radarStore.refresh(true), 2500)
-}
-
 function missionForAlgorithm(code: string) {
   return missionStore.records.find(mission => mission.algorithmCode === code) ?? null
 }
@@ -268,44 +177,6 @@ function missionUnityCommand(action: MissionAction) {
     cancel: 'missionCancel',
     ready: 'missionResume',
   }[action]
-}
-
-function missionVisualContext(): VisualSensorRuntimeContext {
-  return {
-    runtimeScope: 'MISSION_CENTER',
-    runtimeInstanceId: unityViewportStore.missionInstanceId,
-    missionId: detail.value?.mission.id ?? null,
-    runId: currentRunId.value,
-  }
-}
-
-function cameraIdForDevice(deviceCode: string) {
-  return deviceCode.trim().toLowerCase().replace(/-/g, '_')
-}
-
-function sendMissionVisualSubscription(
-  enabled: boolean,
-  displayMode: 'grid' | 'focus' | 'off' = visualDisplayMode.value,
-) {
-  const context = missionVisualContext()
-  if (context.missionId === null || context.runId === null) return
-  visualSensorStore.bindRuntime(context)
-  const focusedCameraId = cameraIdForDevice(selectedDeviceCode.value || 'uav-01')
-  void visualSensorStore.selectFor('MISSION_CENTER', focusedCameraId)
-  unityBridgeStore.sendFor('MISSION_CENTER', 'visualSensorSubscribe', {
-    enabled,
-    missionId: context.missionId,
-    runId: context.runId,
-    runtimeInstanceId: context.runtimeInstanceId,
-    focusedCameraId,
-    displayMode,
-    quality: '720p',
-    targetFps: 30,
-    gpuDirect: true,
-    jpegFallback: false,
-    thumbnailFps: 0.2,
-    focusedFps: 1,
-  })
 }
 
 function clearRunFrames() {
@@ -468,6 +339,7 @@ async function refreshUntilStatus(expectedStatus: MissionDetail['mission']['stat
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const latest = await fetchMission(missionId)
     detail.value = latest
+    activeExperimentStore.sync(latest)
     if (latest.mission.status === expectedStatus) {
       await missionStore.refresh({ page: missionStore.page, size: missionStore.size })
       return
@@ -485,6 +357,7 @@ async function loadMissionWorkspace(mission: Mission, requestedRunId?: number | 
   }
   if (loaded.currentRun?.id !== currentRunId.value) clearRunFrames()
   detail.value = loaded
+  activeExperimentStore.sync(loaded)
   selectedAlgorithmCode.value = loaded.mission.algorithmCode
   sessionStore.bind(loaded.mission.id, loaded.currentRun?.id ?? null)
   unityViewportStore.prepareMission(
@@ -492,12 +365,9 @@ async function loadMissionWorkspace(mission: Mission, requestedRunId?: number | 
     loaded.currentRun?.id ?? null,
     loaded.currentRun?.runtimeInstanceId,
   )
-  visualSensorStore.bindRuntime(missionVisualContext())
+  if (loaded.currentRun) startAlgorithmPolling()
   if (activeRun.value) {
     await ensureAlgorithmRuntime()
-    startAlgorithmPolling()
-  } else if (loaded.currentRun) {
-    startAlgorithmPolling()
   }
   ensureMissionScenarioLoaded()
 }
@@ -603,6 +473,7 @@ async function applyMissionAction(
       }
     }
     detail.value = result.detail
+    activeExperimentStore.sync(result.detail)
     if (action === 'pause') {
       sessionStore.pause()
       stopAlgorithmPolling()
@@ -697,6 +568,7 @@ async function startSelectedAlgorithm() {
       unityViewportStore.missionInstanceId,
     )
     detail.value = result.detail
+    activeExperimentStore.sync(result.detail)
     const run = result.detail.currentRun
     if (!run) throw new Error('后端未创建任务 RUN')
     preparedRunId = run.id
@@ -722,6 +594,7 @@ async function startSelectedAlgorithm() {
     }
     await controlAlgorithmRun(run.id, 'start')
     detail.value = await fetchMission(working.mission.id)
+    activeExperimentStore.sync(detail.value)
     sessionStore.bind(working.mission.id, run.id)
     sessionStore.start(trajectoryFrame.value?.sequence ?? 0, run.id)
     startAlgorithmPolling(true)
@@ -747,45 +620,6 @@ async function onAlgorithmSelected(code: string) {
 
 function selectObservationDevice(deviceCode: string) {
   selectedDeviceCode.value = deviceCode
-  if (!deviceCode) {
-    if (mode.value === 'vision') {
-      visualDisplayMode.value = 'grid'
-      sendMissionVisualSubscription(true, 'grid')
-    } else if (mode.value === '3d') {
-      unityBridgeStore.sendFor('MISSION_CENTER', 'switchCamera', { mode: 'overview' })
-    }
-    return
-  }
-  if (mode.value === 'vision') {
-    visualDisplayMode.value = 'focus'
-    sendMissionVisualSubscription(true, 'focus')
-  } else if (mode.value === '3d') {
-    unityBridgeStore.sendFor('MISSION_CENTER', 'selectDevice', { deviceCode })
-    unityBridgeStore.sendFor('MISSION_CENTER', 'switchCamera', { mode: 'device-follow' })
-  }
-}
-
-function changeMode(next: WorkspaceMode) {
-  const leavingVision = mode.value === 'vision' && next !== 'vision'
-  stopRadarPolling()
-  mode.value = next
-  void router.replace({ query: next === '2d' ? {} : { view: next } })
-  if (leavingVision) sendMissionVisualSubscription(false, 'off')
-  if (next === '2d' || next === 'radar') {
-    unityViewportStore.park()
-    if (next === 'radar') startRadarPolling()
-    return
-  }
-  if (next === 'vision' && !currentRunId.value) {
-    unityViewportStore.park()
-    return
-  }
-  if (missionSceneReady.value) unityViewportStore.show('mission-execution')
-  else unityViewportStore.park()
-  if (next === 'vision') {
-    visualDisplayMode.value = selectedDeviceCode.value ? 'focus' : 'grid'
-    sendMissionVisualSubscription(true, visualDisplayMode.value)
-  }
 }
 
 async function placeThreat(x: number, y: number) {
@@ -835,28 +669,11 @@ watch(
   { immediate: true },
 )
 
-watch(
-  [mode, missionSceneReady],
-  ([currentMode, ready]) => {
-    if (currentMode !== '3d' && currentMode !== 'vision') return
-    if (ready) unityViewportStore.show('mission-execution')
-    else unityViewportStore.park()
-  },
-  { immediate: true },
-)
-
-watch(trajectoryFrame, frame => {
-  if (!frame || selectedDeviceCode.value) return
-  const firstVehicle = frame.agents.find(agent => agent.type === 'UAV' || agent.type === 'USV')
-  if (!firstVehicle) return
-}, { immediate: true })
-
 onMounted(async () => {
   unityViewportStore.park()
   monitoringStore.connectEvents()
-  mode.value = requestedViewMode()
   await refreshWorkspace()
-  changeMode(mode.value)
+  unityViewportStore.park()
 })
 
 let resumeAfterDeactivation = false
@@ -866,30 +683,23 @@ onActivated(() => {
   resumeAfterDeactivation = false
   monitoringStore.connectEvents()
   if (activeRun.value || currentRunId.value) startAlgorithmPolling()
-  visualSensorStore.bindRuntime(missionVisualContext())
-  changeMode(mode.value)
+  unityViewportStore.park()
 })
 
 onDeactivated(() => {
   resumeAfterDeactivation = true
   stopAlgorithmPolling()
-  stopRadarPolling()
-  if (mode.value === 'vision') sendMissionVisualSubscription(false, 'off')
-  visualSensorStore.disposeFrames('MISSION_CENTER')
   unityViewportStore.park()
 })
 
 onBeforeUnmount(() => {
   stopAlgorithmPolling()
-  stopRadarPolling()
-  if (mode.value === 'vision') sendMissionVisualSubscription(false, 'off')
-  visualSensorStore.disposeFrames('MISSION_CENTER')
   unityViewportStore.park()
 })
 </script>
 
 <template>
-  <ConsoleLayout title="任务中心" eyebrow="MISSION CENTER" :show-refresh="false">
+  <ConsoleLayout title="协同态势" eyebrow="COOPERATIVE SITUATION" :show-refresh="false">
     <template #actions>
       <div class="mission-health">
         <span><i :class="{ online: rosOnline }" />ROS {{ rosOnline ? '在线' : '离线' }}</span>
@@ -899,11 +709,6 @@ onBeforeUnmount(() => {
     </template>
 
     <section class="mission-workspace" :aria-busy="loading">
-      <div v-if="loading" class="mission-entry-cover" role="status">
-        <span class="mission-loading-mark" />
-        <strong>任务中心加载中</strong>
-        <small>正在同步算法、任务状态与 Unity 运行环境</small>
-      </div>
       <header class="algorithm-toolbar">
         <div class="algorithm-picker">
           <label for="mission-algorithm">当前算法</label>
@@ -939,12 +744,7 @@ onBeforeUnmount(() => {
             <small>{{ activeMission?.code ?? 'MISSION' }} · RUN {{ detail?.currentRun?.runNo ?? '--' }}</small>
             <strong>{{ activeMission?.name ?? '任务中心运行工作台' }}</strong>
           </div>
-          <nav class="mode-switch" aria-label="任务视图">
-            <button :class="{ active: mode === '2d' }" @click="changeMode('2d')"><Layers3 :size="16" />2D 轨迹</button>
-            <button :class="{ active: mode === '3d' }" @click="changeMode('3d')"><Box :size="16" />3D Unity</button>
-            <button :class="{ active: mode === 'vision' }" @click="changeMode('vision')"><Camera :size="16" />设备视觉</button>
-            <button :class="{ active: mode === 'radar' }" @click="changeMode('radar')"><Radio :size="16" />雷达感知</button>
-          </nav>
+          <div class="situation-view-label"><Layers3 :size="16" />二维轨迹 · 同一RUN实时数据</div>
           <span class="run-sync"><i />{{ runSyncText }}</span>
           <div class="run-actions">
             <button
@@ -963,96 +763,15 @@ onBeforeUnmount(() => {
 
         <main class="execution-stage">
           <AlgorithmTrajectoryMap
-            v-if="mode === '2d' && algorithmFrame"
             :frame="algorithmFrame"
             :mission-name="activeMission?.name ?? '算法轨迹'"
             :selected-device-code="selectedDeviceCode"
             @select="selectObservationDevice"
             @place-threat="placeThreat"
           />
-          <MissionTrajectoryMap
-            v-else-if="mode === '2d'"
-            :mission-name="activeMission?.name ?? '任务轨迹'"
-            :mission-status="activeMission?.status ?? 'READY'"
-            :selected-device-code="selectedDeviceCode"
-            :trajectory-frame="trajectoryFrame"
-            :session-state="sessionStore.state"
-            :session-revision="sessionStore.revision"
-            @select-device="selectObservationDevice"
-          />
-          <div
-            v-else-if="mode === '3d'"
-            class="unity-viewport"
-            data-unity-runtime-viewport="mission-execution"
-          >
-            <span v-if="missionSceneReady" class="unity-badge"><i />UNITY WEBGL ONLINE</span>
-            <div v-else class="mission-scene-cover" role="status">
-              <Box :size="34" />
-              <strong>{{ currentRunId ? '正在同步当前任务场景' : '等待任务 RUN' }}</strong>
-              <span>{{ currentRunId ? 'Unity 确认当前算法与 RUN 后将自动显示 3D 画面' : '开始任务后可查看对应的 3D Unity 过程' }}</span>
-            </div>
-          </div>
-          <section v-else-if="mode === 'radar'" class="radar-panel">
-            <header>
-              <span>RADAR PERCEPTION</span>
-              <strong>Radar / pointcloud summary</strong>
-              <i :class="{ online: radarOverview.connected }" />
-            </header>
-            <div class="radar-metrics">
-              <article><span>Online</span><strong>{{ radarOverview.onlineCount }}/{{ radarOverview.totalCount || '--' }}</strong></article>
-              <article><span>Nearest obstacle</span><strong>{{ formatRadarRange(radarOverview.nearestObstacleRange) }}</strong></article>
-              <article><span>Points</span><strong>{{ radarOverview.detectionCount }}</strong></article>
-              <article><span>Latest target</span><strong>{{ radarOverview.latestTargetId || '--' }}</strong></article>
-            </div>
-            <div class="radar-plot" aria-label="2D pointcloud overview">
-              <PointCloudCanvas :items="radarOverview.items" />
-              <div v-if="!hasPointCloud" class="radar-plot-empty">Waiting for pointcloud_frame</div>
-            </div>
-            <div class="radar-table">
-              <div class="radar-row head"><span>ID</span><span>Type</span><span>Range</span><span>Time</span></div>
-              <div v-for="item in radarItems" :key="`${item.deviceId}-${item.kind}-${item.id}`" class="radar-row">
-                <span>{{ item.id }}</span>
-                <span>{{ item.kind }}</span>
-                <span>{{ formatRadarRange(item.range) }}</span>
-                <span>{{ formatRadarTime(item.timestampMs) }}</span>
-              </div>
-              <div v-if="radarItems.length === 0" class="radar-empty">Waiting for radar_frame / pointcloud_frame</div>
-            </div>
-          </section>
-          <div
-            v-else-if="currentRunId"
-            class="unity-viewport vision"
-            data-unity-runtime-viewport="mission-execution"
-          >
-            <span v-if="missionSceneReady" class="unity-badge"><i />六路视觉 {{ missionVisualConnected ? 'LIVE' : 'CONNECTING' }}</span>
-            <div v-else class="mission-scene-cover" role="status">
-              <Camera :size="34" />
-              <strong>正在同步当前任务视觉场景</strong>
-              <span>场景确认后将显示本次 RUN 的设备视角</span>
-            </div>
-          </div>
-          <div v-else class="visual-waiting">
-            <Camera :size="38" />
-            <strong>设备视觉等待任务 RUN</strong>
-            <span>选择算法并开始任务后，可在此查看六路 Unity 设备视觉。</span>
-          </div>
         </main>
       </section>
 
-      <footer class="event-dock">
-        <div class="readiness">
-          <span><CircleCheck :size="15" />ROS {{ rosOnline ? '已连接' : '等待连接' }}</span>
-          <span><CircleCheck :size="15" />Unity {{ unityChannel.connected ? '已就绪' : '初始化中' }}</span>
-          <span><Radio :size="15" />设备 {{ onlineVehicleCount }}/6 在线</span>
-        </div>
-        <div class="event-list">
-          <article v-for="event in recentEvents" :key="event.id">
-            <Clock3 :size="14" />
-            <span><time>{{ new Date(event.occurredAt).toLocaleTimeString() }}</time><b>{{ event.title }}</b></span>
-          </article>
-        </div>
-        <button type="button" @click="eventVisible=true">查看全部事件</button>
-      </footer>
     </section>
 
     <AlgorithmManagerDialog
@@ -1062,23 +781,32 @@ onBeforeUnmount(() => {
       @toggle="toggleAlgorithm"
       @set-default="makeDefaultAlgorithm"
     />
-    <MissionEventDrawer
-      v-model="eventVisible"
-      :mission-id="detail?.mission.id ?? null"
-      :run-id="currentRunId ?? undefined"
-    />
   </ConsoleLayout>
 </template>
 
 <style scoped>
+.situation-view-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #66dfd4;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.situation-event-dock {
+  display: none;
+}
+
 .mission-workspace {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(clamp(560px, calc(100dvh - 300px), 900px), 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   width: 100%;
   max-width: 2360px;
-  min-height: calc(100dvh - 106px);
+  height: calc(100dvh - 156px);
+  min-height: 590px;
   margin: 0 auto;
   color: #dff5f3;
 }
@@ -1349,7 +1077,7 @@ button:disabled {
 
 .execution-stage {
   position: relative;
-  min-height: clamp(500px, calc(100dvh - 380px), 820px);
+  min-height: 0;
   overflow: hidden;
   background: #020f16;
 }
@@ -1560,7 +1288,7 @@ button:disabled {
 }
 
 .event-dock {
-  display: grid;
+  display: none;
   grid-template-columns: auto minmax(320px, 1fr) auto;
   align-items: center;
   gap: 12px;
@@ -1698,11 +1426,11 @@ button:disabled {
 
 @media (min-width: 1920px) and (min-height: 1000px) {
   .mission-workspace {
-    grid-template-rows: auto minmax(700px, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .execution-stage {
-    min-height: clamp(660px, calc(100dvh - 360px), 900px);
+    min-height: 0;
   }
 }
 </style>

@@ -2869,6 +2869,27 @@ h2 {
   padding: 14px 16px 0;
 }
 
+.overview-algorithm-select {
+  display: grid;
+  grid-template-columns: auto minmax(150px, 220px);
+  align-items: center;
+  gap: 8px;
+  color: #70989a;
+  font-size: 10px;
+}
+
+.overview-algorithm-select select {
+  height: 34px;
+  padding: 0 28px 0 10px;
+  color: #dff9f5;
+  border: 1px solid rgba(76, 185, 197, .28);
+  border-radius: 6px;
+  outline: 0;
+  background: #071b22;
+}
+
+.overview-algorithm-select select:disabled { opacity: .62; }
+
 .overview-stage-header h3,
 .overview-ops-panel h3,
 .overview-live-head h3 {

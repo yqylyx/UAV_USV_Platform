@@ -4,12 +4,13 @@ import {
   Activity,
   Boxes,
   Camera,
+  Crosshair,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   Plane,
   RefreshCw,
-  Ship,
+  Route,
   UserRound,
 } from '@lucide/vue'
 import { useRouter } from 'vue-router'
@@ -98,13 +99,17 @@ async function logout() {
           <Activity :size="18" />
           <span class="console-nav-label">系统总览</span>
         </RouterLink>
-        <RouterLink class="nav-item" active-class="active" to="/missions" title="任务中心">
-          <Ship :size="18" />
-          <span class="console-nav-label">任务中心</span>
+        <RouterLink class="nav-item" active-class="active" to="/situation" title="协同态势">
+          <Route :size="18" />
+          <span class="console-nav-label">协同态势</span>
         </RouterLink>
-        <RouterLink class="nav-item" active-class="active" to="/visual-sensors" title="视觉感知">
+        <RouterLink class="nav-item" active-class="active" to="/vision" title="光电视觉">
           <Camera :size="18" />
-          <span class="console-nav-label">视觉感知</span>
+          <span class="console-nav-label">光电视觉</span>
+        </RouterLink>
+        <RouterLink class="nav-item" active-class="active" to="/radar" title="雷达态势">
+          <Crosshair :size="18" />
+          <span class="console-nav-label">雷达态势</span>
         </RouterLink>
         <RouterLink class="nav-item" active-class="active" to="/devices" title="设备管理">
           <Boxes :size="18" />

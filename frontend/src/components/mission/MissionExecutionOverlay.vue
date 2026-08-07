@@ -20,7 +20,7 @@ import type { UnityTrajectoryFrame } from '@/stores/trajectory'
 import type { AlgorithmRuntimeFrame, MissionDetail } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
 
-import AlgorithmTrajectoryMap from './AlgorithmTrajectoryMap.vue'
+import AlgorithmTrajectoryMap from './CooperativeSituationHud.vue'
 import MissionTrajectoryMap from './MissionTrajectoryMap.vue'
 
 type ExecutionViewMode = '2d' | '3d' | 'vision'

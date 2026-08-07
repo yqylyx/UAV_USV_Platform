@@ -11,20 +11,20 @@ const unityViewportStore = useUnityViewportStore()
 <template>
   <UnityRuntimeHost
     v-if="route.meta.requiresAuth"
-    :viewport="route.name === 'visual-sensors' ? 'visual-sensors-live' : 'dashboard'"
+    :viewport="route.name === 'optical-vision' ? 'visual-sensors-live' : 'dashboard'"
     runtime-scope="SYSTEM_OVERVIEW"
     runtime-instance-id="overview-unity-01"
-    :active="route.name === 'dashboard' || route.name === 'visual-sensors'"
-    :layer="route.name === 'visual-sensors' ? 24 : 20"
+    :active="route.name === 'dashboard' || route.name === 'optical-vision'"
+    :layer="route.name === 'optical-vision' ? 3 : 20"
   />
   <UnityRuntimeHost
-    v-if="route.meta.requiresAuth && route.name !== 'visual-sensors'"
+    v-if="route.meta.requiresAuth && route.name !== 'optical-vision'"
     viewport="mission-execution"
     runtime-scope="MISSION_CENTER"
     :runtime-instance-id="unityViewportStore.missionInstanceId"
     :mission-id="unityViewportStore.missionId || undefined"
     :run-id="unityViewportStore.runId || undefined"
-    :active="route.name === 'missions' && unityViewportStore.target === 'mission-execution'"
+    :active="route.name === 'situation' && unityViewportStore.target === 'mission-execution'"
     :layer="95"
   />
   <RouterView v-slot="{ Component }">

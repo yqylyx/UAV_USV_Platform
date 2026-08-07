@@ -12,13 +12,12 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AlgorithmManagerDialog: typeof import('./components/mission/AlgorithmManagerDialog.vue')['default']
-    AlgorithmTrajectoryMap: typeof import('./components/mission/AlgorithmTrajectoryMap.vue')['default']
     ConsoleLayout: typeof import('./components/layout/ConsoleLayout.vue')['default']
+    CooperativeSituationHud: typeof import('./components/mission/CooperativeSituationHud.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElDialog: typeof import('element-plus/es')['ElDialog']
-    ElDrawer: typeof import('element-plus/es')['ElDrawer']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
     ElInput: typeof import('element-plus/es')['ElInput']
@@ -38,6 +37,7 @@ declare module 'vue' {
     MissionStartCheckDialog: typeof import('./components/mission/MissionStartCheckDialog.vue')['default']
     MissionTrajectoryMap: typeof import('./components/mission/MissionTrajectoryMap.vue')['default']
     PointCloudCanvas: typeof import('./components/sensor/PointCloudCanvas.vue')['default']
+    RadarPpiCanvas: typeof import('./components/sensor/RadarPpiCanvas.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     UnifiedVehicleControl: typeof import('./components/control/UnifiedVehicleControl.vue')['default']

@@ -17,17 +17,19 @@ import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import VehicleGlyph from '@/components/control/VehicleGlyph.vue'
 import type { VehicleQuickCommand } from '@/components/control/VehicleQuickControl.vue'
 import { sendIntegrationHeartbeat } from '@/api/integration'
+import { fetchAlgorithms } from '@/api/algorithm'
 import { executeMissionAction, fetchMission, fetchMissions } from '@/api/mission'
 import type { MissionAction } from '@/api/mission'
 import { issueRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useActiveExperimentStore } from '@/stores/activeExperiment'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
 import type { RuntimeNode } from '@/types/monitoring'
 import { normalizeOperationalState } from '@/utils/runtimeOperationalState'
-import type { MissionDetail, MissionStatus } from '@/types/mission'
+import type { AlgorithmDefinition, MissionDetail, MissionStatus } from '@/types/mission'
 
 type UnityMessage = {
   type: string
@@ -37,6 +39,36 @@ type UnityMessage = {
 }
 
 const monitoringStore = useMonitoringStore()
+const activeExperimentStore = useActiveExperimentStore()
+const overviewAlgorithmFallbacks: AlgorithmDefinition[] = [
+  {
+    id: -1,
+    code: 'GB_SFLA_CS',
+    name: 'GB-SFLA-CS 协同围捕',
+    version: 'v1.1.0',
+    missionType: 'COOPERATIVE_ENCIRCLEMENT',
+    adapterType: 'PYTHON_PROCESS',
+    deviceScale: '3 UAV + 3 USV + 1 Target',
+    enabled: true,
+    defaultForType: true,
+    description: '三机三艇协同围捕算法',
+  },
+  {
+    id: -2,
+    code: 'ESCORT_GUARD',
+    name: 'Escort Guard 协同护航',
+    version: 'v1.1.0',
+    missionType: 'COOPERATIVE_ESCORT',
+    adapterType: 'PYTHON_PROCESS',
+    deviceScale: '3 UAV + 3 USV + 1 Escort Target',
+    enabled: true,
+    defaultForType: true,
+    description: '三机三艇协同护航算法',
+  },
+]
+const overviewAlgorithms = ref<AlgorithmDefinition[]>([...overviewAlgorithmFallbacks])
+const selectedOverviewAlgorithm = ref('GB_SFLA_CS')
+const enabledOverviewAlgorithms = computed(() => overviewAlgorithms.value.filter(item => item.enabled && ['GB_SFLA_CS','ESCORT_GUARD'].includes(item.code)))
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const unityViewportStore = useUnityViewportStore()
@@ -305,8 +337,16 @@ const overviewMissionRunning = computed(() =>
   overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED',
 )
 const overviewMissionButtonLabel = computed(() =>
-  overviewMissionRunning.value ? '终止任务' : '启动围捕',
+  overviewMissionRunning.value ? '终止任务' : '启动任务',
 )
+
+async function selectOverviewAlgorithm(code: string) {
+  if (overviewMissionRunning.value) return
+  selectedOverviewAlgorithm.value = code
+  overviewMissionName.value = overviewAlgorithms.value.find(item => item.code === code)?.name ?? code
+  overviewDeploymentAcknowledged.value = false
+  unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', { algorithmCode: code })
+}
 const selectedOverviewActions = computed<OverviewQuickAction[]>(() => {
   if (selectedOverviewDevice.value?.type === 'USV') {
     return [
@@ -477,6 +517,7 @@ function stopUnityHeartbeat() {
 }
 
 function applyOverviewMissionDetail(detail: MissionDetail) {
+  activeExperimentStore.sync(detail)
   const missionChanged = overviewMissionId.value !== null && overviewMissionId.value !== detail.mission.id
   if (missionChanged || ['DRAFT', 'COMPLETED', 'FAILED', 'CANCELLED'].includes(detail.mission.status)) {
     overviewDeploymentAcknowledged.value = false
@@ -942,8 +983,9 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
       if (!overviewDeploymentAcknowledged.value) {
         throw new Error('请先点击“编组部署”，确认三机三艇加入围捕编组')
       }
+      unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', { algorithmCode: selectedOverviewAlgorithm.value })
       await runOverviewDemoCommand('start')
-      ElMessage.success('简单围捕任务已启动')
+      ElMessage.success(`${overviewMissionName.value}已启动`)
       return
     }
 
@@ -1082,6 +1124,12 @@ onMounted(() => {
   freshnessTimer = window.setInterval(() => { freshnessClock.value = Date.now() }, 500)
   void monitoringStore.refresh({}, true).then(pushPoseFrameToUnity)
   monitoringStore.connectEvents()
+  void fetchAlgorithms().then((items) => {
+    overviewAlgorithms.value = items.length ? items : [...overviewAlgorithmFallbacks]
+    const preferred = items.find(item => item.enabled && item.code === selectedOverviewAlgorithm.value)
+      ?? items.find(item => item.enabled && ['GB_SFLA_CS','ESCORT_GUARD'].includes(item.code))
+    if (preferred) void selectOverviewAlgorithm(preferred.code)
+  }).catch(() => undefined)
 })
 
 onActivated(() => {
@@ -1198,8 +1246,14 @@ watch(
         <div class="overview-stage-header">
           <div class="overview-stage-title">
             <h3>Unity 海空协同态势</h3>
-            <span>默认任务：{{ overviewMissionName }}</span>
+            <span>当前任务：{{ overviewMissionName }}</span>
           </div>
+          <label class="overview-algorithm-select">
+            <span>算法</span>
+            <select :value="selectedOverviewAlgorithm" :disabled="overviewMissionRunning || commandBusy" @change="selectOverviewAlgorithm(($event.target as HTMLSelectElement).value)">
+              <option v-for="algorithm in enabledOverviewAlgorithms" :key="algorithm.code" :value="algorithm.code">{{ algorithm.name }} v{{ algorithm.version }}</option>
+            </select>
+          </label>
           <div class="overview-camera-tabs" aria-label="Unity 视角切换">
             <button
               v-for="mode in cameraModes"
