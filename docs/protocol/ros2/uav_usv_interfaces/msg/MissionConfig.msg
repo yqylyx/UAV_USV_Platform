@@ -1,0 +1,12 @@
+string mission_type
+string algorithm_code
+string algorithm_version
+uint8 RUNTIME_MODE_SIMULATION=1
+uint8 RUNTIME_MODE_REAL=2
+uint8 runtime_mode
+string[] device_codes
+string target_code
+float64 minimum_separation_m
+float64 usv_encirclement_radius_m
+float64 uav_formation_radius_m
+diagnostic_msgs/KeyValue[] extensions

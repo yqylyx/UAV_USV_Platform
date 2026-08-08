@@ -8,35 +8,19 @@ import {
   ref,
   watch,
 } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
 import {
   Layers3,
-  Pause,
-  Play,
-  Radio,
-  Settings2,
-  XOctagon,
 } from '@lucide/vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
-import AlgorithmManagerDialog from '@/components/mission/AlgorithmManagerDialog.vue'
 import AlgorithmTrajectoryMap from '@/components/mission/CooperativeSituationHud.vue'
 import {
-  controlAlgorithmRun,
   fetchAlgorithmFrames,
-  fetchAlgorithms,
   placeEscortThreat,
-  prepareAlgorithmRun,
-  setAlgorithmEnabled,
-  setDefaultAlgorithm,
 } from '@/api/algorithm'
-import {
-  executeMissionAction,
-  fetchMission,
-  fetchMissionPreflight,
-} from '@/api/mission'
-import type { MissionAction } from '@/api/mission'
+import { fetchMission } from '@/api/mission'
 import { useMissionStore } from '@/stores/mission'
 import { useActiveExperimentStore } from '@/stores/activeExperiment'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
@@ -44,12 +28,7 @@ import { useMonitoringStore } from '@/stores/monitoring'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
-import type {
-  AlgorithmDefinition,
-  AlgorithmRuntimeFrame,
-  Mission,
-  MissionDetail,
-} from '@/types/mission'
+import type { AlgorithmRuntimeFrame, Mission, MissionDetail } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
 
 const route = useRoute()
@@ -62,13 +41,8 @@ const sessionStore = useMissionTrajectorySessionStore()
 const unityViewportStore = useUnityViewportStore()
 
 const detail = ref<MissionDetail | null>(null)
-const algorithms = ref<AlgorithmDefinition[]>([])
-const selectedAlgorithmCode = ref('GB_SFLA_CS')
 const selectedDeviceCode = ref('')
-const busy = ref(false)
 const loading = ref(true)
-const algorithmBusy = ref(false)
-const algorithmManagerVisible = ref(false)
 const algorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
 const algorithmPolling = ref(false)
 
@@ -80,12 +54,6 @@ const activeMission = computed(() => detail.value?.mission ?? null)
 const activeRun = computed(() => ['RUNNING', 'PAUSED'].includes(activeMission.value?.status ?? ''))
 const rosOnline = computed(() =>
   monitoringStore.nodes.some(node => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
-)
-const enabledAlgorithms = computed(() =>
-  algorithms.value.filter(item => item.enabled && ['GB_SFLA_CS', 'ESCORT_GUARD'].includes(item.code)),
-)
-const currentAlgorithm = computed(() =>
-  algorithms.value.find(item => item.code === selectedAlgorithmCode.value) ?? null,
 )
 const onlineVehicleCount = computed(() =>
   runtimeNodes.value.filter(node => node.status === 'ONLINE').length,
@@ -99,25 +67,14 @@ const statusLabel = computed(() => {
   if (status === 'CANCELLED') return '已终止'
   return '待执行'
 })
-const primaryActionLabel = computed(() => {
-  if (busy.value) return '处理中'
-  if (activeRun.value) return '运行中'
-  return '启动'
-})
 const runSyncText = computed(() => {
   if (!detail.value?.currentRun) return '等待创建 RUN'
   return `RUN ${detail.value.currentRun.runNo} · 同步帧 ${algorithmFrame.value?.sequence ?? 0}`
 })
-const sceneScale = computed(() =>
-  selectedAlgorithmCode.value === 'ESCORT_GUARD'
-    ? '3 UAV + 3 USV + 1 Escort'
-    : '3 UAV + 3 USV + 1 Target',
-)
 
 let algorithmPollTimer: number | null = null
 let algorithmAbortController: AbortController | null = null
 let loadedScenarioKey = ''
-let algorithmRecoveryPromise: Promise<void> | null = null
 
 const runtimeNodes = computed<RuntimeNode[]>(() => {
   const frame = trajectoryFrame.value
@@ -157,54 +114,11 @@ function queryNumber(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-function missionForAlgorithm(code: string) {
-  return missionStore.records.find(mission => mission.algorithmCode === code) ?? null
-}
-
-function currentAlgorithmConfig() {
-  return Object.fromEntries(
-    (detail.value?.parameters ?? []).map(item => [item.key, item.value ?? '']),
-  )
-}
-
-function missionUnityCommand(action: MissionAction) {
-  return {
-    start: 'missionStart',
-    pause: 'missionPause',
-    resume: 'missionResume',
-    complete: 'missionComplete',
-    fail: 'missionFail',
-    cancel: 'missionCancel',
-    ready: 'missionResume',
-  }[action]
-}
-
 function clearRunFrames() {
   algorithmFrame.value = null
   loadedScenarioKey = ''
   trajectoryStore.clearFor('MISSION_CENTER')
   unityBridgeStore.clearPoseFramesFor('MISSION_CENTER')
-}
-
-async function ensureAlgorithmRuntime() {
-  if (!detail.value?.currentRun || !['GB_SFLA_CS', 'ESCORT_GUARD'].includes(activeAlgorithmCode.value)) return
-  if (algorithmRecoveryPromise) return algorithmRecoveryPromise
-  algorithmRecoveryPromise = (async () => {
-    const active = detail.value!.currentRun!
-    const runtime = await prepareAlgorithmRun(
-      active.id,
-      activeAlgorithmCode.value,
-      currentAlgorithmConfig(),
-    )
-    if (activeMission.value?.status === 'RUNNING' && runtime.state !== 'RUNNING') {
-      await controlAlgorithmRun(active.id, 'start')
-    }
-  })()
-  try {
-    await algorithmRecoveryPromise
-  } finally {
-    algorithmRecoveryPromise = null
-  }
 }
 
 function sendAlgorithmPoseFrame(frame: AlgorithmRuntimeFrame) {
@@ -321,33 +235,6 @@ function startAlgorithmPolling(forceRunning = false) {
   algorithmPollTimer = window.setInterval(() => void pollAlgorithmFrames(), 100)
 }
 
-function expectedStatusForAction(
-  action: 'pause' | 'resume' | 'complete' | 'cancel',
-): MissionDetail['mission']['status'] {
-  return action === 'pause'
-    ? 'PAUSED'
-    : action === 'resume'
-      ? 'RUNNING'
-      : action === 'complete'
-        ? 'COMPLETED'
-        : 'CANCELLED'
-}
-
-async function refreshUntilStatus(expectedStatus: MissionDetail['mission']['status']) {
-  const missionId = detail.value?.mission.id
-  if (!missionId) return
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const latest = await fetchMission(missionId)
-    detail.value = latest
-    activeExperimentStore.sync(latest)
-    if (latest.mission.status === expectedStatus) {
-      await missionStore.refresh({ page: missionStore.page, size: missionStore.size })
-      return
-    }
-    await new Promise(resolve => window.setTimeout(resolve, 300))
-  }
-}
-
 async function loadMissionWorkspace(mission: Mission, requestedRunId?: number | null) {
   stopAlgorithmPolling()
   const loaded = await fetchMission(mission.id)
@@ -358,7 +245,6 @@ async function loadMissionWorkspace(mission: Mission, requestedRunId?: number | 
   if (loaded.currentRun?.id !== currentRunId.value) clearRunFrames()
   detail.value = loaded
   activeExperimentStore.sync(loaded)
-  selectedAlgorithmCode.value = loaded.mission.algorithmCode
   sessionStore.bind(loaded.mission.id, loaded.currentRun?.id ?? null)
   unityViewportStore.prepareMission(
     loaded.mission.id,
@@ -366,255 +252,31 @@ async function loadMissionWorkspace(mission: Mission, requestedRunId?: number | 
     loaded.currentRun?.runtimeInstanceId,
   )
   if (loaded.currentRun) startAlgorithmPolling()
-  if (activeRun.value) {
-    await ensureAlgorithmRuntime()
-  }
   ensureMissionScenarioLoaded()
-}
-
-async function loadAlgorithmMission(code: string) {
-  const mission = missionForAlgorithm(code)
-  if (!mission) throw new Error('未找到该算法对应的任务模板，请先检查数据库任务配置')
-  await loadMissionWorkspace(mission)
 }
 
 async function refreshWorkspace() {
   loading.value = true
   try {
-    const [algorithmList] = await Promise.all([
-      fetchAlgorithms(),
+    await Promise.all([
       missionStore.refresh({ page: 0, size: 100 }),
       monitoringStore.refresh({}, true),
     ])
-    algorithms.value = algorithmList
     const queryMissionId = queryNumber(route.query.missionId)
     const queryRunId = queryNumber(route.query.runId)
     const routedMission = queryMissionId
       ? missionStore.records.find(item => item.id === queryMissionId)
       : null
     const openMission = missionStore.records.find(item => ['RUNNING', 'PAUSED'].includes(item.status))
-    const preferredAlgorithm = algorithms.value.find(
-      item => item.enabled && item.code === 'GB_SFLA_CS',
-    ) ?? enabledAlgorithms.value[0]
     const mission = routedMission
       ?? openMission
-      ?? missionForAlgorithm(preferredAlgorithm?.code ?? 'GB_SFLA_CS')
       ?? missionStore.records[0]
-    if (!mission) throw new Error('任务中心没有可执行任务模板')
+    if (!mission) throw new Error('暂无可观测的任务数据')
     await loadMissionWorkspace(mission, queryRunId)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '任务中心加载失败')
   } finally {
     loading.value = false
-  }
-}
-
-async function waitForMissionUnity(timeoutMs = 20_000) {
-  const startedAt = Date.now()
-  while (Date.now() - startedAt < timeoutMs) {
-    if (unityChannel.value.connected && unityChannel.value.controlsReady) return
-    await new Promise(resolve => window.setTimeout(resolve, 250))
-  }
-  throw new Error('任务中心 Unity WebGL 指令桥尚未就绪，请稍后重试')
-}
-
-async function applyMissionAction(
-  action: 'pause' | 'resume' | 'complete' | 'cancel',
-  confirmCancel = true,
-) {
-  if (!detail.value) return false
-  if (action === 'cancel' && confirmCancel) {
-    try {
-      await ElMessageBox.confirm(
-        '确认终止当前任务运行？该操作只影响任务中心，不影响系统总览。',
-        '终止任务',
-        { type: 'warning', confirmButtonText: '确认终止', cancelButtonText: '取消' },
-      )
-    } catch {
-      return false
-    }
-  }
-  busy.value = true
-  try {
-    const missionId = detail.value.mission.id
-    const runId = currentRunId.value
-    if (!unityChannel.value.connected || !unityChannel.value.controlsReady) {
-      throw new Error('任务中心 Unity 指令桥尚未就绪')
-    }
-    const result = await executeMissionAction(
-      missionId,
-      action,
-      'MISSION_CONTROL',
-      unityViewportStore.missionInstanceId,
-    )
-    if (result.command) {
-      if (['FAILED', 'TIMEOUT'].includes(result.command.status)) {
-        throw new Error(result.command.detail || '任务指令创建失败')
-      }
-      const ack = await unityBridgeStore.sendControlCommandAndWaitFor(
-        'MISSION_CENTER',
-        missionUnityCommand(action),
-        '',
-        result.command.commandKey,
-      )
-      if (!ack.success) throw new Error(ack.status || 'Unity 未确认任务指令')
-    }
-    if (runId) {
-      try {
-        if (action === 'pause') await controlAlgorithmRun(runId, 'pause')
-        if (action === 'resume') {
-          await ensureAlgorithmRuntime()
-          await controlAlgorithmRun(runId, 'resume')
-        }
-        if (action === 'complete') await controlAlgorithmRun(runId, 'stop')
-        if (action === 'cancel') await controlAlgorithmRun(runId, 'cancel')
-      } catch (error) {
-        ElMessage.warning(error instanceof Error ? error.message : '算法运行实例未响应')
-      }
-    }
-    detail.value = result.detail
-    activeExperimentStore.sync(result.detail)
-    if (action === 'pause') {
-      sessionStore.pause()
-      stopAlgorithmPolling()
-    } else if (action === 'resume') {
-      sessionStore.resume(trajectoryFrame.value?.sequence ?? 0)
-      startAlgorithmPolling(true)
-    } else {
-      sessionStore.stop()
-      stopAlgorithmPolling()
-    }
-    const expectedStatus = expectedStatusForAction(action)
-    detail.value = {
-      ...detail.value,
-      mission: {
-        ...detail.value.mission,
-        status: expectedStatus as typeof detail.value.mission.status,
-      },
-      currentRun: detail.value.currentRun
-        ? {
-            ...detail.value.currentRun,
-            status: expectedStatus as typeof detail.value.currentRun.status,
-          }
-        : null,
-    }
-    void refreshUntilStatus(expectedStatus as typeof detail.value.mission.status).catch(() => undefined)
-    ElMessage.success(
-      action === 'pause'
-        ? '任务已暂停'
-        : action === 'resume'
-          ? '任务已继续'
-          : action === 'complete'
-            ? '任务已完成'
-            : '任务已终止',
-    )
-    return true
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '任务指令执行失败')
-    return false
-  } finally {
-    busy.value = false
-  }
-}
-
-async function startSelectedAlgorithm() {
-  if (busy.value) return
-  const switching = activeRun.value
-  if (switching) {
-    try {
-      const targetName = currentAlgorithm.value?.name ?? selectedAlgorithmCode.value
-      await ElMessageBox.confirm(
-        `将终止当前 RUN、重置轨迹与 Unity 场景，然后执行“${targetName}”。是否继续？`,
-        selectedAlgorithmCode.value === activeAlgorithmCode.value ? '重新执行任务' : '切换算法',
-        { type: 'warning', confirmButtonText: '确认执行', cancelButtonText: '取消' },
-      )
-    } catch {
-      return
-    }
-  }
-  busy.value = true
-  let preparedRunId: number | null = null
-  try {
-    if (switching && !await applyMissionAction('cancel', false)) return
-    if (!detail.value || detail.value.mission.algorithmCode !== selectedAlgorithmCode.value) {
-      await loadAlgorithmMission(selectedAlgorithmCode.value)
-    }
-    if (!detail.value) throw new Error('未找到可执行任务')
-    let working = detail.value
-    if (working.mission.status !== 'READY') {
-      const ready = await executeMissionAction(
-        working.mission.id,
-        'ready',
-        'MISSION_CONTROL',
-        unityViewportStore.missionInstanceId,
-      )
-      working = ready.detail
-      detail.value = working
-    }
-    unityViewportStore.createMissionInstance(working.mission.id)
-    unityViewportStore.prepareMission(working.mission.id, null)
-    await waitForMissionUnity()
-    const preflight = await fetchMissionPreflight(
-      working.mission.id,
-      unityViewportStore.missionInstanceId,
-    )
-    if (!preflight.canStart) {
-      throw new Error(preflight.issues.map(issue => issue.message).join('；') || '任务启动检查未通过')
-    }
-    const result = await executeMissionAction(
-      working.mission.id,
-      'start',
-      'MISSION_CONTROL',
-      unityViewportStore.missionInstanceId,
-    )
-    detail.value = result.detail
-    activeExperimentStore.sync(result.detail)
-    const run = result.detail.currentRun
-    if (!run) throw new Error('后端未创建任务 RUN')
-    preparedRunId = run.id
-    clearRunFrames()
-    unityViewportStore.prepareMission(working.mission.id, run.id, run.runtimeInstanceId)
-    await prepareAlgorithmRun(run.id, selectedAlgorithmCode.value, currentAlgorithmConfig())
-    unityBridgeStore.sendFor('MISSION_CENTER', 'loadScenario', {
-      algorithmCode: selectedAlgorithmCode.value,
-      missionId: working.mission.id,
-      runId: run.id,
-    })
-    if (result.command) {
-      if (['FAILED', 'TIMEOUT'].includes(result.command.status)) {
-        throw new Error(result.command.detail || '任务启动指令创建失败')
-      }
-      const ack = await unityBridgeStore.sendControlCommandAndWaitFor(
-        'MISSION_CENTER',
-        'missionStart',
-        '',
-        result.command.commandKey,
-      )
-      if (!ack.success) throw new Error(ack.status || 'Unity 未确认任务启动')
-    }
-    await controlAlgorithmRun(run.id, 'start')
-    detail.value = await fetchMission(working.mission.id)
-    activeExperimentStore.sync(detail.value)
-    sessionStore.bind(working.mission.id, run.id)
-    sessionStore.start(trajectoryFrame.value?.sequence ?? 0, run.id)
-    startAlgorithmPolling(true)
-    ensureMissionScenarioLoaded()
-    ElMessage.success(`${currentAlgorithm.value?.name ?? '算法'}已开始执行`)
-  } catch (error) {
-    if (preparedRunId) void controlAlgorithmRun(preparedRunId, 'cancel').catch(() => undefined)
-    ElMessage.error(error instanceof Error ? error.message : '算法执行失败')
-  } finally {
-    busy.value = false
-  }
-}
-
-async function onAlgorithmSelected(code: string) {
-  selectedAlgorithmCode.value = code
-  if (activeRun.value) return
-  try {
-    await loadAlgorithmMission(code)
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '算法任务加载失败')
   }
 }
 
@@ -629,32 +291,6 @@ async function placeThreat(x: number, y: number) {
     ElMessage.success(`威胁目标已更新：${x.toFixed(1)}, ${y.toFixed(1)}`)
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '威胁目标更新失败')
-  }
-}
-
-async function toggleAlgorithm(algorithm: AlgorithmDefinition, enabled: boolean) {
-  algorithmBusy.value = true
-  try {
-    await setAlgorithmEnabled(algorithm.code, enabled)
-    algorithms.value = await fetchAlgorithms()
-    ElMessage.success(enabled ? '算法已启用' : '算法已停用')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '算法状态更新失败')
-  } finally {
-    algorithmBusy.value = false
-  }
-}
-
-async function makeDefaultAlgorithm(algorithm: AlgorithmDefinition) {
-  algorithmBusy.value = true
-  try {
-    await setDefaultAlgorithm(algorithm.code)
-    algorithms.value = await fetchAlgorithms()
-    ElMessage.success('默认算法已更新')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '默认算法更新失败')
-  } finally {
-    algorithmBusy.value = false
   }
 }
 
@@ -703,41 +339,12 @@ onBeforeUnmount(() => {
     <template #actions>
       <div class="mission-health">
         <span><i :class="{ online: rosOnline }" />ROS {{ rosOnline ? '在线' : '离线' }}</span>
-        <span><i :class="{ online: unityChannel.connected }" />Unity {{ unityChannel.connected ? '就绪' : '连接中' }}</span>
+        <span><i :class="{ online: !!algorithmFrame }" />轨迹数据 {{ algorithmFrame ? '实时' : '等待中' }}</span>
         <span><i :class="{ online: onlineVehicleCount >= 6 }" />设备 {{ onlineVehicleCount }}/6</span>
       </div>
     </template>
 
     <section class="mission-workspace" :aria-busy="loading">
-      <header class="algorithm-toolbar">
-        <div class="algorithm-picker">
-          <label for="mission-algorithm">当前算法</label>
-          <el-select
-            id="mission-algorithm"
-            :model-value="selectedAlgorithmCode"
-            :disabled="busy"
-            @change="onAlgorithmSelected"
-          >
-            <el-option
-              v-for="algorithm in enabledAlgorithms"
-              :key="algorithm.code"
-              :label="`${algorithm.name} v${algorithm.version}`"
-              :value="algorithm.code"
-            />
-          </el-select>
-          <button type="button" class="secondary-button" @click="algorithmManagerVisible=true">
-            <Settings2 :size="15" />算法管理
-          </button>
-        </div>
-        <div class="algorithm-summary">
-          <span>{{ sceneScale }}</span>
-          <em :class="activeMission?.status.toLowerCase()">{{ statusLabel }}</em>
-        </div>
-        <button class="primary-button" type="button" :disabled="busy || !currentAlgorithm || !!activeRun" @click="startSelectedAlgorithm">
-          <Play :size="17" />{{ primaryActionLabel }}
-        </button>
-      </header>
-
       <section class="execution-card">
         <header class="run-toolbar">
           <div class="mission-identity">
@@ -746,25 +353,12 @@ onBeforeUnmount(() => {
           </div>
           <div class="situation-view-label"><Layers3 :size="16" />二维轨迹 · 同一RUN实时数据</div>
           <span class="run-sync"><i />{{ runSyncText }}</span>
-          <div class="run-actions">
-            <button
-              :disabled="busy || !activeRun"
-              @click="applyMissionAction(activeMission?.status === 'PAUSED' ? 'resume' : 'pause')"
-            >
-              <Play v-if="activeMission?.status === 'PAUSED'" :size="15" />
-              <Pause v-else :size="15" />
-              {{ activeMission?.status === 'PAUSED' ? '继续' : '暂停' }}
-            </button>
-            <button class="danger" :disabled="busy || !activeRun" @click="applyMissionAction('cancel')">
-              <XOctagon :size="15" />终止
-            </button>
-          </div>
+          <em class="read-only-badge" :class="activeMission?.status.toLowerCase()">{{ statusLabel }}</em>
         </header>
 
         <main class="execution-stage">
           <AlgorithmTrajectoryMap
             :frame="algorithmFrame"
-            :mission-name="activeMission?.name ?? '算法轨迹'"
             :selected-device-code="selectedDeviceCode"
             @select="selectObservationDevice"
             @place-threat="placeThreat"
@@ -773,14 +367,6 @@ onBeforeUnmount(() => {
       </section>
 
     </section>
-
-    <AlgorithmManagerDialog
-      v-model="algorithmManagerVisible"
-      :algorithms="algorithms"
-      :loading="algorithmBusy"
-      @toggle="toggleAlgorithm"
-      @set-default="makeDefaultAlgorithm"
-    />
   </ConsoleLayout>
 </template>
 
@@ -801,7 +387,7 @@ onBeforeUnmount(() => {
 .mission-workspace {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 10px;
   width: 100%;
   max-width: 2360px;
@@ -999,13 +585,30 @@ button:disabled {
 
 .run-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, .8fr) auto minmax(170px, .55fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto minmax(190px, .55fr) auto;
   align-items: center;
   gap: 12px;
   min-height: 62px;
   padding: 8px 12px;
   border-bottom: 1px solid rgba(70, 164, 183, .18);
 }
+
+.read-only-badge {
+  min-width: 70px;
+  padding: 6px 10px;
+  color: #d9f4f0;
+  border: 1px solid #315d65;
+  border-radius: 4px;
+  background: #0a2630;
+  font-size: 10px;
+  font-style: normal;
+  text-align: center;
+}
+
+.read-only-badge.running { color: #55e7a7; border-color: #246b57; }
+.read-only-badge.paused { color: #ffd26a; border-color: #705c29; }
+.read-only-badge.failed,
+.read-only-badge.cancelled { color: #ff7777; border-color: #75383f; }
 
 .mission-identity small,
 .mission-identity strong {
@@ -1426,7 +1029,7 @@ button:disabled {
 
 @media (min-width: 1920px) and (min-height: 1000px) {
   .mission-workspace {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .execution-stage {

@@ -26,6 +26,7 @@ const frameStyle = reactive<Record<string, string>>({})
 let viewportElement: HTMLElement | null = null
 let resizeObserver: ResizeObserver | null = null
 let animationFrame = 0
+let alignmentUntil = 0
 let lastWidth = 1280
 let lastHeight = 720
 
@@ -58,8 +59,11 @@ function alignRuntime() {
     return
   }
   const rect = viewportElement.getBoundingClientRect()
-  lastWidth = Math.max(640, Math.round(rect.width))
-  lastHeight = Math.max(360, Math.round(rect.height))
+  // Active runtime must match the viewport exactly. The previous 640×360
+  // minimum made a short camera card render a taller fixed layer, so the
+  // Unity canvas leaked out below the card as a visible strip.
+  lastWidth = Math.max(1, Math.round(rect.width))
+  lastHeight = Math.max(1, Math.round(rect.height))
   Object.assign(frameStyle, {
     left: `${Math.round(rect.left)}px`,
     top: `${Math.round(rect.top)}px`,
@@ -71,11 +75,21 @@ function alignRuntime() {
 function scheduleAlignment() {
   window.cancelAnimationFrame(animationFrame)
   void nextTick(() => {
-    animationFrame = window.requestAnimationFrame(() => {
+    alignmentUntil = Math.max(alignmentUntil, performance.now() + 100)
+    const track = () => {
       alignRuntime()
-      animationFrame = window.requestAnimationFrame(alignRuntime)
-    })
+      if (performance.now() < alignmentUntil) animationFrame = window.requestAnimationFrame(track)
+    }
+    animationFrame = window.requestAnimationFrame(track)
   })
+}
+
+function trackRuntime(event: Event) {
+  const duration = event instanceof CustomEvent
+    ? Number(event.detail?.duration ?? 500)
+    : 500
+  alignmentUntil = Math.max(alignmentUntil, performance.now() + Math.max(100, duration))
+  scheduleAlignment()
 }
 
 watch(() => [props.viewport, props.active], scheduleAlignment, { immediate: true })
@@ -83,6 +97,7 @@ watch(() => [props.viewport, props.active], scheduleAlignment, { immediate: true
 onMounted(() => {
   window.addEventListener('resize', scheduleAlignment)
   window.addEventListener('scroll', alignRuntime, true)
+  window.addEventListener('unity-runtime-track', trackRuntime)
   scheduleAlignment()
 })
 
@@ -91,6 +106,7 @@ onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrame)
   window.removeEventListener('resize', scheduleAlignment)
   window.removeEventListener('scroll', alignRuntime, true)
+  window.removeEventListener('unity-runtime-track', trackRuntime)
 })
 </script>
 

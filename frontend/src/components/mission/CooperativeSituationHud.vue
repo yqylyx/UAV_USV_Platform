@@ -2,11 +2,11 @@
 import { computed, reactive, watch } from 'vue'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
 
-const props=defineProps<{frame:AlgorithmRuntimeFrame|null;missionName:string;selectedDeviceCode?:string}>()
+const props=defineProps<{frame:AlgorithmRuntimeFrame|null;selectedDeviceCode?:string}>()
 const emit=defineEmits<{select:[code:string];placeThreat:[x:number,y:number]}>()
-const width=1200,height=620,plot={x:28,y:46,w:1144,h:542}
+const width=1200,height=620,plot={x:22,y:22,w:1156,h:576}
 const histories=reactive<Record<string,Array<{x:number;y:number}>>>({})
-const telemetry=reactive({distance:[] as number[],spacing:[] as number[],stability:[] as number[]})
+const telemetry=reactive({distance:[] as number[],minimumSpacing:[] as number[],stability:[] as number[]})
 let runId:number|null=null
 
 const visibleTargets=computed(()=>props.frame?.targets.filter(item=>props.frame?.algorithmCode==='ESCORT_GUARD'
@@ -18,7 +18,10 @@ const usvs=computed(()=>props.frame?.agents.filter(item=>item.type==='USV')||[])
 const captureTarget=computed(()=>props.frame?.targets.find(item=>item.type==='CAPTURE_TARGET'))
 const activeTarget=computed(()=>props.frame?.targets.find(item=>item.type===(props.frame?.algorithmCode==='ESCORT_GUARD'?'ESCORT_TARGET':'CAPTURE_TARGET')))
 const bounds=computed(()=>{
-  const points=objects.value.flatMap(item=>[{x:item.x,y:item.y},...(histories[item.code]||[])])
+  const points=objects.value.flatMap(item=>[
+    {x:item.x,y:item.y},
+    ...(histories[item.code]||[]).slice(-160),
+  ])
   if(!points.length)return{minX:-80,maxX:80,minY:-48,maxY:48}
   let minX=Math.min(...points.map(p=>p.x)),maxX=Math.max(...points.map(p=>p.x))
   let minY=Math.min(...points.map(p=>p.y)),maxY=Math.max(...points.map(p=>p.y))
@@ -59,14 +62,23 @@ function quality(items:Array<{x:number;y:number}>,target?:{x:number;y:number}){
 const uavQuality=computed(()=>quality(uavs.value))
 const usvQuality=computed(()=>quality(usvs.value,activeTarget.value))
 const usvQualityLabel=computed(()=>props.frame?.algorithmCode==='ESCORT_GUARD'?'USV 护卫环质量':'USV 环形围捕质量')
-function spark(values:number[]){
-  if(values.length<2)return''
-  const min=Math.min(...values),max=Math.max(...values),span=Math.max(.001,max-min)
-  return values.map((v,i)=>`${i?'L':'M'} ${i/(values.length-1)*160} ${38-(v-min)/span*38}`).join(' ')
-}
+const latest=(values:number[])=>values.length?values[values.length-1]:undefined
+const selectedObject=computed(()=>objects.value.find(item=>item.code.toLowerCase()===props.selectedDeviceCode?.toLowerCase())??null)
+const situationJudgement=computed(()=>{
+  if(!props.frame)return'等待实时数据'
+  if(props.frame.algorithmCode==='ESCORT_GUARD')return ['THREAT_RESPONSE','COMPLETED'].includes(props.frame.phase)?'护航响应已建立':'护航编队运行中'
+  return enclosure.value?'包围态势已形成':'包围态势建立中'
+})
+const metricCards=computed(()=>[
+  {key:'uav',title:'UAV 编队质量',value:uavQuality.value===null?'--':`${format(uavQuality.value,0)}%`,tone:'uav'},
+  {key:'usv',title:usvQualityLabel.value,value:usvQuality.value===null?'--':`${format(usvQuality.value,0)}%`,tone:'usv'},
+  {key:'distance',title:'目标平均距离',value:`${format(latest(telemetry.distance),1)} m`,tone:'neutral'},
+  {key:'minimumSpacing',title:'最小水平间距',value:`${format(latest(telemetry.minimumSpacing),1)} m`,tone:'safe'},
+  {key:'stability',title:'编队稳定度',value:`${format(latest(telemetry.stability),0)}%`,tone:'neutral'},
+])
 watch(()=>props.frame?.sequence,()=>{
   if(!props.frame)return
-  if(runId!==props.frame.runId){runId=props.frame.runId;Object.keys(histories).forEach(k=>delete histories[k]);telemetry.distance=[];telemetry.spacing=[];telemetry.stability=[]}
+  if(runId!==props.frame.runId){runId=props.frame.runId;Object.keys(histories).forEach(k=>delete histories[k]);telemetry.distance=[];telemetry.minimumSpacing=[];telemetry.stability=[]}
   for(const item of [...props.frame.agents,...visibleTargets.value]){
     const list=histories[item.code]||(histories[item.code]=[]),last=list[list.length-1]
     if(!last||Math.hypot(last.x-item.x,last.y-item.y)>.06)list.push({x:item.x,y:item.y})
@@ -76,7 +88,7 @@ watch(()=>props.frame?.sequence,()=>{
     const agents=props.frame.agents,distances=agents.map(item=>Math.hypot(item.x-activeTarget.value!.x,item.y-activeTarget.value!.y)),pairs:number[]=[]
     for(let i=0;i<agents.length;i++)for(let j=i+1;j<agents.length;j++)pairs.push(Math.hypot(agents[i]!.x-agents[j]!.x,agents[i]!.y-agents[j]!.y))
     const mean=distances.reduce((a,b)=>a+b,0)/distances.length,sd=Math.sqrt(distances.reduce((s,v)=>s+(v-mean)**2,0)/distances.length)
-    telemetry.distance.push(mean);telemetry.spacing.push(pairs.reduce((a,b)=>a+b,0)/Math.max(1,pairs.length));telemetry.stability.push(Math.max(0,100-sd/Math.max(mean,1)*150))
+    telemetry.distance.push(mean);telemetry.minimumSpacing.push(pairs.length?Math.min(...pairs):0);telemetry.stability.push(Math.max(0,100-sd/Math.max(mean,1)*150))
     for(const values of Object.values(telemetry))if(values.length>72)values.splice(0,values.length-72)
   }
 },{immediate:true})
@@ -92,32 +104,77 @@ function placeThreat(event:MouseEvent){
 
 <template>
   <section class="situation-hud">
-    <svg class="map" :viewBox="`0 0 ${width} ${height}`" @dblclick="placeThreat">
-      <defs><pattern id="hud-grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#3a91a3" stroke-opacity=".14"/></pattern></defs>
-      <rect :x="plot.x" :y="plot.y" :width="plot.w" :height="plot.h" class="water"/><rect :x="plot.x" :y="plot.y" :width="plot.w" :height="plot.h" fill="url(#hud-grid)"/>
-      <path v-if="routePath" :d="routePath" class="route"/>
-      <polygon v-if="frame?.algorithmCode==='GB_SFLA_CS'&&uavs.length===3&&enclosure" :points="polygon(uavs)" class="uav-form"/>
-      <circle v-if="frame?.algorithmCode==='GB_SFLA_CS'&&usvs.length===3&&captureTarget&&enclosure" :cx="sx(captureTarget.x)" :cy="sy(captureTarget.y)" :r="ringRadius" class="usv-form"/>
-      <g v-for="item in objects" :key="item.code">
-        <path :d="path(item.code)" :stroke="color(item.type)" class="trail old"/><path :d="path(item.code,true)" :stroke="color(item.type)" class="trail recent"/>
-        <g class="marker" :class="{selected:item.code.toLowerCase()===selectedDeviceCode?.toLowerCase()}" @click.stop="emit('select',item.code.toLowerCase())">
-          <circle :cx="sx(item.x)" :cy="sy(item.y)" :r="item.type.includes('TARGET')?7:5" :fill="color(item.type)"/>
-          <line :x1="sx(item.x)" :y1="sy(item.y)" :x2="sx(item.x)+Math.cos(item.heading*Math.PI/180)*14" :y2="sy(item.y)-Math.sin(item.heading*Math.PI/180)*14" :stroke="color(item.type)"/>
-          <text :x="sx(item.x)+10" :y="sy(item.y)-10" :fill="color(item.type)">{{ label(item) }}</text>
+    <header class="situation-summary">
+      <div class="metric-grid">
+        <article v-for="item in metricCards" :key="item.key" class="metric-card" :class="item.tone">
+          <span>{{ item.title }}</span><strong>{{ item.value }}</strong>
+          <small v-if="item.key==='uav'">{{ uavs.length }}/3 数据有效</small>
+          <small v-else-if="item.key==='usv'">{{ usvs.length }}/3 数据有效</small>
+          <small v-else-if="item.key==='minimumSpacing'">二维水平距离</small>
+          <small v-else>实时计算</small>
+        </article>
+      </div>
+    </header>
+    <div class="map-stage">
+      <aside class="situation-side unit-panel">
+        <div class="side-title"><span>作战单元</span><b>{{ objects.length }} 个目标</b></div>
+        <dl class="unit-counts">
+          <div><dt>UAV</dt><dd>{{ uavs.length }}/3</dd></div>
+          <div><dt>USV</dt><dd>{{ usvs.length }}/3</dd></div>
+          <div><dt>任务目标</dt><dd>{{ visibleTargets.length }}</dd></div>
+        </dl>
+        <div class="selected-unit">
+          <span>当前观察</span>
+          <strong>{{ selectedObject?.code.toUpperCase().replace('_','-') || '点击轨迹设备' }}</strong>
+          <template v-if="selectedObject">
+            <small>东向 {{ format(selectedObject.x,1) }} m</small>
+            <small>北向 {{ format(selectedObject.y,1) }} m</small>
+            <small>航向 {{ format(selectedObject.heading,0) }}°</small>
+          </template>
+        </div>
+      </aside>
+      <div class="map-shell">
+        <svg class="map" :viewBox="`0 0 ${width} ${height}`" @dblclick="placeThreat">
+        <defs><pattern id="hud-grid" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="#3a91a3" stroke-opacity=".14"/></pattern></defs>
+        <rect :x="plot.x" :y="plot.y" :width="plot.w" :height="plot.h" class="water"/><rect :x="plot.x" :y="plot.y" :width="plot.w" :height="plot.h" fill="url(#hud-grid)"/>
+        <path v-if="routePath" :d="routePath" class="route"/>
+        <polygon v-if="frame?.algorithmCode==='GB_SFLA_CS'&&uavs.length===3&&enclosure" :points="polygon(uavs)" class="uav-form"/>
+        <circle v-if="frame?.algorithmCode==='GB_SFLA_CS'&&usvs.length===3&&captureTarget&&enclosure" :cx="sx(captureTarget.x)" :cy="sy(captureTarget.y)" :r="ringRadius" class="usv-form"/>
+        <g v-for="item in objects" :key="item.code">
+          <path :d="path(item.code)" :stroke="color(item.type)" class="trail old"/><path :d="path(item.code,true)" :stroke="color(item.type)" class="trail recent"/>
+          <g class="marker" :class="{selected:item.code.toLowerCase()===selectedDeviceCode?.toLowerCase()}" @click.stop="emit('select',item.code.toLowerCase())">
+            <circle :cx="sx(item.x)" :cy="sy(item.y)" :r="item.type.includes('TARGET')?7:5" :fill="color(item.type)"/>
+            <line :x1="sx(item.x)" :y1="sy(item.y)" :x2="sx(item.x)+Math.cos(item.heading*Math.PI/180)*14" :y2="sy(item.y)-Math.sin(item.heading*Math.PI/180)*14" :stroke="color(item.type)"/>
+            <text :x="sx(item.x)+10" :y="sy(item.y)-10" :fill="color(item.type)">{{ label(item) }}</text>
+          </g>
         </g>
-      </g>
-      <text v-if="!frame" :x="width/2" :y="height/2" text-anchor="middle" class="waiting">等待真实算法轨迹帧</text>
-    </svg>
-    <div class="caption"><span>COOPERATIVE SITUATION</span><b>{{ missionName }}</b></div>
-    <div class="phase"><div class="arc"><i :style="{width:`${phaseIndex/(steps.length-1)*100}%`}"/></div><ol><li v-for="(step,index) in steps" :key="step" :class="{active:index<=phaseIndex,current:index===phaseIndex}"><i/>{{ step }}</li></ol></div>
-    <article class="quality uav"><span>UAV 三角编队质量</span><strong>{{ uavQuality===null?'--':`${format(uavQuality,0)}%` }}</strong><div><i :style="{width:`${uavQuality||0}%`}"/></div><small>{{ uavs.length }}/3 在线</small></article>
-    <article class="quality usv"><span>{{ usvQualityLabel }}</span><strong>{{ usvQuality===null?'--':`${format(usvQuality,0)}%` }}</strong><div><i :style="{width:`${usvQuality||0}%`}"/></div><small>{{ usvs.length }}/3 在线</small></article>
-    <article v-for="item in [{key:'distance',title:'目标平均距离',unit:'m'},{key:'spacing',title:'设备平均间距',unit:'m'},{key:'stability',title:'编队稳定度',unit:'%'}]" :key="item.key" class="trend" :class="item.key"><span>{{ item.title }}</span><b>{{ format(telemetry[item.key as keyof typeof telemetry][telemetry[item.key as keyof typeof telemetry].length-1],item.key==='stability'?0:1) }} {{ item.unit }}</b><svg viewBox="0 0 160 38"><path :d="spark(telemetry[item.key as keyof typeof telemetry])"/></svg></article>
-    <div class="run"><span>RUN ID {{ frame?.runId||'--' }}</span><span>SEQ {{ frame?.sequence||0 }}</span><b>{{ phaseLabel }}</b></div>
+        <text v-if="!frame" :x="width/2" :y="height/2" text-anchor="middle" class="waiting">等待实时轨迹数据</text>
+        </svg>
+      </div>
+      <aside class="situation-side target-panel">
+        <div class="side-title"><span>态势摘要</span><b>{{ phaseLabel }}</b></div>
+        <div class="judgement"><i :class="{ready:enclosure}"/><span>{{ situationJudgement }}</span></div>
+        <dl class="target-data">
+          <div><dt>实时帧</dt><dd>SEQ {{ frame?.sequence ?? 0 }}</dd></div>
+          <div><dt>目标东向</dt><dd>{{ format(activeTarget?.x,1) }} m</dd></div>
+          <div><dt>目标北向</dt><dd>{{ format(activeTarget?.y,1) }} m</dd></div>
+        </dl>
+        <div class="legend">
+          <span><i class="uav"/>UAV</span><span><i class="usv"/>USV</span><span><i class="target"/>任务目标</span>
+        </div>
+      </aside>
+    </div>
+    <footer class="phase">
+      <div class="phase-title"><span>任务阶段</span><b>{{ phaseLabel }}</b></div>
+      <div class="arc"><i :style="{width:`${phaseIndex/(steps.length-1)*100}%`}"/></div>
+      <ol><li v-for="(step,index) in steps" :key="step" :class="{active:index<=phaseIndex,current:index===phaseIndex}"><i/>{{ step }}</li></ol>
+    </footer>
   </section>
 </template>
 
 <style scoped>
-.situation-hud{position:relative;width:100%;height:100%;min-height:560px;overflow:hidden;background:#020c12;color:#e9fbfa}.map{position:absolute;inset:0;width:100%;height:100%}.water{fill:#031821;stroke:#23616e}.route{fill:none;stroke:#45d6e8;stroke-width:2;stroke-dasharray:8 6}.trail{fill:none;stroke-width:1.8}.trail.old{opacity:.18}.trail.recent{opacity:.84}.uav-form{fill:#ffc83d0b;stroke:#ffc83d;stroke-width:1.5;stroke-dasharray:7 5}.usv-form{fill:#ff646d09;stroke:#ff646d;stroke-width:1.5;stroke-dasharray:7 5}.marker{cursor:pointer}.marker text{font-size:10px;font-weight:800;paint-order:stroke;stroke:#020b11;stroke-width:3px}.marker.selected circle{stroke:#fff;stroke-width:2.5}.waiting{fill:#6f999f;font-size:15px}.caption{position:absolute;left:2%;top:3%;display:grid;gap:3px;text-shadow:0 2px 8px #000}.caption span{color:#54d7e9;font-size:9px;letter-spacing:.18em}.caption b{font-size:13px}.phase{position:absolute;left:50%;top:2.5%;width:min(48%,650px);transform:translateX(-50%)}.arc{height:26px;border-top:1px solid #285e69;border-radius:50%}.arc i{display:block;height:1px;background:#5fe6d6;box-shadow:0 0 8px #4ce5d6}.phase ol{display:flex;justify-content:space-between;margin:-20px 0 0;padding:0;list-style:none}.phase li{display:grid;justify-items:center;gap:5px;color:#668c91;font-size:9px}.phase li i{width:6px;height:6px;border:1px solid #4a747a;border-radius:50%;background:#06171e}.phase li.active{color:#b9e4e1}.phase li.active i{border-color:#51e4c8;background:#51e4c8}.phase li.current{color:#fff;font-weight:800}.quality,.trend,.run{position:absolute;border:1px solid #265763;border-radius:8px;background:#041821d9;box-shadow:0 12px 28px #0005;backdrop-filter:blur(7px)}.quality{top:13%;width:165px;padding:11px}.quality.uav{left:2%}.quality.usv{right:2%}.quality span,.trend span{color:#77a6ab;font-size:9px}.quality strong{float:right;color:#eafcfa;font-size:18px}.quality>div{height:3px;margin:13px 0 7px;background:#17343c}.quality>div i{display:block;height:100%;background:#54e6cf;box-shadow:0 0 8px #54e6cf}.quality small{color:#79a1a6}.trend{bottom:3%;width:170px;padding:9px 11px}.trend.distance{left:2%}.trend.spacing{left:50%;transform:translateX(-50%)}.trend.stability{right:2%}.trend b{float:right;font-size:12px}.trend svg{display:block;width:100%;height:38px;margin-top:7px}.trend path{fill:none;stroke:#53dfd3;stroke-width:1.8;filter:drop-shadow(0 0 3px #53dfd3)}.run{right:2%;top:30%;display:grid;gap:7px;padding:9px 11px;font-size:9px}.run span{color:#7ea4a8}.run b{color:#55e6aa}.run span+span{margin-left:0}@media(max-width:1100px){.quality{width:145px}.phase{width:43%}.trend{width:145px}.run{display:none}}@media(max-height:740px){.situation-hud{min-height:500px}.quality{top:15%;padding:8px}.trend{padding:7px 9px}.trend svg{height:26px}}
-@media(max-height:850px){.situation-hud{min-height:420px}.quality{top:16%}.trend{bottom:2%}}
+.situation-hud{display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:100%;height:100%;min-height:560px;overflow:hidden;background:#020c12;color:#e9fbfa}.situation-summary{padding:10px 12px;border-bottom:1px solid #173d47;background:#041720}.phase{display:grid;grid-template-rows:auto 8px auto;align-content:center;min-width:0;padding:8px 18px 10px;border-top:1px solid #173d47;background:#041720}.phase-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px}.phase-title span{color:#76a4a9;font-size:9px;letter-spacing:.12em}.phase-title b{color:#56e1ce;font-size:11px}.arc{height:2px;background:#173842}.arc i{display:block;height:100%;background:#5fe6d6;box-shadow:0 0 8px #4ce5d6}.phase ol{display:flex;justify-content:space-between;margin:2px 0 0;padding:0;list-style:none}.phase li{display:grid;justify-items:center;gap:3px;color:#668c91;font-size:8px;white-space:nowrap}.phase li i{width:5px;height:5px;border:1px solid #4a747a;border-radius:50%;background:#06171e}.phase li.active{color:#b9e4e1}.phase li.active i{border-color:#51e4c8;background:#51e4c8}.phase li.current{color:#fff;font-weight:800}.metric-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}.metric-card{display:grid;grid-template-columns:1fr auto;align-content:center;gap:3px 8px;min-width:0;padding:8px 10px;border:1px solid #1f4c57;border-radius:6px;background:#061c25}.metric-card span{overflow:hidden;color:#7fa7ab;font-size:8px;white-space:nowrap;text-overflow:ellipsis}.metric-card strong{grid-row:1/3;grid-column:2;color:#efffff;font-size:14px}.metric-card small{color:#557d82;font-size:8px}.metric-card.uav{border-color:#705f24}.metric-card.uav strong{color:#ffc83d}.metric-card.usv{border-color:#70343b}.metric-card.usv strong{color:#ff747c}.metric-card.safe strong{color:#55e6aa}.map-stage{display:grid;grid-template-columns:210px minmax(0,1fr) 210px;gap:10px;min-height:0;padding:10px 12px}.map-shell{position:relative;min-width:0;min-height:0;overflow:hidden;border:1px solid #205966;background:#031821}.map{display:block;width:100%;height:100%}.situation-side{display:flex;min-height:0;flex-direction:column;gap:12px;padding:14px;border:1px solid #194650;background:linear-gradient(180deg,#061c25,#04151d)}.side-title{display:grid;gap:3px;padding-bottom:9px;border-bottom:1px solid #173e47}.side-title span{color:#58d6e2;font-size:9px;letter-spacing:.14em}.side-title b{color:#e9fbfa;font-size:12px}.unit-counts,.target-data{display:grid;gap:6px;margin:0}.unit-counts div,.target-data div{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid #163b44;background:#071f28}.unit-counts dt,.target-data dt{color:#6f989d;font-size:9px}.unit-counts dd,.target-data dd{margin:0;color:#e4faf7;font-size:11px;font-weight:800}.selected-unit{display:grid;gap:7px;margin-top:auto;padding:11px;border:1px solid #28555f;background:#08232d}.selected-unit span{color:#6f999e;font-size:9px}.selected-unit strong{color:#5ce3d6;font-size:14px}.selected-unit small{color:#9ababc;font-size:9px}.judgement{display:flex;align-items:center;gap:8px;padding:9px;border:1px solid #234d57;background:#08212a;color:#d8f1ef;font-size:10px}.judgement i{width:7px;height:7px;border-radius:50%;background:#ffd064;box-shadow:0 0 8px #ffd06488}.judgement i.ready{background:#55e6aa;box-shadow:0 0 8px #55e6aa88}.legend{display:grid;gap:8px;margin-top:auto;padding-top:10px;border-top:1px solid #173e47}.legend span{display:flex;align-items:center;gap:8px;color:#89adb0;font-size:9px}.legend i{width:8px;height:8px;border-radius:50%}.legend .uav{background:#ffc83d}.legend .usv{background:#ff646d}.legend .target{background:#3fc9f2}.water{fill:#031821;stroke:#23616e}.route{fill:none;stroke:#45d6e8;stroke-width:2;stroke-dasharray:8 6}.trail{fill:none;stroke-width:1.8}.trail.old{opacity:.18}.trail.recent{opacity:.84}.uav-form{fill:#ffc83d0b;stroke:#ffc83d;stroke-width:1.5;stroke-dasharray:7 5}.usv-form{fill:#ff646d09;stroke:#ff646d;stroke-width:1.5;stroke-dasharray:7 5}.marker{cursor:pointer}.marker text{font-size:10px;font-weight:800;paint-order:stroke;stroke:#020b11;stroke-width:3px}.marker.selected circle{stroke:#fff;stroke-width:2.5}.waiting{fill:#6f999f;font-size:15px}
+@media(max-width:1280px){.metric-grid{grid-template-columns:repeat(5,minmax(100px,1fr))}.map-stage{grid-template-columns:170px minmax(0,1fr) 170px}.situation-side{padding:10px}.situation-hud{min-height:620px}}
+@media(max-width:980px){.map-stage{grid-template-columns:1fr}.situation-side{display:none}}
+@media(max-width:900px){.metric-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.situation-hud{min-height:680px}}
 </style>
