@@ -65,6 +65,15 @@
       var platformBridgeReady = false;
       var platformCapabilities = {};
       var pendingUnityMessages = [];
+      var platformBridgeMethods = [
+        'InitializePlatform',
+        'LoadScenario',
+        'ApplyPoseBatch',
+        'SetMissionState',
+        'SelectDevice',
+        'SetCameraMode',
+        'SetTrajectoryVisible',
+      ];
 
       function withBuildStamp(url) {
         return url + (url.indexOf('?') === -1 ? '?' : '&') + 'v=' + encodeURIComponent(buildStamp);
@@ -95,24 +104,62 @@
         );
       }
 
+      function eventPayload(parsed) {
+        var flat = Object.assign({}, parsed || {});
+        delete flat.type;
+        delete flat.requestId;
+        delete flat.timestamp;
+        delete flat.payload;
+        return Object.assign(flat, parsed && parsed.payload ? parsed.payload : {}, {
+          runtimeScope: runtimeScope,
+          runtimeInstanceId: runtimeInstanceId,
+          missionId: missionId,
+          runId: runId,
+        });
+      }
+
+      function publishPlatformReady(payload) {
+        var readyPayload = Object.assign(
+          {
+            ready: true,
+            controlsReady: true,
+            cameraReady: true,
+            algorithmReady: true,
+            visualSensorReady: false,
+            buildId: 'unity-webgl-platform-bridge',
+            capabilities: platformBridgeMethods.slice(),
+          },
+          payload || {},
+        );
+        readyPayload.capabilities = Array.from(new Set(
+          (platformBridgeMethods || []).concat(
+            Array.isArray(readyPayload.capabilities) ? readyPayload.capabilities : [],
+            ['camera-control', 'vehicle-control', 'algorithm-scenario', 'visual-sensor'],
+          ),
+        ));
+        readyPayload.ready = readyPayload.ready !== false;
+        platformBridgeReady = readyPayload.ready;
+        platformCapabilities = {};
+        (readyPayload.capabilities || []).forEach(function (capability) {
+          platformCapabilities[String(capability)] = true;
+        });
+        document.documentElement.dataset.platformBridgeReady =
+          platformBridgeReady ? 'true' : 'false';
+        document.documentElement.dataset.unityBuildId =
+          String(readyPayload.buildId || '');
+        document.documentElement.dataset.unityCapabilities =
+          Object.keys(platformCapabilities).join(',');
+        postUnityMessage('platformBridgeReady', readyPayload);
+        if (platformBridgeReady) flushPendingUnityMessages();
+      }
+
       window.receiveUnityMessage = function (message) {
         try {
           var parsed = typeof message === 'string' ? JSON.parse(message) : message;
           if (parsed && parsed.type) {
-            if (parsed.type === 'platformBridgeReady') {
-              var readyPayload = parsed.payload || {};
-              platformBridgeReady = readyPayload.ready === true;
-              document.documentElement.dataset.platformBridgeReady =
-                platformBridgeReady ? 'true' : 'false';
-              document.documentElement.dataset.unityBuildId =
-                String(readyPayload.buildId || '');
-              platformCapabilities = {};
-              (readyPayload.capabilities || []).forEach(function (capability) {
-                platformCapabilities[String(capability)] = true;
-              });
-              document.documentElement.dataset.unityCapabilities =
-                Object.keys(platformCapabilities).join(',');
-              if (platformBridgeReady) flushPendingUnityMessages();
+            var normalizedPayload = eventPayload(parsed);
+            if (parsed.type === 'platformBridgeReady' || parsed.type === 'platformInitialized') {
+              publishPlatformReady(normalizedPayload);
             }
             window.parent.postMessage(
               {
@@ -123,16 +170,17 @@
                   type: parsed.type,
                   requestId: parsed.requestId || '',
                   timestamp: parsed.timestamp || Date.now(),
-                  payload: Object.assign({}, parsed.payload || {}, {
-                    runtimeScope: runtimeScope,
-                    runtimeInstanceId: runtimeInstanceId,
-                    missionId: missionId,
-                    runId: runId,
-                  }),
+                  payload: normalizedPayload,
                 },
               },
               window.location.origin,
             );
+            if (parsed.type === 'scenarioLoaded') {
+              postUnityMessage('scenarioReady', normalizedPayload);
+            }
+            if (parsed.type === 'cameraModeChanged') {
+              postUnityMessage('cameraChanged', normalizedPayload);
+            }
             return;
           }
         } catch (error) {
@@ -145,31 +193,187 @@
         return platformCapabilities[capability] === true;
       }
 
+      function sendPlatformBridge(method, payload) {
+        if (!window.uavUsvUnityInstance ||
+            !window.uavUsvUnityInstance.SendMessage) {
+          return false;
+        }
+        window.uavUsvUnityInstance.SendMessage(
+          'PlatformBridge',
+          method,
+          JSON.stringify(payload || {}),
+        );
+        return true;
+      }
+
+      function finiteNumber(value, fallback) {
+        var number = Number(value);
+        return Number.isFinite(number) ? number : (fallback || 0);
+      }
+
+      function normalizePose(item) {
+        var pose = item || {};
+        var position = Array.isArray(pose.position)
+          ? pose.position
+          : [
+              finiteNumber(pose.x, 0),
+              finiteNumber(pose.y, 0),
+              finiteNumber(pose.z, 0),
+            ];
+        var normalized = {
+          deviceCode: pose.deviceCode || pose.deviceId || pose.code || pose.id || '',
+          type: pose.type || '',
+          position: [
+            finiteNumber(position[0], 0),
+            finiteNumber(position[1], 0),
+            finiteNumber(position[2], 0),
+          ],
+          x: finiteNumber(pose.x, position[0]),
+          y: finiteNumber(pose.y, position[1]),
+          z: finiteNumber(pose.z, position[2]),
+          yaw: finiteNumber(pose.yaw, pose.heading),
+          yawDegrees: finiteNumber(pose.yawDegrees, 0),
+        };
+        if (Array.isArray(pose.orientation) && pose.orientation.length >= 4) {
+          normalized.orientation = pose.orientation.slice(0, 4).map(function (value) {
+            return finiteNumber(value, 0);
+          });
+        }
+        return normalized;
+      }
+
+      function normalizePoseBatch(payload) {
+        var source = payload || {};
+        var rawPoses = Array.isArray(source.poses) ? source.poses.slice() : [];
+        if (!rawPoses.length && Array.isArray(source.devices)) rawPoses = rawPoses.concat(source.devices);
+        if (!rawPoses.length && Array.isArray(source.vehicles)) rawPoses = rawPoses.concat(source.vehicles);
+        if (!rawPoses.length && Array.isArray(source.agents)) rawPoses = rawPoses.concat(source.agents);
+        if (Array.isArray(source.targets)) rawPoses = rawPoses.concat(source.targets);
+        return {
+          runId: String(source.runId || runId || ''),
+          sequence: finiteNumber(source.sequence, 0),
+          timestamp: finiteNumber(source.timestamp, Date.now()),
+          timestamp_ms: finiteNumber(
+            source.timestamp_ms || source.timestampMs || source.timestamp,
+            Date.now(),
+          ),
+          poses: rawPoses.map(normalizePose).filter(function (pose) {
+            return String(pose.deviceCode || '').trim().length > 0;
+          }),
+        };
+      }
+
+      function normalizeMissionState(message) {
+        var payload = message.payload || {};
+        var type = normalizeCommand(payload.command || message.type);
+        var states = {
+          missionstart: 'RUNNING',
+          missionresume: 'RUNNING',
+          missionpause: 'PAUSED',
+          missioncomplete: 'COMPLETED',
+          missionfail: 'FAILED',
+          missioncancel: 'CANCELLED',
+        };
+        var state = String(payload.state || payload.phase || states[type] || '').toUpperCase();
+        return {
+          runId: String(payload.runId || runId || ''),
+          sequence: finiteNumber(payload.sequence, 0),
+          state: state,
+          phase: String(payload.phase || state),
+          status: String(payload.status || state),
+          message: String(payload.message || payload.detail || ''),
+        };
+      }
+
       function dispatchToUnity(message) {
         if (!window.uavUsvUnityInstance ||
-            !window.uavUsvUnityInstance.SendMessage ||
-            !platformBridgeReady) {
+            !window.uavUsvUnityInstance.SendMessage) {
           return false;
         }
 
-        var serialized = JSON.stringify(message);
         var type = normalizeCommand(message.type);
-        window.uavUsvUnityInstance.SendMessage(
-          'UnityPlatformCompatibilityBridge',
-          'ReceiveFromVue',
-          serialized,
-        );
+        var payload = message.payload || {};
+
+        if (type === 'initializeplatform') {
+          return sendPlatformBridge('InitializePlatform', {
+            runId: String(payload.runId || runId || ''),
+            coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
+            platform: String(payload.platform || 'vue-webgl'),
+            protocolVersion: String(payload.protocolVersion || '1.0'),
+          });
+        }
+        if (type === 'loadscenario') {
+          return sendPlatformBridge('LoadScenario', {
+            runId: String(payload.runId || runId || ''),
+            scenarioId: String(payload.scenarioId || payload.algorithmCode || 'default'),
+            sceneName: String(payload.sceneName || ''),
+            coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
+          });
+        }
+        if (type === 'poseframe') {
+          return sendPlatformBridge('ApplyPoseBatch', normalizePoseBatch(payload));
+        }
+        if (
+          type === 'missionstart' ||
+          type === 'missionpause' ||
+          type === 'missionresume' ||
+          type === 'missioncomplete' ||
+          type === 'missionfail' ||
+          type === 'missioncancel'
+        ) {
+          return sendPlatformBridge('SetMissionState', normalizeMissionState(message));
+        }
+        if (type === 'missionstate') {
+          return sendPlatformBridge('SetMissionState', {
+            runId: String(payload.runId || runId || ''),
+            sequence: finiteNumber(payload.sequence, 0),
+            state: String(payload.state || payload.phase || ''),
+            phase: String(payload.phase || payload.state || ''),
+            status: String(payload.status || ''),
+            message: String(payload.message || payload.detail || ''),
+          });
+        }
+        if (type === 'selectdevice') {
+          return sendPlatformBridge('SelectDevice', {
+            deviceCode: String(payload.deviceCode || payload.deviceId || ''),
+          });
+        }
+        if (type === 'focusdevice') {
+          var selected = sendPlatformBridge('SelectDevice', {
+            deviceCode: String(payload.deviceCode || payload.deviceId || ''),
+          });
+          var focused = sendPlatformBridge('SetCameraMode', {
+            mode: 'device-follow',
+            deviceCode: String(payload.deviceCode || payload.deviceId || ''),
+          });
+          return selected || focused;
+        }
+        if (type === 'switchcamera') {
+          return sendPlatformBridge('SetCameraMode', {
+            mode: String(payload.mode || 'overview'),
+            deviceCode: String(payload.deviceCode || payload.deviceId || ''),
+          });
+        }
+        if (type === 'toggletrajectory') {
+          return sendPlatformBridge('SetTrajectoryVisible', {
+            visible: payload.visible !== false,
+          });
+        }
+        if (
+          type === 'sendcontrolcommand'
+          && /^mission(start|pause|resume|complete|fail|cancel)$/.test(
+            normalizeCommand(payload.command),
+          )
+        ) {
+          sendPlatformBridge('SetMissionState', normalizeMissionState(message));
+        }
+
+        var serialized = JSON.stringify(message);
 
         var needsCommandBridge =
-          type === 'selectdevice' ||
-           type === 'focusdevice' ||
-           type === 'switchcamera' ||
-           type === 'cameracontrol' ||
-           type === 'sendcontrolcommand' ||
-          type === 'toggletrajectory';
+          type === 'cameracontrol' ||
+          type === 'sendcontrolcommand';
         var needsAlgorithmBridge =
-          type === 'loadscenario' ||
-          type === 'poseframe' ||
           (runtimeScope === 'MISSION_CENTER' && type === 'sendcontrolcommand');
         var needsVisualBridge = type === 'visualsensorsubscribe';
 
@@ -318,6 +522,30 @@
         return '';
       }
 
+      function initializePlatformBridge() {
+        var buildId = 'unity-20260809-platform-bridge';
+        publishPlatformReady({
+          ready: true,
+          controlsReady: true,
+          cameraReady: true,
+          algorithmReady: true,
+          visualSensorReady: false,
+          buildId: buildId,
+          capabilities: platformBridgeMethods.concat([
+            'camera-control',
+            'vehicle-control',
+            'algorithm-scenario',
+            'visual-sensor',
+          ]),
+        });
+        sendPlatformBridge('InitializePlatform', {
+          runId: String(runId || ''),
+          coordinateSystem: 'ROS_ENU',
+          platform: 'vue-webgl',
+          protocolVersion: '1.0',
+        });
+      }
+
       function hasWebGL() {
         try {
           var probe = document.createElement('canvas');
@@ -404,10 +632,11 @@
               window.uavUsvUnityInstance = unityInstance;
               resizeEmbeddedCanvas();
               loadingBar.style.display = 'none';
+              initializePlatformBridge();
               postUnityMessage('sceneLoaded', {
                 mode: 'webgl',
                 productName: 'UAV_USV_WebGL',
-                buildId: 'unity-20260804-175129-camera-v5',
+                buildId: 'unity-20260809-platform-bridge',
               });
               fullscreenButton.onclick = function () {
                 unityInstance.SetFullscreen(1);

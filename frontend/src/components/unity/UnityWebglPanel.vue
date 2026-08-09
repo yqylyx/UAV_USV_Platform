@@ -117,7 +117,12 @@ function handleWindowMessage(event: MessageEvent) {
   const message = parseUnityMessage(event.data)
   if (!message) return
 
-  if (message.type === 'sceneLoaded' || message.type === 'unityReady') {
+  if (
+    message.type === 'sceneLoaded'
+    || message.type === 'unityReady'
+    || message.type === 'platformBridgeReady'
+    || message.type === 'platformInitialized'
+  ) {
     markReady()
   }
 
@@ -188,6 +193,22 @@ function handleWindowMessage(event: MessageEvent) {
     }
   }
 
+  if (message.type === 'platformInitialized' && message.payload) {
+    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, {
+      ready: message.payload.success !== false,
+      controlsReady: true,
+      cameraReady: true,
+      algorithmReady: true,
+      visualSensorReady: false,
+      buildId: String(message.payload.buildId ?? 'unity-webgl-platform-bridge'),
+      capabilities: Array.isArray(message.payload.capabilities)
+        ? message.payload.capabilities
+        : [],
+    })
+    controlsReady.value = true
+    flushUnityOutbox()
+  }
+
   if (message.type === 'bridgeReady') {
     controlsReady.value = message.payload?.controlsReady === true
     unityBridgeStore.setControlsReadyFor(props.runtimeScope, controlsReady.value)
@@ -203,6 +224,13 @@ function handleWindowMessage(event: MessageEvent) {
 
   if (message.type === 'scenarioReady' && message.payload) {
     unityBridgeStore.markScenarioReadyFor(props.runtimeScope, message.payload)
+  }
+
+  if (message.type === 'scenarioLoaded' && message.payload) {
+    unityBridgeStore.markScenarioReadyFor(props.runtimeScope, {
+      ...message.payload,
+      algorithmCode: message.payload.algorithmCode ?? message.payload.scenarioId,
+    })
   }
 
   if (message.type === 'poseFrameApplied' && message.payload) {
