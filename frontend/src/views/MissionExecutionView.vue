@@ -13,17 +13,21 @@ import { issueRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useRealtimeStore } from '@/stores/realtime'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
 import { useVisualSensorStore } from '@/stores/visualSensor'
+import type { TrajectoryAgentType, UnityTrajectoryFrame } from '@/stores/trajectory'
 import type { AlgorithmRuntimeFrame, MissionDetail } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
+import type { VehiclePoseSample } from '@/types/realtime'
 import type { VisualSensorRuntimeContext } from '@/types/visualSensor'
 
 const route = useRoute()
 const router = useRouter()
 const monitoringStore = useMonitoringStore()
+const realtimeStore = useRealtimeStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const sessionStore = useMissionTrajectorySessionStore()
@@ -43,7 +47,6 @@ const visualDisplayMode = ref<'grid' | 'focus'>('grid')
 const missionId = computed(() => Number(route.params.missionId))
 const runId = computed(() => Number(route.params.runId))
 const unityChannel = computed(() => unityBridgeStore.channels.MISSION_CENTER)
-const trajectoryFrame = computed(() => trajectoryStore.channels.MISSION_CENTER.frame)
 const missionVisualStats = computed(() => visualSensorStore.streamStatsFor('MISSION_CENTER'))
 const missionVisualConnected = computed(() =>
   visualSensorStore.unityBridgeReadyFor('MISSION_CENTER')
@@ -59,6 +62,7 @@ const externalAlgorithm = computed(() => !!detail.value && ['GB_SFLA_CS', 'ESCOR
 let algorithmPollTimer: number | null = null
 let algorithmAbortController: AbortController | null = null
 let loadedScenarioKey = ''
+let lastRealtimePoseFrameKey = ''
 let algorithmRecoveryPromise: Promise<void> | null = null
 
 function missionVisualContext(): VisualSensorRuntimeContext {
@@ -163,6 +167,59 @@ function ensureMissionScenarioLoaded() {
   loadedScenarioKey = key
 }
 
+function poseDeviceType(deviceCode: string): TrajectoryAgentType {
+  return deviceCode.toLowerCase().startsWith('usv') ? 'USV' : 'UAV'
+}
+
+function validPoseSample(sample: VehiclePoseSample) {
+  const position = sample.localPositionEnuM
+  return !!position
+    && Number.isFinite(position.x)
+    && Number.isFinite(position.y)
+    && Number.isFinite(position.z)
+}
+
+function poseState(sample: VehiclePoseSample) {
+  if (sample.fresh === false || sample.positionValid === false) return 'STALE'
+  return 'ACTIVE'
+}
+
+const realtimeTrajectoryFrame = computed<UnityTrajectoryFrame | null>(() => {
+  const envelope = realtimeStore.poseBatch
+  const vehicles = envelope?.payload.vehicles?.filter(validPoseSample) ?? []
+  if (!envelope || !vehicles.length) return null
+  return {
+    sequence: envelope.sequence,
+    source: envelope.source,
+    coordinateSystem: 'ROS_ENU',
+    mission: {
+      phase: realtimeStore.missionStatus?.payload.phase ?? realtimeStore.missionStatus?.payload.state ?? 'ROS_GATEWAY_V1',
+      elapsed: 0,
+      captureRadius: 16,
+      defenseRadius: 18,
+      captureReady: false,
+      formationHolding: false,
+    },
+    agents: vehicles.map((vehicle) => {
+      const position = vehicle.localPositionEnuM!
+      return {
+        code: vehicle.deviceCode.trim().toLowerCase(),
+        type: poseDeviceType(vehicle.deviceCode),
+        x: position.x,
+        y: position.z,
+        z: position.y,
+        yaw: vehicle.headingDeg ?? 0,
+        state: poseState(vehicle),
+      }
+    }),
+    receivedAt: Date.parse(envelope.timestamp) || Date.now(),
+  }
+})
+
+const trajectoryFrame = computed<UnityTrajectoryFrame | null>(() =>
+  realtimeTrajectoryFrame.value ?? trajectoryStore.channels.MISSION_CENTER.frame,
+)
+
 const runtimeNodes = computed<RuntimeNode[]>(() => {
   const frame = trajectoryFrame.value
   if (!frame) return monitoringStore.nodes.filter(node => node.type === 'UAV' || node.type === 'USV')
@@ -178,11 +235,11 @@ const runtimeNodes = computed<RuntimeNode[]>(() => {
         status: 'ONLINE',
         host: null,
         port: null,
-        endpoint: 'unity://mission-center',
+        endpoint: frame.coordinateSystem === 'ROS_ENU' ? 'ros-gateway-v1://pose-batch' : 'unity://mission-center',
         rosNamespace: null,
         lastHeartbeatAt: new Date(frame.receivedAt).toISOString(),
         heartbeatAgeSeconds: Math.max(0, Math.round((Date.now() - frame.receivedAt) / 1000)),
-        source: 'UNITY_WEBGL',
+        source: frame.coordinateSystem === 'ROS_ENU' ? 'ROS_GATEWAY_V1' : 'UNITY_WEBGL',
         instanceId: unityViewportStore.missionInstanceId,
         positionX: agent.x,
         positionY: agent.y,
@@ -256,6 +313,44 @@ function sendAlgorithmPoseFrame(frame: AlgorithmRuntimeFrame) {
   })
 }
 
+function sendRealtimePoseFrameToUnity(frame: UnityTrajectoryFrame | null) {
+  const run = detail.value?.currentRun
+  if (!frame || frame.coordinateSystem !== 'ROS_ENU' || !run || !externalAlgorithm.value) return
+  if (!unityChannel.value.controlsReady) return
+  const frameKey = `${run.id}:${frame.source}:${frame.sequence}`
+  if (frameKey === lastRealtimePoseFrameKey) return
+  lastRealtimePoseFrameKey = frameKey
+  unityBridgeStore.sendFor('MISSION_CENTER', 'poseFrame', {
+    algorithmCode: detail.value?.mission.algorithmCode ?? 'GB_SFLA_CS',
+    runId: run.id,
+    sequence: frame.sequence,
+    timestamp: frame.receivedAt,
+    phase: frame.mission.phase,
+    agents: frame.agents
+      .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
+      .map(agent => ({
+        code: agent.code,
+        type: agent.type,
+        x: agent.x,
+        y: agent.z,
+        z: agent.y,
+        heading: agent.yaw,
+      })),
+    targets: frame.agents
+      .filter(agent => agent.type === 'TARGET')
+      .map(agent => ({
+        code: agent.code,
+        type: 'TARGET',
+        x: agent.x,
+        y: agent.z,
+        z: agent.y,
+        heading: agent.yaw,
+        visible: true,
+      })),
+    route: [],
+  })
+}
+
 function ingestAlgorithmFrame(frame: AlgorithmRuntimeFrame) {
   if (frame.runId !== runId.value || frame.runId !== detail.value?.currentRun?.id) return
   if (algorithmFrame.value && frame.sequence <= algorithmFrame.value.sequence) return
@@ -297,6 +392,12 @@ watch([
   () => detail.value?.currentRun?.id,
   () => unityViewportStore.missionInstanceId,
 ], ensureMissionScenarioLoaded, { immediate: true })
+
+watch([
+  realtimeTrajectoryFrame,
+  () => unityChannel.value.controlsReady,
+  () => detail.value?.currentRun?.id,
+], ([frame]) => sendRealtimePoseFrameToUnity(frame), { immediate: true })
 
 async function pollAlgorithmFrames() {
   if (!externalAlgorithm.value || !detail.value?.currentRun || algorithmPolling.value) return
@@ -471,6 +572,7 @@ async function closeExecution() {
 
 onMounted(async () => {
   unityViewportStore.park()
+  realtimeStore.connect()
   monitoringStore.connectEvents()
   await monitoringStore.refresh({}, true)
   try {

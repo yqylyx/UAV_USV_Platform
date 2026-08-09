@@ -38,7 +38,13 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfRepository)
-                        .ignoringRequestMatchers("/api/auth/login", "/api/integration/**","/api/runtime-control/**")
+                        .ignoringRequestMatchers(
+                                "/api/auth/login",
+                                "/api/integration/**",
+                                "/api/runtime-control/**",
+                                "/api/gateway/v1/**",
+                                "/api/v1/realtime"
+                        )
                 )
                 .securityContext(context -> context
                         .securityContextRepository(securityContextRepository)
@@ -53,6 +59,8 @@ public class SecurityConfig {
                                 "/api/auth/csrf",
                                 "/api/auth/login",
                                 "/api/integration/**",
+                                "/api/gateway/v1/**",
+                                "/api/v1/realtime",
                                 "/actuator/health",
                                 "/actuator/info"
                         ).permitAll()
