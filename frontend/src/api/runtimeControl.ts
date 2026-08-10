@@ -101,7 +101,7 @@ export async function stopRuntime(): Promise<RuntimeControlState> {
 }
 
 export async function issueRuntimeCommand(payload: RuntimeCommandPayload): Promise<RuntimeCommandResult> {
-  await fetchCsrfToken()
+  console.debug('[runtime-control] issue command payload', payload)
   const response = await http.post<ApiResponse<RuntimeCommandResult>>('/runtime-control/commands', payload)
   return response.data.data
 }
