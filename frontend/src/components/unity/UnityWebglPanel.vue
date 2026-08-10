@@ -52,6 +52,12 @@ let heartbeatTimer: number | null = null
 let readyEmitted = false
 let lastRuntimeReportAt = 0
 
+type UnityFrameWindow = Window & {
+  uavUsvUnityInstance?: {
+    Quit?: () => Promise<void>
+  }
+}
+
 const iframeUrl = computed(() => {
   const separator = props.iframeSrc.includes('?') ? '&' : '?'
   const params = new URLSearchParams({
@@ -481,6 +487,18 @@ onBeforeUnmount(() => {
   window.removeEventListener('message', handleWindowMessage)
   if (probeTimer !== null) window.clearInterval(probeTimer)
   if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer)
+  try {
+    const frame = iframeRef.value
+    const frameWindow = frame?.contentWindow as UnityFrameWindow | null | undefined
+    const unityInstance = frameWindow?.uavUsvUnityInstance
+    if (unityInstance?.Quit) {
+      void unityInstance.Quit().catch(() => undefined)
+    }
+    if (frame) frame.src = 'about:blank'
+    iframeRef.value = null
+  } catch {
+    iframeRef.value = null
+  }
 })
 </script>
 
