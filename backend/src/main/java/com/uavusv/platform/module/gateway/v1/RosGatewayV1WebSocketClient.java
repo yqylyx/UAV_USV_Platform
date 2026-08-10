@@ -9,9 +9,11 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -30,6 +32,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private static final Logger log = LoggerFactory.getLogger(RosGatewayV1WebSocketClient.class);
 
     private final GatewayEnvelopeDecoder gatewayEnvelopeDecoder;
+    private final GatewayProtobufDecoder gatewayProtobufDecoder;
     private final GatewaySequenceGuard gatewaySequenceGuard;
     private final RealtimeHub realtimeHub;
     private final URI endpoint;
@@ -38,16 +41,19 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private final AtomicBoolean connecting = new AtomicBoolean(false);
     private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
     private final StringBuilder messageBuffer = new StringBuilder();
+    private final ByteArrayOutputStream binaryMessageBuffer = new ByteArrayOutputStream();
     private volatile WebSocket socket;
     private volatile boolean closing;
 
     public RosGatewayV1WebSocketClient(
             GatewayEnvelopeDecoder gatewayEnvelopeDecoder,
+            GatewayProtobufDecoder gatewayProtobufDecoder,
             GatewaySequenceGuard gatewaySequenceGuard,
             RealtimeHub realtimeHub,
             @Value("${app.gateway.v1.websocket-url:ws://127.0.0.1:8765/uav_usv/v1}") String websocketUrl
     ) {
         this.gatewayEnvelopeDecoder = gatewayEnvelopeDecoder;
+        this.gatewayProtobufDecoder = gatewayProtobufDecoder;
         this.gatewaySequenceGuard = gatewaySequenceGuard;
         this.realtimeHub = realtimeHub;
         this.endpoint = URI.create(websocketUrl);
@@ -109,6 +115,22 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     }
 
     @Override
+    public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
+        byte[] chunk = new byte[data.remaining()];
+        data.get(chunk);
+        synchronized (binaryMessageBuffer) {
+            binaryMessageBuffer.writeBytes(chunk);
+            if (last) {
+                byte[] payload = binaryMessageBuffer.toByteArray();
+                binaryMessageBuffer.reset();
+                handleBinaryPayload(payload);
+            }
+        }
+        webSocket.request(1);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
     public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
         handleDisconnect("connection closed: " + statusCode + " " + reason);
         return CompletableFuture.completedFuture(null);
@@ -142,6 +164,21 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             }
         } catch (IllegalArgumentException exception) {
             log.warn("Ignored invalid ROS Gateway v1 message: {}", exception.getMessage());
+        }
+    }
+
+    private void handleBinaryPayload(byte[] payload) {
+        try {
+            GatewayEnvelope envelope = gatewayProtobufDecoder.decode(payload);
+            log.info("ROS Gateway v1 binary message type {}", envelope.type().wireName());
+            GatewaySequenceGuard.SequenceCheckResult result = gatewaySequenceGuard.inspect(envelope);
+            if (result.accepted()) {
+                realtimeHub.publish(envelope);
+            } else {
+                log.warn("ROS Gateway v1 rejected binary sequence result {}", result.status());
+            }
+        } catch (IllegalArgumentException exception) {
+            log.warn("Ignored invalid ROS Gateway v1 binary message: {}", exception.getMessage());
         }
     }
 
