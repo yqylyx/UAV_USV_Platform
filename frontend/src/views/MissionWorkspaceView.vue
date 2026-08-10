@@ -135,8 +135,9 @@ const trajectoryFrame = computed<UnityTrajectoryFrame | null>(() =>
 
 const realtimeAlgorithmFrame = computed<AlgorithmRuntimeFrame | null>(() => {
   const frame = realtimeTrajectoryFrame.value
-  const runId = currentRunId.value
-  if (!frame || !runId) return null
+  if (!frame) return null
+  const poseRunId = Number(realtimeStore.poseBatch?.runId)
+  const runId = currentRunId.value ?? (Number.isFinite(poseRunId) && poseRunId > 0 ? poseRunId : 0)
   return {
     runId,
     algorithmCode: activeAlgorithmCode.value || 'GB_SFLA_CS',
