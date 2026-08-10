@@ -23,6 +23,8 @@ import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
 import com.uavusv.platform.module.runtimecontrol.event.ControlCommandStatusChangedEvent;
 import com.uavusv.platform.module.runtimecontrol.repository.ControlCommandRepository;
 import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -44,6 +46,8 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class RuntimeControlService {
+
+    private static final Logger log = LoggerFactory.getLogger(RuntimeControlService.class);
 
     private static final EnumSet<SimulationStatus> ACTIVE_STATUSES = EnumSet.of(
             SimulationStatus.STARTING, SimulationStatus.RUNNING,
@@ -292,10 +296,19 @@ public class RuntimeControlService {
 
     @Transactional
     public RuntimeCommandResponse issueCommand(RuntimeCommandRequest request, String username) {
+        long startedAt = System.currentTimeMillis();
+        long stageStartedAt = startedAt;
+        log.info("[issueCommand] start commandType={} deviceCode={} runId={} scope={} instance={}",
+                request.commandType(), request.deviceCode(), request.runId(), request.runtimeScope(), request.runtimeInstanceId());
         Long sessionId = sessionRepository.findFirstByStatusInOrderByCreatedAtDesc(ACTIVE_STATUSES)
                 .map(SimulationSession::getId)
                 .orElse(null);
+        log.info("[issueCommand] session query ms={} sessionId={}", System.currentTimeMillis() - stageStartedAt, sessionId);
+        stageStartedAt = System.currentTimeMillis();
         Device targetDevice = resolveDevice(request.deviceCode());
+        log.info("[issueCommand] device query ms={} deviceId={}", System.currentTimeMillis() - stageStartedAt,
+                targetDevice == null ? null : targetDevice.getId());
+        stageStartedAt = System.currentTimeMillis();
         validateCommandTarget(request.commandType(), targetDevice);
         Long deviceId = targetDevice == null ? null : targetDevice.getId();
         validateRun(request.runId());
@@ -306,6 +319,9 @@ public class RuntimeControlService {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "任务执行批次只能向任务中心运行实例下发指令");
         }
         ensureNoPendingCommand(request.runId(), deviceId);
+        log.info("[issueCommand] validation ms={} runtimeScope={} deviceId={}",
+                System.currentTimeMillis() - stageStartedAt, runtimeScope, deviceId);
+        stageStartedAt = System.currentTimeMillis();
         ControlCommand command = commandRepository.save(new ControlCommand(
                 sessionId,
                 request.runId(),
@@ -316,11 +332,20 @@ public class RuntimeControlService {
                 runtimeScope,
                 request.runtimeInstanceId()
         ));
+        log.info("[issueCommand] command initial save ms={} commandId={} commandKey={}",
+                System.currentTimeMillis() - stageStartedAt, command.getId(), command.getCommandKey());
+        stageStartedAt = System.currentTimeMillis();
         command.dispatch(buildCommandDetail(request));
         commandRepository.save(command);
+        log.info("[issueCommand] command dispatched save ms={} commandId={} status={}",
+                System.currentTimeMillis() - stageStartedAt, command.getId(), command.getStatus());
 
+        stageStartedAt = System.currentTimeMillis();
         try {
             CommandDispatchResult dispatchResult = commandDispatcher.dispatch(command.getCommandKey(), request);
+            log.info("[issueCommand] dispatcher.dispatch ms={} accepted={} acknowledged={} detail={}",
+                    System.currentTimeMillis() - stageStartedAt,
+                    dispatchResult.accepted(), dispatchResult.acknowledged(), dispatchResult.detail());
             if (!dispatchResult.accepted()) {
                 command.fail(dispatchResult.errorCode(), dispatchResult.detail());
             } else if (dispatchResult.acknowledged()) {
@@ -329,10 +354,17 @@ public class RuntimeControlService {
                 command.dispatch(dispatchResult.detail());
             }
         } catch (Exception exception) {
+            log.info("[issueCommand] dispatcher.dispatch ms={} exception={}",
+                    System.currentTimeMillis() - stageStartedAt, exception.getMessage());
             command.fail("DISPATCH_EXCEPTION", exception.getMessage());
         }
+        stageStartedAt = System.currentTimeMillis();
         commandRepository.save(command);
         publishTerminalCommandStatus(command);
+        log.info("[issueCommand] final save/publish ms={} commandId={} status={}",
+                System.currentTimeMillis() - stageStartedAt, command.getId(), command.getStatus());
+        log.info("[issueCommand] before return total ms={} commandId={} status={}",
+                System.currentTimeMillis() - startedAt, command.getId(), command.getStatus());
         return RuntimeCommandResponse.from(command);
     }
 
