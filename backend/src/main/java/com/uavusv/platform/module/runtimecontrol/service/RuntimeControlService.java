@@ -372,7 +372,8 @@ public class RuntimeControlService {
     public RuntimeCommandResponse acknowledgeCommand(String commandKey, RuntimeCommandAckRequest request) {
         ControlCommand command = commandRepository.findByCommandKey(commandKey)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "控制指令不存在"));
-        if ("ros-websocket".equalsIgnoreCase(commandDispatchMode)
+        if (("ros-websocket".equalsIgnoreCase(commandDispatchMode)
+                || "ros-gateway-v1".equalsIgnoreCase(commandDispatchMode))
                 && "UNITY_WEBGL".equalsIgnoreCase(request.source())) {
             return RuntimeCommandResponse.from(command);
         }
