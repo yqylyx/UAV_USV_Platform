@@ -752,17 +752,9 @@ async function sendVehicleCommand(
   if (!command.deviceCodes.length) {
     return { total: 0, acknowledged: 0, failed: 0, allAcknowledged: false }
   }
-  if (!unityControlReady.value) {
-    const feedback = { ...commandFeedback.value }
-    for (const deviceCode of command.deviceCodes) feedback[normalizeDeviceCode(deviceCode)] = 'FAILED'
-    commandFeedback.value = feedback
-    if (notify) ElMessage.error(`${command.label}：Unity 控制桥尚未就绪，未创建后端控制指令`)
-    return {
-      total: command.deviceCodes.length,
-      acknowledged: 0,
-      failed: command.deviceCodes.length,
-      allAcknowledged: false,
-    }
+  const unityAckReady = unityControlReady.value
+  if (!unityAckReady && notify) {
+    ElMessage.warning(`${command.label}：Unity 控制桥尚未就绪，已继续创建后端控制指令`)
   }
   if (manageBusy) commandBusy.value = true
   const bridgeCommand = unityBridgeCommand(command.commandType)
@@ -1339,7 +1331,7 @@ watch(
                 :key="action.commandType"
                 type="button"
                 :class="{ danger: action.danger }"
-                :disabled="commandBusy || !unityControlReady"
+                :disabled="commandBusy"
                 @click="issueSelectedQuickCommand(action)"
               >
                 <component :is="action.icon" :size="19" :stroke-width="1.9" />
