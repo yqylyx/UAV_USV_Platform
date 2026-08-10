@@ -183,12 +183,14 @@ function handleWindowMessage(event: MessageEvent) {
       ].filter(Boolean)
       markError(`Unity 平台桥未完整就绪：${missing.join('、') || '未知能力'}`)
     } else {
+      markReady()
       flushUnityOutbox()
       reportRuntimeSnapshot(true)
     }
   }
 
   if (message.type === 'bridgeReady') {
+    markReady()
     controlsReady.value = message.payload?.controlsReady === true
     unityBridgeStore.setControlsReadyFor(props.runtimeScope, controlsReady.value)
     reportRuntimeSnapshot(true)
