@@ -71,4 +71,62 @@ class GatewayProtobufDecoderTests {
         assertEquals(true, decodedVehicle.path("fresh").asBoolean());
         assertEquals(true, decodedVehicle.path("positionValid").asBoolean());
     }
+
+    @Test
+    void shouldDecodeControlAckEnvelope() {
+        UavUsvGatewayV1.ControlAck ack = UavUsvGatewayV1.ControlAck.newBuilder()
+                .setCommandId("command-1")
+                .setStatus(UavUsvGatewayV1.ControlStatus.ACCEPTED)
+                .setCode("ACCEPTED")
+                .setMessage("accepted by ROS")
+                .setRetryable(false)
+                .build();
+        UavUsvGatewayV1.GatewayEnvelope protobufEnvelope = UavUsvGatewayV1.GatewayEnvelope.newBuilder()
+                .setSpecVersion("1.0")
+                .setMessageType("control.ack")
+                .setSource("uav_usv_fleet_gateway")
+                .setStreamId("control")
+                .setSequence(43)
+                .setControlAck(ack)
+                .build();
+
+        GatewayEnvelope envelope = decoder.decode(protobufEnvelope.toByteArray());
+
+        assertEquals(GatewayMessageType.CONTROL_ACK, envelope.type());
+        assertEquals("command-1", envelope.payload().path("commandId").asText());
+        assertEquals("ACCEPTED", envelope.payload().path("status").asText());
+        assertEquals("ACCEPTED", envelope.payload().path("code").asText());
+        assertEquals("accepted by ROS", envelope.payload().path("message").asText());
+        assertEquals(false, envelope.payload().path("retryable").asBoolean());
+    }
+
+    @Test
+    void shouldDecodeControlFeedbackEnvelope() {
+        UavUsvGatewayV1.ControlFeedback feedback = UavUsvGatewayV1.ControlFeedback.newBuilder()
+                .setCommandId("command-1")
+                .setStatus(UavUsvGatewayV1.ControlStatus.EXECUTING)
+                .setProgress(0.5f)
+                .setPhase("takeoff")
+                .setMessage("executing")
+                .addActiveDeviceCodes("uav_01")
+                .build();
+        UavUsvGatewayV1.GatewayEnvelope protobufEnvelope = UavUsvGatewayV1.GatewayEnvelope.newBuilder()
+                .setSpecVersion("1.0")
+                .setMessageType("control.feedback")
+                .setSource("uav_usv_fleet_gateway")
+                .setStreamId("control")
+                .setSequence(44)
+                .setControlFeedback(feedback)
+                .build();
+
+        GatewayEnvelope envelope = decoder.decode(protobufEnvelope.toByteArray());
+
+        assertEquals(GatewayMessageType.CONTROL_FEEDBACK, envelope.type());
+        assertEquals("command-1", envelope.payload().path("commandId").asText());
+        assertEquals("EXECUTING", envelope.payload().path("status").asText());
+        assertEquals(0.5, envelope.payload().path("progress").asDouble(), 0.0001);
+        assertEquals("takeoff", envelope.payload().path("phase").asText());
+        assertEquals("executing", envelope.payload().path("message").asText());
+        assertEquals("uav_01", envelope.payload().path("activeDeviceCodes").path(0).asText());
+    }
 }

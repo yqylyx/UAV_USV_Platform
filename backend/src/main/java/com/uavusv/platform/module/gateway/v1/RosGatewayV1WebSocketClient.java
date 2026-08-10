@@ -93,6 +93,21 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         scheduleReconnect();
     }
 
+    public void sendBinaryEnvelope(byte[] payload) {
+        WebSocket current = socket;
+        if (current == null) {
+            throw new IllegalStateException("ROS Gateway v1 WebSocket is not connected");
+        }
+        if (payload == null || payload.length == 0) {
+            throw new IllegalArgumentException("ROS Gateway v1 binary payload must not be empty");
+        }
+        try {
+            current.sendBinary(ByteBuffer.wrap(payload), true).get(3, TimeUnit.SECONDS);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to send ROS Gateway v1 binary envelope", exception);
+        }
+    }
+
     @Override
     public void onOpen(WebSocket webSocket) {
         socket = webSocket;

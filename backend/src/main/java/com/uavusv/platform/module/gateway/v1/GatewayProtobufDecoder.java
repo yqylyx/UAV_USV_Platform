@@ -49,6 +49,8 @@ public class GatewayProtobufDecoder {
             case GATEWAY_HEARTBEAT -> gatewayHeartbeat(envelope.getGatewayHeartbeat());
             case POSE_BATCH -> poseBatch(envelope.getPoseBatch());
             case MISSION_STATUS -> missionStatus(envelope.getMissionStatus());
+            case CONTROL_ACK -> controlAck(envelope.getControlAck());
+            case CONTROL_FEEDBACK -> controlFeedback(envelope.getControlFeedback());
             case CONTROL_RESULT -> controlResult(envelope.getControlResult());
             default -> objectMapper.createObjectNode();
         };
@@ -137,6 +139,27 @@ public class GatewayProtobufDecoder {
         node.put("phase", message.getPhase());
         node.put("progress", message.getProgress());
         node.put("activeCommandId", message.getActiveCommandId());
+        node.set("activeDeviceCodes", strings(message.getActiveDeviceCodesList()));
+        return node;
+    }
+
+    private ObjectNode controlAck(UavUsvGatewayV1.ControlAck message) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("commandId", message.getCommandId());
+        node.put("status", message.getStatus().name());
+        node.put("code", message.getCode());
+        node.put("message", message.getMessage());
+        node.put("retryable", message.getRetryable());
+        return node;
+    }
+
+    private ObjectNode controlFeedback(UavUsvGatewayV1.ControlFeedback message) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("commandId", message.getCommandId());
+        node.put("status", message.getStatus().name());
+        node.put("progress", message.getProgress());
+        node.put("phase", message.getPhase());
+        node.put("message", message.getMessage());
         node.set("activeDeviceCodes", strings(message.getActiveDeviceCodesList()));
         return node;
     }
