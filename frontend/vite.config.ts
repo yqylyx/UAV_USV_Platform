@@ -68,6 +68,25 @@ export default defineConfig({
       '/api': {
         target: backendTarget,
         changeOrigin: true,
+        configure(proxy) {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            if (req.url?.startsWith('/api/runtime-control/commands')) {
+              console.log(
+                `[vite-proxy] -> ${req.method} ${req.url} target=${backendTarget} host=${proxyReq.getHeader('host') ?? ''}`,
+              )
+            }
+          })
+          proxy.on('proxyRes', (proxyRes, req) => {
+            if (req.url?.startsWith('/api/runtime-control/commands')) {
+              console.log(`[vite-proxy] <- ${req.method} ${req.url} status=${proxyRes.statusCode}`)
+            }
+          })
+          proxy.on('error', (error, req) => {
+            if (req.url?.startsWith('/api/runtime-control/commands')) {
+              console.error(`[vite-proxy] !! ${req.method} ${req.url} ${error.message}`)
+            }
+          })
+        },
       },
     },
   },

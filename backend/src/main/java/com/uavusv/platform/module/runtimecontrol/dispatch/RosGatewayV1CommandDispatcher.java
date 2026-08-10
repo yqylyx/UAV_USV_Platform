@@ -5,6 +5,8 @@ import com.uavusv.platform.module.gateway.v1.RosGatewayV1WebSocketClient;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import uavusv.gateway.v1.UavUsvGatewayV1;
@@ -17,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @ConditionalOnProperty(name = "app.control.command-dispatch-mode", havingValue = "ros-gateway-v1")
 public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
 
+    private static final Logger log = LoggerFactory.getLogger(RosGatewayV1CommandDispatcher.class);
     private static final String SPEC_VERSION = "1.0";
     private static final String SOURCE = "uav-usv-platform-backend";
     private static final String CONTROL_STREAM_ID = "platform.control";
@@ -30,6 +33,8 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
 
     @Override
     public CommandDispatchResult dispatch(String commandKey, RuntimeCommandRequest request) {
+        log.info("[runtime-control-dispatcher] mode=ros-gateway-v1 commandKey={} commandType={} deviceCode={} scope={}",
+                commandKey, request.commandType(), request.deviceCode(), request.runtimeScope());
         UavUsvGatewayV1.GatewayEnvelope envelope = buildEnvelope(
                 commandKey,
                 request,
@@ -37,6 +42,8 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
                 Instant.now()
         );
         rosGatewayV1WebSocketClient.sendBinaryEnvelope(envelope.toByteArray());
+        log.info("[runtime-control-dispatcher] mode=ros-gateway-v1 sent commandKey={} messageType={} streamId={} sequence={}",
+                commandKey, envelope.getMessageType(), envelope.getStreamId(), envelope.getSequence());
         return CommandDispatchResult.dispatched("Command sent to ROS Gateway v1");
     }
 
