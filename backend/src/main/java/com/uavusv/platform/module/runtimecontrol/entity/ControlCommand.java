@@ -102,7 +102,7 @@ public class ControlCommand extends BaseEntity {
     }
 
     public void succeed(String detail) {
-        acknowledge(detail);
+        succeedResult(detail);
     }
 
     public void dispatch(String detail) {
@@ -111,10 +111,25 @@ public class ControlCommand extends BaseEntity {
         this.dispatchedAt = LocalDateTime.now();
     }
 
-    public void acknowledge(String detail) {
-        this.status = CommandStatus.ACKNOWLEDGED;
+    public void accept(String detail) {
+        if (isTerminal()) return;
+        this.status = CommandStatus.ACCEPTED;
         this.detail = detail;
         this.acknowledgedAt = LocalDateTime.now();
+    }
+
+    public void execute(String detail) {
+        if (isTerminal()) return;
+        this.status = CommandStatus.EXECUTING;
+        this.detail = detail;
+        if (this.acknowledgedAt == null) this.acknowledgedAt = LocalDateTime.now();
+    }
+
+    public void succeedResult(String detail) {
+        if (isTerminal()) return;
+        this.status = CommandStatus.SUCCEEDED;
+        this.detail = detail;
+        if (this.acknowledgedAt == null) this.acknowledgedAt = LocalDateTime.now();
         this.completedAt = LocalDateTime.now();
     }
 
@@ -123,6 +138,7 @@ public class ControlCommand extends BaseEntity {
     }
 
     public void fail(String errorCode, String detail) {
+        if (isTerminal()) return;
         this.status = CommandStatus.FAILED;
         this.errorCode = errorCode;
         this.detail = detail;
@@ -130,10 +146,23 @@ public class ControlCommand extends BaseEntity {
     }
 
     public void timeout(String detail) {
+        if (isTerminal()) return;
         this.status = CommandStatus.TIMEOUT;
         this.errorCode = "ACK_TIMEOUT";
         this.detail = detail;
         this.completedAt = LocalDateTime.now();
+    }
+
+    public void cancel(String detail) {
+        if (isTerminal()) return;
+        this.status = CommandStatus.CANCELLED;
+        this.detail = detail;
+        this.completedAt = LocalDateTime.now();
+    }
+
+    public boolean isTerminal() {
+        return status == CommandStatus.SUCCEEDED || status == CommandStatus.FAILED
+                || status == CommandStatus.TIMEOUT || status == CommandStatus.CANCELLED;
     }
 
     public Long getSessionId() {

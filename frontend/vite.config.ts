@@ -68,6 +68,7 @@ export default defineConfig({
       '/api': {
         target: backendTarget,
         changeOrigin: true,
+        ws: true,
         configure(proxy) {
           proxy.on('proxyReq', (proxyReq, req) => {
             if (req.url?.startsWith('/api/runtime-control/commands')) {

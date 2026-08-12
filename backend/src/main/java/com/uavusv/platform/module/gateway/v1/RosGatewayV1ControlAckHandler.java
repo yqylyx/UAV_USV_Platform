@@ -1,6 +1,5 @@
 package com.uavusv.platform.module.gateway.v1;
 
-import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandAckRequest;
 import com.uavusv.platform.module.runtimecontrol.service.RuntimeControlService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,13 +21,11 @@ public class RosGatewayV1ControlAckHandler {
     @EventListener
     public void handle(RosGatewayV1ControlAckEvent event) {
         try {
-            runtimeControlService.acknowledgeCommand(
-                    event.commandKey(),
-                    new RuntimeCommandAckRequest(event.success(), event.detail(), event.errorCode(), SOURCE)
-            );
+            runtimeControlService.applyGatewayCommandStatus(
+                    event.commandKey(), event.runId(), event.status(), event.detail(), event.errorCode(), SOURCE);
         } catch (RuntimeException exception) {
-            log.warn("Unable to apply ROS Gateway v1 control ACK commandKey={} success={} detail={}: {}",
-                    event.commandKey(), event.success(), event.detail(), exception.getMessage());
+            log.warn("Unable to apply ROS Gateway v1 control state commandKey={} status={} detail={}: {}",
+                    event.commandKey(), event.status(), event.detail(), exception.getMessage());
         }
     }
 }

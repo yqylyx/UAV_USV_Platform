@@ -1,6 +1,7 @@
 package com.uavusv.platform.module.runtimecontrol.dispatch;
 
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
+import com.uavusv.platform.module.gateway.v1.DeviceCodeMapper;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class RosGatewayV1CommandDispatcherTests {
 
-    private final RosGatewayV1CommandDispatcher dispatcher = new RosGatewayV1CommandDispatcher(null);
+    private final RosGatewayV1CommandDispatcher dispatcher = new RosGatewayV1CommandDispatcher(null, new DeviceCodeMapper());
 
     @Test
     void shouldBuildControlCommandEnvelope() {
@@ -35,7 +36,7 @@ class RosGatewayV1CommandDispatcherTests {
 
         assertEquals("1.0", envelope.getSpecVersion());
         assertEquals("control.command", envelope.getMessageType());
-        assertEquals("platform.control", envelope.getStreamId());
+        assertEquals(dispatcher.controlStreamId(), envelope.getStreamId());
         assertEquals(7, envelope.getSequence());
         assertEquals("uav-usv-platform-backend", envelope.getSource());
         assertEquals("12", envelope.getRunId());
@@ -51,5 +52,13 @@ class RosGatewayV1CommandDispatcherTests {
         assertEquals("{\"altitudeM\":50}", command.getParametersOrThrow("payload").getStringValue());
         assertEquals("hold position", command.getParametersOrThrow("detail").getStringValue());
         assertEquals("mission-unity-1", command.getParametersOrThrow("runtimeInstanceId").getStringValue());
+    }
+
+    @Test
+    void shouldUseNewStreamIdentityForEachBackendBoot() {
+        RosGatewayV1CommandDispatcher nextBoot = new RosGatewayV1CommandDispatcher(null, new DeviceCodeMapper());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                dispatcher.controlStreamId(), nextBoot.controlStreamId());
+        org.junit.jupiter.api.Assertions.assertTrue(dispatcher.controlStreamId().startsWith("platform.control."));
     }
 }

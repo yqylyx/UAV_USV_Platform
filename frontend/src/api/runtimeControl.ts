@@ -72,7 +72,9 @@ export interface RuntimeCommandLog {
   errorCode: string | null
 }
 
-export type RuntimeCommandStatus = 'PENDING' | 'DISPATCHED' | 'ACKNOWLEDGED' | 'FAILED' | 'TIMEOUT'
+export type RuntimeCommandStatus =
+  | 'PENDING' | 'DISPATCHED' | 'ACCEPTED' | 'EXECUTING'
+  | 'SUCCEEDED' | 'FAILED' | 'TIMEOUT' | 'CANCELLED'
 
 export async function fetchRuntimeControlStatus(): Promise<RuntimeControlState> {
   const response = await http.get<ApiResponse<RuntimeControlState>>('/runtime-control/status')

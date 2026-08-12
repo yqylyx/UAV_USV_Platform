@@ -2,6 +2,7 @@ package com.uavusv.platform.module.runtimecontrol.dispatch;
 
 import com.google.protobuf.Timestamp;
 import com.uavusv.platform.module.gateway.v1.RosGatewayV1WebSocketClient;
+import com.uavusv.platform.module.gateway.v1.DeviceCodeMapper;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
@@ -22,13 +23,20 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
     private static final Logger log = LoggerFactory.getLogger(RosGatewayV1CommandDispatcher.class);
     private static final String SPEC_VERSION = "1.0";
     private static final String SOURCE = "uav-usv-platform-backend";
-    private static final String CONTROL_STREAM_ID = "platform.control";
 
     private final RosGatewayV1WebSocketClient rosGatewayV1WebSocketClient;
     private final AtomicLong sequence = new AtomicLong();
+    private final String controlStreamId;
+    private final DeviceCodeMapper deviceCodeMapper;
 
-    public RosGatewayV1CommandDispatcher(RosGatewayV1WebSocketClient rosGatewayV1WebSocketClient) {
+    public RosGatewayV1CommandDispatcher(
+            RosGatewayV1WebSocketClient rosGatewayV1WebSocketClient,
+            DeviceCodeMapper deviceCodeMapper
+    ) {
         this.rosGatewayV1WebSocketClient = rosGatewayV1WebSocketClient;
+        this.deviceCodeMapper = deviceCodeMapper;
+        this.controlStreamId = "platform.control." + UUID.randomUUID().toString().substring(0, 8);
+        log.info("ROS Gateway control stream initialized: {}", controlStreamId);
     }
 
     @Override
@@ -69,7 +77,7 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
                 .setMessageType("control.command")
                 .setMessageId(UUID.randomUUID().toString().replace("-", ""))
                 .setTimestamp(timestamp(now))
-                .setStreamId(CONTROL_STREAM_ID)
+                .setStreamId(controlStreamId)
                 .setSequence(sequence)
                 .setSource(SOURCE)
                 .setControlCommand(command);
@@ -78,9 +86,13 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
             envelope.setRunId(String.valueOf(request.runId()));
         }
         if (request.deviceCode() != null && !request.deviceCode().isBlank()) {
-            envelope.setDeviceCode(request.deviceCode());
+            envelope.setDeviceCode(deviceCodeMapper.toRos(request.deviceCode()));
         }
         return envelope.build();
+    }
+
+    String controlStreamId() {
+        return controlStreamId;
     }
 
     private UavUsvGatewayV1.CommandTarget target(RuntimeCommandRequest request) {
@@ -88,7 +100,7 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
         if (request.deviceCode() != null && !request.deviceCode().isBlank()) {
             return target
                     .setScope(UavUsvGatewayV1.TargetScope.DEVICE)
-                    .addDeviceCodes(request.deviceCode())
+                    .addDeviceCodes(deviceCodeMapper.toRos(request.deviceCode()))
                     .build();
         }
         if (request.runId() != null || request.runtimeScope() == RuntimeScope.MISSION_CENTER) {

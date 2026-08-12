@@ -186,6 +186,7 @@ function poseState(sample: VehiclePoseSample) {
 
 const realtimeTrajectoryFrame = computed<UnityTrajectoryFrame | null>(() => {
   const envelope = realtimeStore.poseBatch
+  if (!envelope?.runId || String(envelope.runId) !== String(runId.value)) return null
   const vehicles = envelope?.payload.vehicles?.filter(validPoseSample) ?? []
   if (!envelope || !vehicles.length) return null
   return {
@@ -537,7 +538,7 @@ async function sendVehicleCommand(command: VehicleQuickCommand) {
         })
         if (result.status === 'FAILED' || result.status === 'TIMEOUT') throw new Error(result.detail)
         const ack = await unityBridgeStore.sendControlCommandAndWaitFor('MISSION_CENTER', vehicleUnityCommand(command.commandType), key, result.commandKey)
-        commandFeedback.value = { ...commandFeedback.value, [key]: ack.success ? 'ACKNOWLEDGED' : 'FAILED' }
+        commandFeedback.value = { ...commandFeedback.value, [key]: ack.success ? 'SUCCEEDED' : 'FAILED' }
         if (ack.success) acknowledged += 1
       } catch {
         commandFeedback.value = { ...commandFeedback.value, [key]: 'FAILED' }

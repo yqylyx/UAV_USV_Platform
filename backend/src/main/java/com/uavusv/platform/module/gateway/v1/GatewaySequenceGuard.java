@@ -24,7 +24,12 @@ public class GatewaySequenceGuard {
             return SequenceCheckResult.invalidSequence();
         }
 
-        StreamKey key = new StreamKey(envelope.source(), envelope.streamId());
+        StreamKey key = new StreamKey(
+                taskScoped(envelope.type()) ? normalizeRunId(envelope.runId()) : null,
+                envelope.source(), envelope.streamId());
+        if (requiresRunId(envelope.type()) && key.runId() == null) {
+            return SequenceCheckResult.oldRun();
+        }
         StreamCursor previous = cursors.putIfAbsent(key, new StreamCursor(envelope.runId(), envelope.sequence()));
         if (previous == null) {
             return new SequenceCheckResult(SequenceCheckStatus.ACCEPTED);
@@ -51,7 +56,26 @@ public class GatewaySequenceGuard {
         return left.equals(right);
     }
 
-    private record StreamKey(String source, String streamId) {
+    private boolean taskScoped(GatewayMessageType type) {
+        return type == GatewayMessageType.TELEMETRY_POSE_BATCH
+                || type == GatewayMessageType.MISSION_STATUS
+                || type == GatewayMessageType.CONTROL_ACK
+                || type == GatewayMessageType.CONTROL_FEEDBACK
+                || type == GatewayMessageType.CONTROL_RESULT;
+    }
+
+    private boolean requiresRunId(GatewayMessageType type) {
+        return type == GatewayMessageType.MISSION_STATUS
+                || type == GatewayMessageType.CONTROL_ACK
+                || type == GatewayMessageType.CONTROL_FEEDBACK
+                || type == GatewayMessageType.CONTROL_RESULT;
+    }
+
+    private String normalizeRunId(String runId) {
+        return runId == null || runId.isBlank() ? null : runId.trim();
+    }
+
+    private record StreamKey(String runId, String source, String streamId) {
     }
 
     private record StreamCursor(String runId, long sequence) {

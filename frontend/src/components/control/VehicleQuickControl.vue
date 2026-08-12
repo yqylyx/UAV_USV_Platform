@@ -157,9 +157,12 @@ function statusLabel(status?: string | null) {
     MAINTENANCE: '维护中',
     PENDING: '等待下发',
     DISPATCHED: '等待确认',
-    ACKNOWLEDGED: '已确认',
+    ACCEPTED: 'ROS 已接收',
+    EXECUTING: 'ROS 执行中',
+    SUCCEEDED: '执行成功',
     FAILED: '执行失败',
     TIMEOUT: '确认超时',
+    CANCELLED: '已取消',
   }
   return status ? labels[status] ?? status : '等待遥测'
 }
@@ -175,7 +178,7 @@ function availableDevices(action: QuickAction) {
 
 function displayState() {
   const feedback = selectedFeedback.value
-  if (feedback && feedback !== 'ACKNOWLEDGED') return statusLabel(feedback)
+  if (feedback && feedback !== 'SUCCEEDED') return statusLabel(feedback)
   if (groupMode.value) {
     const states = new Set(typeDevices.value.map((device) => operationalState(device.code)))
     return states.size === 1 ? operationalStateLabels[[...states][0] ?? ''] ?? '编组待命' : '状态不一致'

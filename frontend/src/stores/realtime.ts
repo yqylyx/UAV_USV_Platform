@@ -17,11 +17,18 @@ interface RealtimeState {
   poseBatch: GatewayEnvelope<PoseBatchPayload> | null
   missionStatus: GatewayEnvelope<MissionStatusPayload> | null
   controlEvents: GatewayEnvelope<ControlEventPayload>[]
+  commandStatuses: Record<string, string>
   lastEnvelope: GatewayEnvelope | null
 }
 
 let socket: WebSocket | null = null
 let reconnectTimer: number | null = null
+let reconnectAttempts = 0
+let reconnectEnabled = false
+
+function reconnectDelay() {
+  return Math.min(1000 * 2 ** reconnectAttempts, 15000)
+}
 
 function realtimeUrl() {
   const configured = import.meta.env.VITE_REALTIME_WS_URL as string | undefined
@@ -31,7 +38,12 @@ function realtimeUrl() {
 }
 
 function streamKey(envelope: GatewayEnvelope) {
-  return `${envelope.source}:${envelope.streamId}`
+  const taskScoped = [
+    'telemetry.pose_batch', 'mission.status', 'control.ack', 'control.feedback', 'control.result',
+  ].includes(envelope.type)
+  return taskScoped
+    ? `${envelope.runId ?? 'missing-run'}:${envelope.source}:${envelope.streamId}`
+    : `${envelope.source}:${envelope.streamId}`
 }
 
 function normalizeEnvelope(value: unknown): GatewayEnvelope | null {
@@ -67,6 +79,7 @@ export const useRealtimeStore = defineStore('realtime', {
     poseBatch: null,
     missionStatus: null,
     controlEvents: [],
+    commandStatuses: {},
     lastEnvelope: null,
   }),
   getters: {
@@ -76,6 +89,7 @@ export const useRealtimeStore = defineStore('realtime', {
   },
   actions: {
     connect() {
+      reconnectEnabled = true
       if (socket && socket.readyState !== WebSocket.CLOSED) return
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer)
@@ -87,6 +101,7 @@ export const useRealtimeStore = defineStore('realtime', {
       socket.onopen = () => {
         this.connectionState = 'CONNECTED'
         this.lastError = ''
+        reconnectAttempts = 0
       }
       socket.onmessage = event => this.ingestMessage(event.data)
       socket.onerror = () => {
@@ -95,15 +110,25 @@ export const useRealtimeStore = defineStore('realtime', {
       socket.onclose = () => {
         this.connectionState = 'DISCONNECTED'
         socket = null
+        if (reconnectEnabled && reconnectTimer === null) {
+          const delay = reconnectDelay()
+          reconnectAttempts += 1
+          reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null
+            this.connect()
+          }, delay)
+        }
       }
     },
     disconnect() {
+      reconnectEnabled = false
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer)
         reconnectTimer = null
       }
       socket?.close()
       socket = null
+      reconnectAttempts = 0
       this.connectionState = 'DISCONNECTED'
     },
     ingestMessage(raw: unknown) {
@@ -122,8 +147,13 @@ export const useRealtimeStore = defineStore('realtime', {
           || envelope.type === 'control.feedback'
           || envelope.type === 'control.result'
         ) {
+          const command = envelope as GatewayEnvelope<ControlEventPayload>
+          const commandId = command.payload.commandId
+          if (commandId && command.payload.status) {
+            this.commandStatuses[commandId] = command.payload.status
+          }
           this.controlEvents = [
-            envelope as GatewayEnvelope<ControlEventPayload>,
+            command,
             ...this.controlEvents,
           ].slice(0, 50)
         }
@@ -144,6 +174,7 @@ export const useRealtimeStore = defineStore('realtime', {
       this.poseBatch = null
       this.missionStatus = null
       this.controlEvents = []
+      this.commandStatuses = {}
       this.lastEnvelope = null
       this.lastError = ''
     },

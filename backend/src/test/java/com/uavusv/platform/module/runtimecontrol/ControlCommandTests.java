@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class ControlCommandTests {
 
     @Test
-    void shouldTrackDispatchAndAcknowledgement() {
+    void shouldKeepAckAndFeedbackNonTerminalUntilResult() {
         ControlCommand command = new ControlCommand(1L, 2L, 3L, CommandType.TAKEOFF, "{}", "admin");
 
         assertEquals(CommandStatus.PENDING, command.getStatus());
@@ -24,10 +24,30 @@ class ControlCommandTests {
         assertEquals(CommandStatus.DISPATCHED, command.getStatus());
         assertNotNull(command.getDispatchedAt());
 
-        command.acknowledge("accepted");
-        assertEquals(CommandStatus.ACKNOWLEDGED, command.getStatus());
+        command.accept("accepted");
+        assertEquals(CommandStatus.ACCEPTED, command.getStatus());
         assertNotNull(command.getAcknowledgedAt());
+        assertNull(command.getCompletedAt());
+
+        command.execute("executing");
+        assertEquals(CommandStatus.EXECUTING, command.getStatus());
+        assertNull(command.getCompletedAt());
+
+        command.succeedResult("done");
+        assertEquals(CommandStatus.SUCCEEDED, command.getStatus());
         assertNotNull(command.getCompletedAt());
+    }
+
+    @Test
+    void shouldNotRegressAfterTerminalResult() {
+        ControlCommand command = new ControlCommand(null, CommandType.UAV_HOVER, "admin");
+        command.dispatch("sent");
+        command.fail("ROS_FAILED", "failed");
+        command.accept("late ack");
+        command.execute("late feedback");
+        command.succeedResult("late success");
+        assertEquals(CommandStatus.FAILED, command.getStatus());
+        assertEquals("ROS_FAILED", command.getErrorCode());
     }
 
     @Test

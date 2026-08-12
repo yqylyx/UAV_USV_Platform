@@ -2,6 +2,7 @@ package com.uavusv.platform.module.gateway.v1;
 
 import jakarta.annotation.PreDestroy;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,10 +26,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
-@ConditionalOnProperty(
-        name = "app.gateway.v1.enabled",
-        havingValue = "true"
-)
+@org.springframework.boot.autoconfigure.condition.ConditionalOnExpression(
+        "('${app.ros.transport:v1}' == 'v1' || '${app.ros.transport:v1}' == 'dual-test') && ${app.gateway.v1.enabled:true}")
 public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
 
     private static final Logger log = LoggerFactory.getLogger(RosGatewayV1WebSocketClient.class);
@@ -38,7 +37,9 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private final GatewaySequenceGuard gatewaySequenceGuard;
     private final RealtimeHub realtimeHub;
     private final ApplicationEventPublisher eventPublisher;
+    private final RuntimeStateService runtimeStateService;
     private final URI endpoint;
+    private final boolean stateAuthority;
     private final HttpClient httpClient;
     private final ScheduledExecutorService reconnectExecutor;
     private final AtomicBoolean connecting = new AtomicBoolean(false);
@@ -54,14 +55,18 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             GatewaySequenceGuard gatewaySequenceGuard,
             RealtimeHub realtimeHub,
             ApplicationEventPublisher eventPublisher,
-            @Value("${app.gateway.v1.websocket-url:ws://127.0.0.1:8765/uav_usv/v1}") String websocketUrl
+            RuntimeStateService runtimeStateService,
+            @Value("${app.gateway.v1.websocket-url:ws://127.0.0.1:8765/uav_usv/v1}") String websocketUrl,
+            @Value("${app.ros.state-authority:v1}") String stateAuthority
     ) {
         this.gatewayEnvelopeDecoder = gatewayEnvelopeDecoder;
         this.gatewayProtobufDecoder = gatewayProtobufDecoder;
         this.gatewaySequenceGuard = gatewaySequenceGuard;
         this.realtimeHub = realtimeHub;
         this.eventPublisher = eventPublisher;
+        this.runtimeStateService = runtimeStateService;
         this.endpoint = URI.create(websocketUrl);
+        this.stateAuthority = "v1".equalsIgnoreCase(stateAuthority);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(3))
                 .build();
@@ -179,6 +184,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             GatewaySequenceGuard.SequenceCheckResult result = gatewaySequenceGuard.inspect(envelope);
             if (result.accepted()) {
                 realtimeHub.publish(envelope);
+                if (stateAuthority) observeRuntimeState(envelope);
                 publishControlAckEvent(envelope);
             } else {
                 log.warn("ROS Gateway v1 rejected sequence result {}", result.status());
@@ -195,6 +201,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             GatewaySequenceGuard.SequenceCheckResult result = gatewaySequenceGuard.inspect(envelope);
             if (result.accepted()) {
                 realtimeHub.publish(envelope);
+                if (stateAuthority) observeRuntimeState(envelope);
                 publishControlAckEvent(envelope);
             } else {
                 log.warn("ROS Gateway v1 rejected binary sequence result {}", result.status());
@@ -224,26 +231,36 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             return;
         }
         String status = text(payload, "status").toUpperCase();
-        Boolean success = successForStatus(status);
-        if (success == null) {
-            log.debug("ROS Gateway v1 {} ignored unknown status commandKey={} status={}",
-                    envelope.type().wireName(), commandKey, status);
-            return;
-        }
+        if (status.isBlank()) return;
         String message = text(payload, "message");
         String code = text(payload, "code");
         String detail = message.isBlank()
                 ? envelope.type().wireName() + " " + status
                 : message;
-        String errorCode = success ? null : (code.isBlank() ? "ROS_GATEWAY_V1_COMMAND_FAILED" : code);
-        eventPublisher.publishEvent(new RosGatewayV1ControlAckEvent(commandKey, success, detail, errorCode));
+        String errorCode = isFailureStatus(status)
+                ? (code.isBlank() ? "ROS_GATEWAY_V1_COMMAND_FAILED" : code)
+                : null;
+        eventPublisher.publishEvent(new RosGatewayV1ControlAckEvent(
+                commandKey, envelope.runId(), status, detail, errorCode));
     }
 
-    private Boolean successForStatus(String status) {
+    private void observeRuntimeState(GatewayEnvelope envelope) {
+        if (envelope.type() == GatewayMessageType.GATEWAY_HEARTBEAT) {
+            runtimeStateService.observeGatewayHeartbeat(
+                    text(envelope.payload(), "instanceId"),
+                    envelope.sequence()
+            );
+            return;
+        }
+        if (envelope.type() == GatewayMessageType.TELEMETRY_POSE_BATCH) {
+            runtimeStateService.observeGatewayPoseBatch(envelope.payload(), envelope.sequence());
+        }
+    }
+
+    private boolean isFailureStatus(String status) {
         return switch (status) {
-            case "ACCEPTED", "SUCCEEDED", "COMPLETED", "SUCCESS" -> true;
-            case "FAILED", "TIMEOUT", "CANCELLED", "REJECTED" -> false;
-            default -> null;
+            case "FAILED", "TIMEOUT", "CANCELLED", "REJECTED", "EXPIRED" -> true;
+            default -> false;
         };
     }
 

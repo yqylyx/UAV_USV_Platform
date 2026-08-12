@@ -349,7 +349,7 @@ public class RuntimeControlService {
             if (!dispatchResult.accepted()) {
                 command.fail(dispatchResult.errorCode(), dispatchResult.detail());
             } else if (dispatchResult.acknowledged()) {
-                command.acknowledge(dispatchResult.detail());
+                command.succeedResult(dispatchResult.detail());
             } else if (dispatchResult.detail() != null && !dispatchResult.detail().isBlank()) {
                 command.dispatch(dispatchResult.detail());
             }
@@ -377,13 +377,11 @@ public class RuntimeControlService {
                 && "UNITY_WEBGL".equalsIgnoreCase(request.source())) {
             return RuntimeCommandResponse.from(command);
         }
-        if (command.getStatus() == CommandStatus.ACKNOWLEDGED
-                || command.getStatus() == CommandStatus.FAILED
-                || command.getStatus() == CommandStatus.TIMEOUT) {
+        if (command.isTerminal()) {
             return RuntimeCommandResponse.from(command);
         }
         if (Boolean.TRUE.equals(request.success())) {
-            command.acknowledge(request.detail() == null ? "外部组件已确认执行" : request.detail());
+            command.succeedResult(request.detail() == null ? "外部组件已确认执行" : request.detail());
         } else {
             command.fail(
                     request.errorCode() == null ? "REMOTE_EXECUTION_FAILED" : request.errorCode(),
@@ -395,11 +393,41 @@ public class RuntimeControlService {
         return RuntimeCommandResponse.from(command);
     }
 
+    @Transactional
+    public RuntimeCommandResponse applyGatewayCommandStatus(
+            String commandKey, String envelopeRunId, String gatewayStatus,
+            String detail, String errorCode, String source
+    ) {
+        ControlCommand command = commandRepository.findByCommandKey(commandKey)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "控制指令不存在"));
+        if (envelopeRunId != null && !envelopeRunId.isBlank() && command.getRunId() != null
+                && !envelopeRunId.equals(String.valueOf(command.getRunId()))) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "ROS 回传 runId 与控制指令不一致");
+        }
+        if (command.isTerminal()) return RuntimeCommandResponse.from(command);
+        String status = gatewayStatus == null ? "" : gatewayStatus.trim().toUpperCase();
+        String message = detail == null ? source + " " + status : detail;
+        switch (status) {
+            case "CREATED", "VALIDATING", "DISPATCHED", "ACCEPTED" -> command.accept(message);
+            case "EXECUTING" -> command.execute(message);
+            case "SUCCEEDED", "SUCCESS", "COMPLETED" -> command.succeedResult(message);
+            case "CANCELLED" -> command.cancel(message);
+            case "TIMEOUT", "EXPIRED" -> command.timeout(message);
+            case "FAILED", "REJECTED" -> command.fail(
+                    errorCode == null ? "ROS_GATEWAY_V1_COMMAND_FAILED" : errorCode, message);
+            default -> { return RuntimeCommandResponse.from(command); }
+        }
+        commandRepository.save(command);
+        publishTerminalCommandStatus(command);
+        return RuntimeCommandResponse.from(command);
+    }
+
     @Scheduled(fixedDelay = 5000)
     @Transactional
     public void expireUnacknowledgedCommands() {
         LocalDateTime cutoff = LocalDateTime.now().minusSeconds(commandAckTimeoutSeconds);
-        commandRepository.findAllByStatusAndDispatchedAtBefore(CommandStatus.DISPATCHED, cutoff)
+        commandRepository.findAllByStatusInAndDispatchedAtBefore(
+                        EnumSet.of(CommandStatus.DISPATCHED, CommandStatus.ACCEPTED, CommandStatus.EXECUTING), cutoff)
                 .forEach(command -> {
                     command.timeout("指令下发后未在规定时间内收到确认");
                     commandRepository.save(command);
@@ -531,7 +559,8 @@ private void requestUnityStop() throws IOException {
 
     private void ensureNoPendingCommand(Long runId, Long deviceId) {
         if (runId == null) return;
-        EnumSet<CommandStatus> pendingStatuses = EnumSet.of(CommandStatus.PENDING, CommandStatus.DISPATCHED);
+        EnumSet<CommandStatus> pendingStatuses = EnumSet.of(
+                CommandStatus.PENDING, CommandStatus.DISPATCHED, CommandStatus.ACCEPTED, CommandStatus.EXECUTING);
         boolean duplicated = deviceId == null
                 ? commandRepository.existsByRunIdAndDeviceIdIsNullAndStatusIn(runId, pendingStatuses)
                 : commandRepository.existsByRunIdAndDeviceIdAndStatusIn(runId, deviceId, pendingStatuses);
@@ -544,9 +573,10 @@ private void requestUnityStop() throws IOException {
     }
 
     private void publishTerminalCommandStatus(ControlCommand command) {
-        if (command.getStatus() != CommandStatus.ACKNOWLEDGED
+        if (command.getStatus() != CommandStatus.SUCCEEDED
                 && command.getStatus() != CommandStatus.FAILED
-                && command.getStatus() != CommandStatus.TIMEOUT) {
+                && command.getStatus() != CommandStatus.TIMEOUT
+                && command.getStatus() != CommandStatus.CANCELLED) {
             return;
         }
         eventPublisher.publishEvent(new ControlCommandStatusChangedEvent(

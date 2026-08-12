@@ -18,17 +18,22 @@ import com.uavusv.platform.module.monitoring.entity.RuntimePose;
 import com.uavusv.platform.module.monitoring.repository.DeviceStatusEventRepository;
 import com.uavusv.platform.module.monitoring.repository.DeviceTelemetryRepository;
 import com.uavusv.platform.module.monitoring.repository.RuntimeDeviceStatusRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.uavusv.platform.module.gateway.v1.DeviceCodeMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.net.URI;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -54,6 +59,7 @@ public class RuntimeStateService {
     private final MissionRunRepository missionRunRepository;
     private final SimulationSessionRepository simulationSessionRepository;
     private final Map<String, Observation> observations = new ConcurrentHashMap<>();
+    private final DeviceCodeMapper deviceCodeMapper = new DeviceCodeMapper();
     private final Map<String, UnityRuntimeSnapshot> unityRuntimeSnapshots = new ConcurrentHashMap<>();
     private final int heartbeatTimeoutSeconds;
     private final int telemetryRetentionDays;
@@ -102,6 +108,22 @@ public class RuntimeStateService {
         }
         observePose(USV_CODE, frame.boat(), frame.sequence(), now);
         observePose(UAV_CODE, frame.drone(), frame.sequence(), now);
+    }
+
+    public void observeGatewayHeartbeat(String instanceId, long sequence) {
+        LocalDateTime now = LocalDateTime.now();
+        observations.put(ROS_CODE, new Observation(now, true, "ROS_GATEWAY_V1", instanceId,
+                sequence, rosHost, rosPort, null, "ROS Gateway v1 heartbeat sequence " + sequence));
+    }
+
+    public void observeGatewayPoseBatch(JsonNode payload, long sequence) {
+        if (payload == null || !payload.path("vehicles").isArray()) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        observations.put(ROS_CODE, new Observation(now, true, "ROS_GATEWAY_V1", "ros-gateway-v1",
+                sequence, rosHost, rosPort, null, "ROS Gateway v1 pose batch sequence " + sequence));
+        payload.path("vehicles").forEach(vehicle -> observeGatewayVehiclePose(vehicle, sequence, now));
     }
 
     public void observeUnityHeartbeat(IntegrationHeartbeatRequest request, String host) {
@@ -232,9 +254,6 @@ public class RuntimeStateService {
             }
 
             runtimeStatusRepository.save(runtime);
-            if (device.getStatus() != runtime.getStatus()) {
-                device.updateRuntimeStatus(runtime.getStatus());
-            }
             if (previous != runtime.getStatus()) {
                 statusEventRepository.save(new DeviceStatusEvent(device.getId(), previous, runtime.getStatus(),
                         runtime.getSource(), runtime.getDetail(), now));
@@ -252,7 +271,20 @@ public class RuntimeStateService {
                 ));
             }
         }
-        eventPublisher.publishRuntimeChange();
+        publishRuntimeChangeAfterCommit();
+    }
+
+    private void publishRuntimeChangeAfterCommit() {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            eventPublisher.publishRuntimeChange();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eventPublisher.publishRuntimeChange();
+            }
+        });
     }
 
     @Scheduled(cron = "0 15 3 * * *")
@@ -290,6 +322,51 @@ public class RuntimeStateService {
             return;
         }
         observePose(code, vehicle.poseData(), sequence, observedAt);
+    }
+
+    private void observeGatewayVehiclePose(JsonNode vehicle, long sequence, LocalDateTime observedAt) {
+        if (!vehicle.path("fresh").asBoolean(false) || !vehicle.path("positionValid").asBoolean(false)) {
+            return;
+        }
+        String code = normalizeGatewayDeviceCode(vehicle.path("deviceCode").asText(""));
+        if (code == null) {
+            return;
+        }
+        Optional<RuntimePose> pose = gatewayPose(vehicle);
+        observations.put(code, new Observation(observedAt, true, "ROS_GATEWAY_V1", "ros-gateway-v1",
+                sequence, rosHost, rosPort, pose.orElse(null), "ROS Gateway v1 pose batch sequence " + sequence));
+    }
+
+    private String normalizeGatewayDeviceCode(String code) {
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+        try {
+            return deviceCodeMapper.toPlatform(code);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private Optional<RuntimePose> gatewayPose(JsonNode vehicle) {
+        JsonNode position = vehicle.path("localPositionEnuM");
+        if (!position.path("x").isNumber() || !position.path("y").isNumber() || !position.path("z").isNumber()) {
+            return Optional.empty();
+        }
+        JsonNode orientation = vehicle.path("orientation");
+        double orientationX = orientation.path("x").isNumber() ? orientation.path("x").asDouble() : 0.0;
+        double orientationY = orientation.path("y").isNumber() ? orientation.path("y").asDouble() : 0.0;
+        double orientationZ = orientation.path("z").isNumber() ? orientation.path("z").asDouble() : 0.0;
+        double orientationW = orientation.path("w").isNumber() ? orientation.path("w").asDouble() : 1.0;
+        return Optional.of(new RuntimePose(
+                position.path("x").asDouble(),
+                position.path("y").asDouble(),
+                position.path("z").asDouble(),
+                orientationX,
+                orientationY,
+                orientationZ,
+                orientationW
+        ));
     }
 
     private record Observation(

@@ -784,7 +784,7 @@ async function sendVehicleCommand(
             key,
             result.commandKey,
           )
-          const status: RuntimeCommandStatus = acknowledgement.success ? 'ACKNOWLEDGED' : 'FAILED'
+          const status: RuntimeCommandStatus = acknowledgement.success ? 'SUCCEEDED' : 'FAILED'
           commandFeedback.value = { ...commandFeedback.value, [key]: status }
           if (acknowledgement.success) {
             const reportedState = normalizeOperationalState(
@@ -803,7 +803,7 @@ async function sendVehicleCommand(
       })()
       statuses.push(status)
     }
-    const acknowledged = statuses.filter((status) => status === 'ACKNOWLEDGED').length
+    const acknowledged = statuses.filter((status) => status === 'SUCCEEDED').length
     const failed = statuses.length - acknowledged
     const result = {
       total: statuses.length,
@@ -1039,7 +1039,7 @@ function handleUnityMessage(message: UnityMessage) {
     if (deviceCode) {
       commandFeedback.value = {
         ...commandFeedback.value,
-        [deviceCode]: success ? 'ACKNOWLEDGED' : 'FAILED',
+        [deviceCode]: success ? 'SUCCEEDED' : 'FAILED',
       }
       if (success) {
         const unityState = normalizeOperationalState(
@@ -1366,7 +1366,7 @@ watch(
             <header>
               <strong>{{ device.code.toUpperCase() }}</strong>
               <b :class="(device.feedback || device.status || 'UNKNOWN').toLowerCase()">
-                {{ device.feedback === 'ACKNOWLEDGED' ? '已确认' : runtimeStatusLabel(device.status) }}
+                {{ device.feedback === 'SUCCEEDED' ? '执行成功' : runtimeStatusLabel(device.status) }}
               </b>
             </header>
 
