@@ -294,7 +294,6 @@ public class RuntimeControlService {
                 session.getErrorMessage() == null ? "停止指令已完成" : session.getErrorMessage());
     }
 
-    @Transactional
     public RuntimeCommandResponse issueCommand(RuntimeCommandRequest request, String username) {
         long startedAt = System.currentTimeMillis();
         long stageStartedAt = startedAt;
@@ -341,25 +340,37 @@ public class RuntimeControlService {
                 System.currentTimeMillis() - stageStartedAt, command.getId(), command.getStatus());
 
         stageStartedAt = System.currentTimeMillis();
+        CommandDispatchResult dispatchResult = null;
+        String dispatchError = null;
         try {
-            CommandDispatchResult dispatchResult = commandDispatcher.dispatch(command.getCommandKey(), request);
+            dispatchResult = commandDispatcher.dispatch(command.getCommandKey(), request);
             log.info("[issueCommand] dispatcher.dispatch ms={} accepted={} acknowledged={} detail={}",
                     System.currentTimeMillis() - stageStartedAt,
                     dispatchResult.accepted(), dispatchResult.acknowledged(), dispatchResult.detail());
-            if (!dispatchResult.accepted()) {
-                command.fail(dispatchResult.errorCode(), dispatchResult.detail());
-            } else if (dispatchResult.acknowledged()) {
-                command.succeedResult(dispatchResult.detail());
-            } else if (dispatchResult.detail() != null && !dispatchResult.detail().isBlank()) {
-                command.dispatch(dispatchResult.detail());
-            }
         } catch (Exception exception) {
             log.info("[issueCommand] dispatcher.dispatch ms={} exception={}",
                     System.currentTimeMillis() - stageStartedAt, exception.getMessage());
-            command.fail("DISPATCH_EXCEPTION", exception.getMessage());
+            dispatchError = exception.getMessage();
         }
         stageStartedAt = System.currentTimeMillis();
-        commandRepository.save(command);
+        // A fast gateway ACK can arrive immediately after dispatch. Reload the
+        // row so this request never overwrites a newer ACK/result with its
+        // stale DISPATCHED entity.
+        command = commandRepository.findByCommandKey(command.getCommandKey()).orElse(command);
+        boolean commandChanged = false;
+        if (!command.isTerminal() && dispatchError != null) {
+            command.fail("DISPATCH_EXCEPTION", dispatchError);
+            commandChanged = true;
+        } else if (!command.isTerminal() && dispatchResult != null && !dispatchResult.accepted()) {
+            command.fail(dispatchResult.errorCode(), dispatchResult.detail());
+            commandChanged = true;
+        } else if (!command.isTerminal() && dispatchResult != null && dispatchResult.acknowledged()) {
+            command.succeedResult(dispatchResult.detail());
+            commandChanged = true;
+        }
+        if (commandChanged) {
+            command = commandRepository.save(command);
+        }
         publishTerminalCommandStatus(command);
         log.info("[issueCommand] final save/publish ms={} commandId={} status={}",
                 System.currentTimeMillis() - stageStartedAt, command.getId(), command.getStatus());

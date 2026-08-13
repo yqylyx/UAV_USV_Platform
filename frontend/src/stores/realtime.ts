@@ -33,6 +33,7 @@ function reconnectDelay() {
 function realtimeUrl() {
   const configured = import.meta.env.VITE_REALTIME_WS_URL as string | undefined
   if (configured) return configured
+  if (import.meta.env.DEV) return `ws://${window.location.hostname}:8081/api/v1/realtime`
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${protocol}//${window.location.host}/api/v1/realtime`
 }
@@ -167,6 +168,22 @@ export const useRealtimeStore = defineStore('realtime', {
       if (envelope.sequence <= previous) return false
       this.streamSequences[key] = envelope.sequence
       return true
+    },
+    waitForCommandResult(commandId: string, timeoutMs = 15000): Promise<string> {
+      const terminal = new Set(['SUCCEEDED', 'FAILED', 'REJECTED', 'CANCELLED', 'TIMEOUT', 'EXPIRED'])
+      return new Promise((resolve) => {
+        const startedAt = Date.now()
+        const timer = window.setInterval(() => {
+          const status = this.commandStatuses[commandId]
+          if (status && terminal.has(status)) {
+            window.clearInterval(timer)
+            resolve(status)
+          } else if (Date.now() - startedAt >= timeoutMs) {
+            window.clearInterval(timer)
+            resolve('TIMEOUT')
+          }
+        }, 100)
+      })
     },
     clear() {
       this.runId = ''
