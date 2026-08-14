@@ -445,12 +445,11 @@ async function runMissionAction(action: 'pause' | 'resume' | 'complete' | 'cance
   try {
     const activeRunId = detail.value.currentRun?.id
     const usesExternalAlgorithm = externalAlgorithm.value
-    if (!unityChannel.value.connected || !unityChannel.value.controlsReady) throw new Error('任务中心 Unity 指令桥尚未就绪')
     const result = await executeMissionAction(detail.value.mission.id, action, 'MISSION_CONTROL', unityViewportStore.missionInstanceId)
     if (result.command) {
       if (result.command.status === 'FAILED' || result.command.status === 'TIMEOUT') throw new Error(result.command.detail || '任务指令创建失败')
-      const ack = await unityBridgeStore.sendControlCommandAndWaitFor('MISSION_CENTER', missionUnityCommand(action), '', result.command.commandKey)
-      if (!ack.success) throw new Error(ack.status || 'Unity 未确认任务指令')
+      const rosStatus = await realtimeStore.waitForCommandResult(result.command.commandKey)
+      if (rosStatus !== 'SUCCEEDED') throw new Error(rosStatus)
     }
     let algorithmControlWarning = ''
     if (activeRunId && usesExternalAlgorithm) {
@@ -516,10 +515,6 @@ async function placeThreat(x: number, y: number) {
 
 async function sendVehicleCommand(command: VehicleQuickCommand) {
   if (!detail.value?.currentRun || !command.deviceCodes.length) return
-  if (!unityChannel.value.connected || !unityChannel.value.controlsReady) {
-    ElMessage.error('任务中心 Unity 指令桥尚未就绪')
-    return
-  }
   busy.value = true
   let acknowledged = 0
   try {
@@ -537,9 +532,12 @@ async function sendVehicleCommand(command: VehicleQuickCommand) {
           runtimeInstanceId: unityViewportStore.missionInstanceId,
         })
         if (result.status === 'FAILED' || result.status === 'TIMEOUT') throw new Error(result.detail)
-        const ack = await unityBridgeStore.sendControlCommandAndWaitFor('MISSION_CENTER', vehicleUnityCommand(command.commandType), key, result.commandKey)
-        commandFeedback.value = { ...commandFeedback.value, [key]: ack.success ? 'SUCCEEDED' : 'FAILED' }
-        if (ack.success) acknowledged += 1
+        const rosStatus = await realtimeStore.waitForCommandResult(result.commandKey)
+        const status: RuntimeCommandStatus = rosStatus === 'SUCCEEDED' ? 'SUCCEEDED'
+          : rosStatus === 'CANCELLED' ? 'CANCELLED'
+            : rosStatus === 'TIMEOUT' || rosStatus === 'EXPIRED' ? 'TIMEOUT' : 'FAILED'
+        commandFeedback.value = { ...commandFeedback.value, [key]: status }
+        if (status === 'SUCCEEDED') acknowledged += 1
       } catch {
         commandFeedback.value = { ...commandFeedback.value, [key]: 'FAILED' }
       }

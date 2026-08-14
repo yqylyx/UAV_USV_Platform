@@ -36,6 +36,9 @@ app:
   ros:
     transport: ${ROS_TRANSPORT:v1}
     state-authority: ${ROS_STATE_AUTHORITY:v1}
+  gateway:
+    v1:
+      websocket-url: ${ROS_GATEWAY_V1_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv/v1}
   runtime:
     ros-websocket-url: ${ROS_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv}
     heartbeat-timeout-seconds: 5

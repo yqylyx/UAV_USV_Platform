@@ -33,7 +33,6 @@ function reconnectDelay() {
 function realtimeUrl() {
   const configured = import.meta.env.VITE_REALTIME_WS_URL as string | undefined
   if (configured) return configured
-  if (import.meta.env.DEV) return `ws://${window.location.hostname}:8081/api/v1/realtime`
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${protocol}//${window.location.host}/api/v1/realtime`
 }
