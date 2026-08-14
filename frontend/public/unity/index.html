@@ -264,7 +264,9 @@
       }
 
       function normalizeMissionState(message) {
-        var payload = message.payload || {};
+        var payload = Object.assign({}, message.payload || {}, {
+          requestId: message.requestId || (message.payload && message.payload.requestId) || '',
+        });
         var type = normalizeCommand(payload.command || message.type);
         var states = {
           missionstart: 'RUNNING',
@@ -276,6 +278,7 @@
         };
         var state = String(payload.state || payload.phase || states[type] || '').toUpperCase();
         return {
+          requestId: payload.requestId,
           runId: String(payload.runId || runId || ''),
           sequence: finiteNumber(payload.sequence, 0),
           state: state,
@@ -299,19 +302,45 @@
             runId: String(payload.runId || runId || ''),
             coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
             platform: String(payload.platform || 'vue-webgl'),
-            protocolVersion: String(payload.protocolVersion || '1.0'),
+            requestId: message.requestId || '',
+            protocolVersion: String(payload.protocolVersion || '2.0'),
           });
         }
         if (type === 'loadscenario') {
           return sendPlatformBridge('LoadScenario', {
+            requestId: message.requestId || '',
+            runtimeMode: String(payload.runtimeMode || 'VIRTUAL_SIMULATION'),
             runId: String(payload.runId || runId || ''),
-            scenarioId: String(payload.scenarioId || payload.algorithmCode || 'default'),
+            scenarioId: String(payload.scenarioId || payload.algorithmCode || 'GB_SFLA_CS'),
+            algorithmCode: String(payload.algorithmCode || payload.scenarioId || 'GB_SFLA_CS'),
+            uavCount: finiteNumber(payload.uavCount, 3),
+            usvCount: finiteNumber(payload.usvCount, 3),
+            targetCount: finiteNumber(payload.targetCount, 1),
+            initialSpeedMps: finiteNumber(payload.initialSpeedMps, 0),
+            initialHeadingDeg: finiteNumber(payload.initialHeadingDeg, 0),
+            seed: finiteNumber(payload.seed, 0),
             sceneName: String(payload.sceneName || ''),
             coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
           });
         }
+        if (type === 'regeneratescenario') {
+          return sendPlatformBridge('RegenerateScenario', {
+            requestId: message.requestId || '',
+            runtimeMode: String(payload.runtimeMode || 'VIRTUAL_SIMULATION'),
+            algorithmCode: String(payload.algorithmCode || 'GB_SFLA_CS'),
+            runId: String(payload.runId || runId || ''),
+            uavCount: finiteNumber(payload.uavCount, 3),
+            usvCount: finiteNumber(payload.usvCount, 3),
+            targetCount: finiteNumber(payload.targetCount, 1),
+            initialSpeedMps: finiteNumber(payload.initialSpeedMps, 0),
+            initialHeadingDeg: finiteNumber(payload.initialHeadingDeg, 0),
+            seed: finiteNumber(payload.seed, 0),
+          });
+        }
         if (type === 'poseframe') {
-          return sendPlatformBridge('ApplyPoseBatch', normalizePoseBatch(payload));
+          var poseBatch = normalizePoseBatch(payload);
+          poseBatch.requestId = message.requestId || '';
+          return sendPlatformBridge('ApplyPoseBatch', poseBatch);
         }
         if (
           type === 'missionstart' ||
@@ -325,6 +354,7 @@
         }
         if (type === 'missionstate') {
           return sendPlatformBridge('SetMissionState', {
+            requestId: message.requestId || '',
             runId: String(payload.runId || runId || ''),
             sequence: finiteNumber(payload.sequence, 0),
             state: String(payload.state || payload.phase || ''),
@@ -335,14 +365,17 @@
         }
         if (type === 'selectdevice') {
           return sendPlatformBridge('SelectDevice', {
+            requestId: message.requestId || '',
             deviceCode: String(payload.deviceCode || payload.deviceId || ''),
           });
         }
         if (type === 'focusdevice') {
           var selected = sendPlatformBridge('SelectDevice', {
+            requestId: message.requestId || '',
             deviceCode: String(payload.deviceCode || payload.deviceId || ''),
           });
           var focused = sendPlatformBridge('SetCameraMode', {
+            requestId: message.requestId || '',
             mode: 'device-follow',
             deviceCode: String(payload.deviceCode || payload.deviceId || ''),
           });
@@ -350,6 +383,7 @@
         }
         if (type === 'switchcamera') {
           return sendPlatformBridge('SetCameraMode', {
+            requestId: message.requestId || '',
             mode: String(payload.mode || 'overview'),
             deviceCode: String(payload.deviceCode || payload.deviceId || ''),
           });
