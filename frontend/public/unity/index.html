@@ -83,6 +83,7 @@
 
       function postUnityMessage(type, payload) {
         if (!window.parent) return;
+        var messagePayload = payload || {};
         window.parent.postMessage(
           {
             source: 'unity-webgl',
@@ -90,13 +91,13 @@
             runtimeInstanceId: runtimeInstanceId,
             message: {
               type: type,
-              requestId: payload && payload.requestId ? payload.requestId : '',
+              requestId: messagePayload.requestId ? messagePayload.requestId : '',
               timestamp: Date.now(),
-              payload: Object.assign({}, payload || {}, {
+              payload: Object.assign({}, messagePayload, {
                 runtimeScope: runtimeScope,
                 runtimeInstanceId: runtimeInstanceId,
-                missionId: missionId,
-                runId: runId,
+                missionId: messagePayload.missionId || missionId,
+                runId: messagePayload.runId || runId,
               }),
             },
           },
@@ -110,11 +111,12 @@
         delete flat.requestId;
         delete flat.timestamp;
         delete flat.payload;
-        return Object.assign(flat, parsed && parsed.payload ? parsed.payload : {}, {
+        var sourcePayload = parsed && parsed.payload ? parsed.payload : {};
+        return Object.assign(flat, sourcePayload, {
           runtimeScope: runtimeScope,
           runtimeInstanceId: runtimeInstanceId,
-          missionId: missionId,
-          runId: runId,
+          missionId: sourcePayload.missionId || missionId,
+          runId: sourcePayload.runId || runId,
         });
       }
 
@@ -222,7 +224,11 @@
             ];
         var normalized = {
           deviceCode: pose.deviceCode || pose.deviceId || pose.code || pose.id || '',
+          deviceType: pose.deviceType || pose.type || '',
           type: pose.type || '',
+          state: pose.state || '',
+          valid: pose.valid !== false,
+          speedMps: finiteNumber(pose.speedMps, 0),
           position: [
             finiteNumber(position[0], 0),
             finiteNumber(position[1], 0),
@@ -337,7 +343,7 @@
             seed: finiteNumber(payload.seed, 0),
           });
         }
-        if (type === 'poseframe') {
+        if (type === 'poseframe' || type === 'applyposebatch') {
           var poseBatch = normalizePoseBatch(payload);
           poseBatch.requestId = message.requestId || '';
           return sendPlatformBridge('ApplyPoseBatch', poseBatch);
@@ -381,7 +387,7 @@
           });
           return selected || focused;
         }
-        if (type === 'switchcamera') {
+        if (type === 'switchcamera' || type === 'setcameramode') {
           return sendPlatformBridge('SetCameraMode', {
             requestId: message.requestId || '',
             mode: String(payload.mode || 'overview'),

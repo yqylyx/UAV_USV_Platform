@@ -440,6 +440,9 @@ async function reportHeartbeat(
   state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED',
   detail: string,
 ) {
+  // The standalone virtual-fleet integration channel is intentionally local
+  // to the WebGL bridge until the backend accepts its runtime scope.
+  if (props.runtimeScope === 'VIRTUAL_FLEET') return
   try {
     await sendIntegrationHeartbeat({
       componentCode: 'unity-client-01',
