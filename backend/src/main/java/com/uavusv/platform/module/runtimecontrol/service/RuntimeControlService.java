@@ -87,6 +87,7 @@ public class RuntimeControlService {
     private final String integrationToken;
     private final String commandDispatchMode;
     private final long commandAckTimeoutSeconds;
+    private final long commandResultTimeoutSeconds;
 
     public RuntimeControlService(
             RuntimeStateService runtimeStateService,
@@ -103,7 +104,8 @@ public class RuntimeControlService {
             @Value("${app.runtime.ros-websocket-url}") String rosWebSocketUrl,
             @Value("${app.integration.token}") String integrationToken,
             @Value("${app.control.command-dispatch-mode:browser-unity}") String commandDispatchMode,
-            @Value("${app.control.command-ack-timeout-seconds:15}") long commandAckTimeoutSeconds
+            @Value("${app.control.command-ack-timeout-seconds:15}") long commandAckTimeoutSeconds,
+            @Value("${app.control.command-result-timeout-seconds:75}") long commandResultTimeoutSeconds
     ) {
         this.runtimeStateService = runtimeStateService;
         this.sessionRepository = sessionRepository;
@@ -120,6 +122,7 @@ public class RuntimeControlService {
         this.integrationToken = integrationToken;
         this.commandDispatchMode = commandDispatchMode;
         this.commandAckTimeoutSeconds = Math.max(commandAckTimeoutSeconds, 1);
+        this.commandResultTimeoutSeconds = Math.max(commandResultTimeoutSeconds, this.commandAckTimeoutSeconds + 1);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -295,6 +298,12 @@ public class RuntimeControlService {
     }
 
     public RuntimeCommandResponse issueCommand(RuntimeCommandRequest request, String username) {
+        if (request.commandType() == CommandType.SELECT_DEVICE) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_COMMAND_SCOPE,
+                    "Command SELECT_DEVICE is not a ROS control command"
+            );
+        }
         long startedAt = System.currentTimeMillis();
         long stageStartedAt = startedAt;
         log.info("[issueCommand] start commandType={} deviceCode={} runId={} scope={} instance={}",
@@ -411,11 +420,29 @@ public class RuntimeControlService {
     ) {
         ControlCommand command = commandRepository.findByCommandKey(commandKey)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "控制指令不存在"));
-        if (envelopeRunId != null && !envelopeRunId.isBlank() && command.getRunId() != null
-                && !envelopeRunId.equals(String.valueOf(command.getRunId()))) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "ROS 回传 runId 与控制指令不一致");
-        }
         if (command.isTerminal()) return RuntimeCommandResponse.from(command);
+        String receivedRunId = envelopeRunId == null || envelopeRunId.isBlank() ? null : envelopeRunId.trim();
+        String runIdErrorCode = null;
+        String runIdErrorDetail = null;
+        if (command.getRuntimeScope() == RuntimeScope.SYSTEM_OVERVIEW && receivedRunId != null) {
+            runIdErrorCode = "UNEXPECTED_RUN_ID";
+            runIdErrorDetail = "SYSTEM_OVERVIEW control response must not contain runId";
+        } else if (command.getRuntimeScope() == RuntimeScope.MISSION_CENTER && receivedRunId == null) {
+            runIdErrorCode = "RUN_ID_MISSING";
+            runIdErrorDetail = "MISSION_CENTER control response must contain runId";
+        } else if (command.getRuntimeScope() == RuntimeScope.MISSION_CENTER
+                && !receivedRunId.equals(String.valueOf(command.getRunId()))) {
+            runIdErrorCode = "RUN_ID_MISMATCH";
+            runIdErrorDetail = "ROS control response runId does not match command runId";
+        }
+        if (runIdErrorCode != null) {
+            log.warn("Rejected ROS Gateway v1 control state commandKey={} errorCode={} commandRunId={} envelopeRunId={}",
+                    commandKey, runIdErrorCode, command.getRunId(), envelopeRunId);
+            command.fail(runIdErrorCode, runIdErrorDetail);
+            commandRepository.save(command);
+            publishTerminalCommandStatus(command);
+            return RuntimeCommandResponse.from(command);
+        }
         String status = gatewayStatus == null ? "" : gatewayStatus.trim().toUpperCase();
         String message = detail == null ? source + " " + status : detail;
         switch (status) {
@@ -436,11 +463,20 @@ public class RuntimeControlService {
     @Scheduled(fixedDelay = 5000)
     @Transactional
     public void expireUnacknowledgedCommands() {
-        LocalDateTime cutoff = LocalDateTime.now().minusSeconds(commandAckTimeoutSeconds);
+        LocalDateTime ackCutoff = LocalDateTime.now().minusSeconds(commandAckTimeoutSeconds);
         commandRepository.findAllByStatusInAndDispatchedAtBefore(
-                        EnumSet.of(CommandStatus.DISPATCHED, CommandStatus.ACCEPTED, CommandStatus.EXECUTING), cutoff)
+                        EnumSet.of(CommandStatus.DISPATCHED), ackCutoff)
                 .forEach(command -> {
-                    command.timeout("指令下发后未在规定时间内收到确认");
+                    command.timeout("ACK_TIMEOUT", "指令下发后未在规定时间内收到 ACK");
+                    commandRepository.save(command);
+                    publishTerminalCommandStatus(command);
+                });
+
+        LocalDateTime resultCutoff = LocalDateTime.now().minusSeconds(commandResultTimeoutSeconds);
+        commandRepository.findAllByStatusInAndAcknowledgedAtBefore(
+                        EnumSet.of(CommandStatus.ACCEPTED, CommandStatus.EXECUTING), resultCutoff)
+                .forEach(command -> {
+                    command.timeout("RESULT_TIMEOUT", "指令执行后未在规定时间内收到最终结果");
                     commandRepository.save(command);
                     publishTerminalCommandStatus(command);
                 });

@@ -146,9 +146,13 @@ public class ControlCommand extends BaseEntity {
     }
 
     public void timeout(String detail) {
+        timeout("ACK_TIMEOUT", detail);
+    }
+
+    public void timeout(String errorCode, String detail) {
         if (isTerminal()) return;
         this.status = CommandStatus.TIMEOUT;
-        this.errorCode = "ACK_TIMEOUT";
+        this.errorCode = errorCode;
         this.detail = detail;
         this.completedAt = LocalDateTime.now();
     }

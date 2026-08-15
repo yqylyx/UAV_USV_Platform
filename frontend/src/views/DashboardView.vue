@@ -606,37 +606,17 @@ async function selectDevice(deviceCode: string) {
     lastUnityEvent.value = `selectDevice:${normalizedCode}:waiting`
     return
   }
-  try {
-    await sendTrackedUnityCommand(
-      'SELECT_DEVICE',
-      '系统总览选择协同设备',
-      'selectDevice',
-      { deviceCode: normalizedCode },
-      normalizedCode,
-    )
-    selectedDeviceSyncedToUnity = normalizedCode
-    lastUnityEvent.value = `selectDevice:${normalizedCode}`
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '设备视角切换失败')
-  }
+  unityBridgeStore.send('selectDevice', { deviceCode: normalizedCode })
+  selectedDeviceSyncedToUnity = normalizedCode
+  lastUnityEvent.value = `selectDevice:${normalizedCode}`
 }
 
 async function switchCamera(mode: string) {
   const deviceCode = selectedOrDefaultDeviceCode()
-  try {
-    await sendTrackedUnityCommand(
-      'SWITCH_CAMERA',
-      'Unity 切换态势观察视角',
-      'switchCamera',
-      { mode, deviceCode },
-      deviceCode,
-    )
-    selectedCameraMode.value = mode
-    if (mode === 'device-follow') selectedDeviceSyncedToUnity = deviceCode
-    lastUnityEvent.value = `switchCamera:${mode}`
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'Unity 视角切换失败')
-  }
+  unityBridgeStore.send('switchCamera', { mode, deviceCode })
+  selectedCameraMode.value = mode
+  if (mode === 'device-follow') selectedDeviceSyncedToUnity = deviceCode
+  lastUnityEvent.value = `switchCamera:${mode}`
 }
 
 async function toggleUnityTrajectory() {
@@ -644,13 +624,7 @@ async function toggleUnityTrajectory() {
   const visible = !unityBridgeStore.trajectoryVisible
   unityBridgeStore.setTrajectoryTogglePending(true)
   try {
-    const result = await recordRuntimeCommand(
-      'TOGGLE_TRAJECTORY',
-      visible ? 'Unity 显示现有轨迹' : 'Unity 隐藏现有轨迹',
-      '',
-      { visible },
-    )
-    unityBridgeStore.send('toggleTrajectory', { visible }, result.commandKey)
+    unityBridgeStore.send('toggleTrajectory', { visible })
     lastUnityEvent.value = `toggleTrajectory:${visible ? 'show' : 'hide'}`
     if (trajectoryToggleTimer !== null) window.clearTimeout(trajectoryToggleTimer)
     trajectoryToggleTimer = window.setTimeout(() => {
@@ -698,7 +672,7 @@ async function sendVehicleCommand(
             commandFeedback.value = { ...commandFeedback.value, [key]: result.status }
             return result.status
           }
-          const rosStatus = await realtimeStore.waitForCommandResult(result.commandKey)
+          const rosStatus = await realtimeStore.waitForCommandResult(result.commandKey, 90000)
           const status: RuntimeCommandStatus = rosStatus === 'SUCCEEDED' ? 'SUCCEEDED'
             : rosStatus === 'CANCELLED' ? 'CANCELLED'
               : rosStatus === 'TIMEOUT' || rosStatus === 'EXPIRED' ? 'TIMEOUT' : 'FAILED'

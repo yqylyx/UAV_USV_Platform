@@ -65,10 +65,7 @@ public class GatewaySequenceGuard {
     }
 
     private boolean requiresRunId(GatewayMessageType type) {
-        return type == GatewayMessageType.MISSION_STATUS
-                || type == GatewayMessageType.CONTROL_ACK
-                || type == GatewayMessageType.CONTROL_FEEDBACK
-                || type == GatewayMessageType.CONTROL_RESULT;
+        return type == GatewayMessageType.MISSION_STATUS;
     }
 
     private String normalizeRunId(String runId) {

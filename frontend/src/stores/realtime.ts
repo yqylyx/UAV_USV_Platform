@@ -168,7 +168,7 @@ export const useRealtimeStore = defineStore('realtime', {
       this.streamSequences[key] = envelope.sequence
       return true
     },
-    waitForCommandResult(commandId: string, timeoutMs = 15000): Promise<string> {
+    waitForCommandResult(commandId: string, timeoutMs = 90000): Promise<string> {
       const terminal = new Set(['SUCCEEDED', 'FAILED', 'REJECTED', 'CANCELLED', 'TIMEOUT', 'EXPIRED'])
       return new Promise((resolve) => {
         const startedAt = Date.now()

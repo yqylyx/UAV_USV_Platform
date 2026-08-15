@@ -20,7 +20,9 @@ public interface ControlCommandRepository extends JpaRepository<ControlCommand, 
     Optional<ControlCommand> findByCommandKey(String commandKey);
 
     List<ControlCommand> findAllByStatusInAndDispatchedAtBefore(Collection<CommandStatus> statuses, LocalDateTime cutoff);
-
+    
+    List<ControlCommand> findAllByStatusInAndAcknowledgedAtBefore(Collection<CommandStatus> statuses, LocalDateTime cutoff);
+    
     boolean existsByRunIdAndDeviceIdAndStatusIn(Long runId, Long deviceId, Collection<CommandStatus> statuses);
 
     boolean existsByRunIdAndDeviceIdIsNullAndStatusIn(Long runId, Collection<CommandStatus> statuses);

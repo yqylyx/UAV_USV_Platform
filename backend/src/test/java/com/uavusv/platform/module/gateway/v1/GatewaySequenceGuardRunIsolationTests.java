@@ -27,8 +27,20 @@ class GatewaySequenceGuardRunIsolationTests {
         assertEquals(GatewaySequenceGuard.SequenceCheckStatus.OLD_RUN, guard.inspect(status).status());
     }
 
+    @Test void acceptsSystemControlAckWithoutRunIdAndKeepsSequenceChecks() {
+        GatewayEnvelope first = controlAck(null, 2);
+        assertEquals(GatewaySequenceGuard.SequenceCheckStatus.ACCEPTED, guard.inspect(first).status());
+        assertEquals(GatewaySequenceGuard.SequenceCheckStatus.DUPLICATE, guard.inspect(first).status());
+        assertEquals(GatewaySequenceGuard.SequenceCheckStatus.OUT_OF_ORDER, guard.inspect(controlAck(null, 1)).status());
+    }
+
     private GatewayEnvelope envelope(String runId, long sequence) {
         return new GatewayEnvelope("1.0", GatewayMessageType.TELEMETRY_POSE_BATCH,
                 "ros", Instant.now(), runId, "pose", sequence, mapper.createObjectNode());
+    }
+
+    private GatewayEnvelope controlAck(String runId, long sequence) {
+        return new GatewayEnvelope("1.0", GatewayMessageType.CONTROL_ACK,
+                "ros", Instant.now(), runId, "control", sequence, mapper.createObjectNode());
     }
 }
