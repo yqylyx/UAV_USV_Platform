@@ -26,6 +26,7 @@ const unityReady = ref(false)
 const lastMessage = ref<UnityMessage | null>(null)
 const selectedDevice = ref('')
 const logs = ref<string[]>([])
+const scenarioReadyRunId = ref<number | null>(null)
 const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
 
 const state = reactive({
@@ -86,8 +87,23 @@ function onUnityMessage(message: UnityMessage) {
     lastMessage.value = message
   }
   if (message.type === 'platformBridgeReady') unityReady.value = message.payload?.ready === true
-  if (message.type === 'scenarioReady') addLog(`scenarioReady: ${message.payload?.success === true ? 'success' : 'failed'}`)
-  if (message.type === 'poseFrameApplied') addLog(`poseFrameApplied: sequence=${message.payload?.sequence ?? '-'}`)
+  if (message.type === 'scenarioReady') {
+    const readyRunId = Number(message.payload?.runId ?? 0)
+    const success = message.payload?.success === true
+    scenarioReadyRunId.value = success && readyRunId === state.runId ? readyRunId : null
+    addLog(
+      `scenarioReady: ${success ? 'success' : 'failed'}`
+      + ` runId=${readyRunId || '-'}`,
+    )
+  }
+  if (message.type === 'poseFrameApplied') {
+    const success = message.payload?.success === true
+    const code = String(message.payload?.code ?? '')
+    addLog(
+      `poseFrameApplied: sequence=${message.payload?.sequence ?? '-'}`
+      + ` ${success ? 'success' : code || 'failed'}`,
+    )
+  }
   if (message.type === 'cameraChanged') addLog(`cameraChanged: ${message.payload?.deviceCode ?? '-'}`)
 }
 
@@ -104,6 +120,7 @@ function generateScenario() {
   state.runId = Date.now()
   state.sequence = 0
   state.mission = 'STOPPED'
+  scenarioReadyRunId.value = null
   send('loadScenario', {
     runtimeMode: 'VIRTUAL_SIMULATION',
     algorithmCode: state.algorithm,
@@ -117,7 +134,14 @@ function generateScenario() {
 }
 
 function startMission() {
-  if (!unityReady.value || !speedValid.value) return
+  if (
+    !unityReady.value
+    || !speedValid.value
+    || scenarioReadyRunId.value !== state.runId
+  ) {
+    addLog(`missionStart blocked: waiting for scenarioReady runId=${state.runId}`)
+    return
+  }
   state.mission = 'RUNNING'
   send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
   sendPoseBatch()
@@ -141,7 +165,11 @@ function resetMission() {
 }
 
 function sendPoseBatch() {
-  if (!unityReady.value || state.mission !== 'RUNNING') return
+  if (
+    !unityReady.value
+    || state.mission !== 'RUNNING'
+    || scenarioReadyRunId.value !== state.runId
+  ) return
   state.sequence += 1
   const vehicles = vehicleCodes.value.map((deviceCode, index) => {
     const isUav = deviceCode.startsWith('UAV-')
