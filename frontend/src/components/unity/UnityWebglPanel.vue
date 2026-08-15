@@ -51,6 +51,7 @@ let probeTimer: number | null = null
 let heartbeatTimer: number | null = null
 let readyEmitted = false
 let lastRuntimeReportAt = 0
+const seenPoseReceiptKeys = new Set<string>()
 
 const iframeUrl = computed(() => {
   const separator = props.iframeSrc.includes('?') ? '&' : '?'
@@ -116,6 +117,25 @@ function handleWindowMessage(event: MessageEvent) {
   if (event.source !== iframeRef.value?.contentWindow) return
   const message = parseUnityMessage(event.data)
   if (!message) return
+
+  if (message.type === 'poseFrameApplied') {
+    const runId = String(message.payload?.runId ?? '')
+    const sequence = String(message.payload?.sequence ?? '')
+    const receiptKey = `${props.runtimeScope}:${runId}:${sequence}`
+    if (seenPoseReceiptKeys.has(receiptKey)) {
+      console.warn('[UnityWebglPanel] Duplicate poseFrameApplied ignored', {
+        requestId: message.requestId,
+        runId,
+        sequence,
+      })
+      return
+    }
+    seenPoseReceiptKeys.add(receiptKey)
+    if (seenPoseReceiptKeys.size > 4096) {
+      const firstKey = seenPoseReceiptKeys.values().next().value
+      if (firstKey) seenPoseReceiptKeys.delete(firstKey)
+    }
+  }
 
   if (
     message.type === 'sceneLoaded'
@@ -322,6 +342,7 @@ function startIframeProbe() {
 
 function handleIframeLoad() {
   trajectoryStore.clearFor(props.runtimeScope)
+  seenPoseReceiptKeys.clear()
   loading.value = true
   ready.value = false
   readyEmitted = false
@@ -440,6 +461,9 @@ async function reportHeartbeat(
   state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED',
   detail: string,
 ) {
+  // The standalone virtual-fleet integration channel is intentionally local
+  // to the WebGL bridge until the backend accepts its runtime scope.
+  if (props.runtimeScope === 'VIRTUAL_FLEET') return
   try {
     await sendIntegrationHeartbeat({
       componentCode: 'unity-client-01',
