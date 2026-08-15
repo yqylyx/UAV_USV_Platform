@@ -27,6 +27,7 @@ const lastMessage = ref<UnityMessage | null>(null)
 const selectedDevice = ref('')
 const logs = ref<string[]>([])
 const scenarioReadyRunId = ref<number | null>(null)
+const scenarioLoading = ref(false)
 const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
 
 const state = reactive({
@@ -79,6 +80,7 @@ function onUnityReady() {
 
 function onUnityError(message: string) {
   unityReady.value = false
+  scenarioLoading.value = false
   addLog(`Unity 错误: ${message}`)
 }
 
@@ -91,6 +93,7 @@ function onUnityMessage(message: UnityMessage) {
     const readyRunId = Number(message.payload?.runId ?? 0)
     const success = message.payload?.success === true
     scenarioReadyRunId.value = success && readyRunId === state.runId ? readyRunId : null
+    if (readyRunId === state.runId) scenarioLoading.value = false
     addLog(
       `scenarioReady: ${success ? 'success' : 'failed'}`
       + ` runId=${readyRunId || '-'}`,
@@ -112,7 +115,7 @@ function validateSpeed(value: number, max: number) {
 }
 
 function generateScenario() {
-  if (sceneLocked.value) return
+  if (sceneLocked.value || scenarioLoading.value) return
   state.uavSpeed = validateSpeed(state.uavSpeed, 15)
   state.usvSpeed = validateSpeed(state.usvSpeed, 2)
   // Each generated scenario needs an isolated run id so delayed pose
@@ -121,6 +124,8 @@ function generateScenario() {
   state.sequence = 0
   state.mission = 'STOPPED'
   scenarioReadyRunId.value = null
+  scenarioLoading.value = true
+  addLog(`loadScenario pending: runId=${state.runId}`)
   send('loadScenario', {
     runtimeMode: 'VIRTUAL_SIMULATION',
     algorithmCode: state.algorithm,
@@ -137,6 +142,7 @@ function startMission() {
   if (
     !unityReady.value
     || !speedValid.value
+    || scenarioLoading.value
     || scenarioReadyRunId.value !== state.runId
   ) {
     addLog(`missionStart blocked: waiting for scenarioReady runId=${state.runId}`)
@@ -288,7 +294,7 @@ onBeforeUnmount(() => {
               <input v-model.number="state.seed" type="number" step="1" :disabled="sceneLocked">
             </label>
             <div class="vf-actions">
-              <button class="vf-button primary" type="button" :disabled="sceneLocked || !unityReady" @click="generateScenario">
+              <button class="vf-button primary" type="button" :disabled="sceneLocked || !unityReady || scenarioLoading" @click="generateScenario">
                 <RefreshCw :size="15" /> 生成场景
               </button>
               <button class="vf-button" type="button" :disabled="!unityReady" @click="resetMission">
@@ -300,7 +306,7 @@ onBeforeUnmount(() => {
           <section class="vf-panel">
             <div class="vf-panel-head"><h3>任务控制</h3><span>{{ state.mission }}</span></div>
             <div class="vf-actions">
-              <button class="vf-button success" type="button" :disabled="state.mission === 'RUNNING' || !unityReady || !speedValid" @click="startMission">
+              <button class="vf-button success" type="button" :disabled="state.mission === 'RUNNING' || !unityReady || !speedValid || scenarioLoading || scenarioReadyRunId !== state.runId" @click="startMission">
                 <Play :size="15" /> 开始
               </button>
               <button class="vf-button" type="button" :disabled="state.mission !== 'RUNNING'" @click="pauseMission">
