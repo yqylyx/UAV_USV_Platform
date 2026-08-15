@@ -7,6 +7,18 @@ import type {
 export const VIRTUAL_SIMULATION_RUNTIME_MODE = 'VIRTUAL_SIMULATION' as const
 export const UAV_MAX_SPEED_MPS = 15
 export const USV_MAX_SPEED_MPS = 2
+export type AlgorithmCoordinateFrame = 'FLEET_LOCAL_ENU' | 'GLOBAL_ENU'
+
+export interface EnuOrigin {
+  eastM: number
+  northM: number
+  upM: number
+}
+
+export interface VirtualAlgorithmFrameAdapterOptions {
+  coordinateFrame?: AlgorithmCoordinateFrame
+  fleetOrigin?: EnuOrigin
+}
 
 export interface VirtualPoseInput {
   deviceCode: string
@@ -23,6 +35,7 @@ export interface VirtualPoseInput {
 
 export interface VirtualPoseBatchPayload {
   runtimeMode: typeof VIRTUAL_SIMULATION_RUNTIME_MODE
+  coordinateFrame: 'GLOBAL_ENU'
   runId: number
   sequence: number
   sampleTime: number
@@ -43,6 +56,8 @@ export type VirtualPoseStateMap = Map<string, VirtualPoseState>
 export interface VirtualAlgorithmFrameAdapterResult {
   payload: VirtualPoseBatchPayload
   nextState: VirtualPoseStateMap
+  sourceCoordinateFrame: AlgorithmCoordinateFrame
+  fleetOrigin: EnuOrigin
 }
 
 function finiteOr(value: unknown, fallback: number) {
@@ -63,6 +78,36 @@ function canonicalDeviceCode(code: string, type: 'UAV' | 'USV' | 'TARGET') {
 
 function canonicalVehicleType(agent: AlgorithmAgentFrame) {
   return agent.type === 'USV' ? 'USV' : 'UAV'
+}
+
+function resolveCoordinateContext(
+  frame: AlgorithmRuntimeFrame,
+  options: VirtualAlgorithmFrameAdapterOptions,
+) {
+  const coordinateFrame = frame.coordinateFrame ?? options.coordinateFrame
+  if (!coordinateFrame) {
+    throw new Error('Algorithm frame coordinateFrame must be declared')
+  }
+  if (coordinateFrame === 'GLOBAL_ENU') {
+    return {
+      coordinateFrame,
+      fleetOrigin: { eastM: 0, northM: 0, upM: 0 },
+    }
+  }
+
+  const origin = options.fleetOrigin
+  if (
+    !origin
+    || !Number.isFinite(origin.eastM)
+    || !Number.isFinite(origin.northM)
+    || !Number.isFinite(origin.upM)
+  ) {
+    throw new Error('FLEET_LOCAL_ENU requires a finite fleetOrigin')
+  }
+  return {
+    coordinateFrame,
+    fleetOrigin: { ...origin },
+  }
 }
 
 function speedFromDelta(
@@ -89,12 +134,13 @@ function poseFromAgent(
   agent: AlgorithmAgentFrame,
   frame: AlgorithmRuntimeFrame,
   previous: VirtualPoseStateMap,
+  origin: EnuOrigin,
 ): VirtualPoseInput {
   const deviceType = canonicalVehicleType(agent)
   const deviceCode = canonicalDeviceCode(agent.code, deviceType)
-  const eastM = finiteOr(agent.x, 0)
-  const northM = finiteOr(agent.y, 0)
-  const upM = finiteOr(agent.z, deviceType === 'UAV' ? 25 : 0)
+  const eastM = finiteOr(agent.x, 0) + origin.eastM
+  const northM = finiteOr(agent.y, 0) + origin.northM
+  const upM = finiteOr(agent.z, deviceType === 'UAV' ? 25 : 0) + origin.upM
   const prior = previous.get(deviceCode)
   const deltaEast = prior ? eastM - prior.eastM : 0
   const deltaNorth = prior ? northM - prior.northM : 0
@@ -124,11 +170,12 @@ function poseFromTarget(
   target: AlgorithmTargetFrame,
   frame: AlgorithmRuntimeFrame,
   previous: VirtualPoseStateMap,
+  origin: EnuOrigin,
 ): VirtualPoseInput {
   const deviceCode = canonicalDeviceCode(target.code, 'TARGET')
-  const eastM = finiteOr(target.x, 0)
-  const northM = finiteOr(target.y, 0)
-  const upM = finiteOr(target.z, 0)
+  const eastM = finiteOr(target.x, 0) + origin.eastM
+  const northM = finiteOr(target.y, 0) + origin.northM
+  const upM = finiteOr(target.z, 0) + origin.upM
   const prior = previous.get(deviceCode)
   const deltaEast = prior ? eastM - prior.eastM : 0
   const deltaNorth = prior ? northM - prior.northM : 0
@@ -166,6 +213,7 @@ function rememberPose(
 export function adaptVirtualAlgorithmFrame(
   frame: AlgorithmRuntimeFrame,
   previous: VirtualPoseStateMap = new Map(),
+  options: VirtualAlgorithmFrameAdapterOptions = {},
 ): VirtualAlgorithmFrameAdapterResult {
   if (!Number.isInteger(frame.runId) || frame.runId <= 0) {
     throw new Error('Algorithm frame runId must be a positive integer')
@@ -177,17 +225,21 @@ export function adaptVirtualAlgorithmFrame(
     throw new Error('Algorithm frame timestamp must be finite')
   }
 
+  const { coordinateFrame, fleetOrigin } = resolveCoordinateContext(frame, options)
   const nextState = new Map(previous)
-  const vehicles = frame.agents.map(agent => poseFromAgent(agent, frame, previous))
+  const vehicles = frame.agents.map(
+    agent => poseFromAgent(agent, frame, previous, fleetOrigin),
+  )
   const targets = frame.targets
     .filter(target => target.visible !== false)
-    .map(target => poseFromTarget(target, frame, previous))
+    .map(target => poseFromTarget(target, frame, previous, fleetOrigin))
 
   for (const pose of [...vehicles, ...targets]) rememberPose(nextState, pose, frame.timestamp)
 
   return {
     payload: {
       runtimeMode: VIRTUAL_SIMULATION_RUNTIME_MODE,
+      coordinateFrame: 'GLOBAL_ENU',
       runId: frame.runId,
       sequence: frame.sequence,
       sampleTime: frame.timestamp,
@@ -195,5 +247,7 @@ export function adaptVirtualAlgorithmFrame(
       targets,
     },
     nextState,
+    sourceCoordinateFrame: coordinateFrame,
+    fleetOrigin,
   }
 }

@@ -16,6 +16,7 @@ import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
 import {
   adaptVirtualAlgorithmFrame,
+  type EnuOrigin,
   type VirtualPoseStateMap,
 } from '@/utils/virtualAlgorithmFrameAdapter'
 
@@ -35,6 +36,11 @@ const scenarioReadyRunId = ref<number | null>(null)
 const scenarioLoading = ref(false)
 const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
 let previousAlgorithmPoses: VirtualPoseStateMap = new Map()
+const fleetOriginEnu: EnuOrigin = {
+  eastM: -75,
+  northM: -310,
+  upM: 0,
+}
 
 const state = reactive({
   algorithm: 'GB_SFLA_CS',
@@ -169,6 +175,10 @@ function startMission() {
     return
   }
   state.mission = 'RUNNING'
+  addLog(
+    `algorithm coordinates: FLEET_LOCAL_ENU`
+    + ` origin=(${fleetOriginEnu.eastM},${fleetOriginEnu.northM},${fleetOriginEnu.upM})`,
+  )
   send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
   sendPoseBatch()
 }
@@ -227,6 +237,7 @@ function sendPoseBatch() {
   const frame: AlgorithmRuntimeFrame = {
     runId: state.runId,
     algorithmCode: state.algorithm,
+    coordinateFrame: 'FLEET_LOCAL_ENU',
     sequence: state.sequence,
     timestamp,
     phase: state.algorithm === 'GB_SFLA_CS' ? 'ENCIRCLEMENT' : 'ESCORT',
@@ -245,7 +256,11 @@ function sendPoseBatch() {
     obstacles: [],
     terminalStatus: null,
   }
-  const adapted = adaptVirtualAlgorithmFrame(frame, previousAlgorithmPoses)
+  const adapted = adaptVirtualAlgorithmFrame(
+    frame,
+    previousAlgorithmPoses,
+    { fleetOrigin: fleetOriginEnu },
+  )
   previousAlgorithmPoses = adapted.nextState
   const trackedPose = adapted.payload.vehicles.find((pose) => pose.deviceCode === 'UAV-001')
   addLog(
