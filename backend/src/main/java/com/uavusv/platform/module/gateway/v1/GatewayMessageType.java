@@ -7,6 +7,7 @@ import java.util.Arrays;
 public enum GatewayMessageType {
     GATEWAY_HELLO("gateway.hello"),
     GATEWAY_HEARTBEAT("gateway.heartbeat"),
+    DEVICE_STATUS("device.status"),
     TELEMETRY_POSE_BATCH("telemetry.pose_batch"),
     MISSION_STATUS("mission.status"),
     CONTROL_COMMAND("control.command"),

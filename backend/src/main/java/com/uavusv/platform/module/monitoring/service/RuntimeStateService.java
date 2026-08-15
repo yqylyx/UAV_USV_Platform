@@ -61,6 +61,8 @@ public class RuntimeStateService {
     private final Map<String, Observation> observations = new ConcurrentHashMap<>();
     private final DeviceCodeMapper deviceCodeMapper = new DeviceCodeMapper();
     private final Map<String, UnityRuntimeSnapshot> unityRuntimeSnapshots = new ConcurrentHashMap<>();
+    private final Map<String, DeviceStatusSnapshot> deviceStatusSnapshots = new ConcurrentHashMap<>();
+    private volatile boolean gatewayConnected;
     private final int heartbeatTimeoutSeconds;
     private final int telemetryRetentionDays;
     private final String rosHost;
@@ -114,6 +116,49 @@ public class RuntimeStateService {
         LocalDateTime now = LocalDateTime.now();
         observations.put(ROS_CODE, new Observation(now, true, "ROS_GATEWAY_V1", instanceId,
                 sequence, rosHost, rosPort, null, "ROS Gateway v1 heartbeat sequence " + sequence));
+    }
+
+    public void observeGatewayConnection(boolean connected) {
+        gatewayConnected = connected;
+    }
+
+    public void observeGatewayDeviceStatus(JsonNode payload, String source, String streamId, long sequence) {
+        if (payload == null) return;
+        String deviceCode = normalizeGatewayDeviceCode(payload.path("deviceCode").asText(""));
+        if (deviceCode == null) return;
+        deviceStatusSnapshots.put(deviceCode, new DeviceStatusSnapshot(
+                deviceCode,
+                payload.path("connectionState").asText("UNKNOWN").trim().toUpperCase(),
+                payload.path("flightState").asText("UNKNOWN").trim().toUpperCase(),
+                payload.path("armed").asBoolean(false),
+                payload.path("activeCommandId").asText(""),
+                LocalDateTime.now(),
+                sequence,
+                source,
+                streamId
+        ));
+    }
+
+    public ControlOperationalSnapshot getControlOperationalSnapshot(String deviceCode) {
+        String normalized = deviceCode == null ? "" : deviceCode.trim().toLowerCase().replace('_', '-');
+        if (!normalized.startsWith("uav-")) {
+            return new ControlOperationalSnapshot("UNKNOWN", false, null, "UNKNOWN");
+        }
+        DeviceStatusSnapshot snapshot = deviceStatusSnapshots.get(normalized);
+        if (snapshot == null) {
+            return new ControlOperationalSnapshot("UNKNOWN", false, null, "UNKNOWN");
+        }
+        boolean fresh = gatewayConnected
+                && "ONLINE".equals(snapshot.connectionState())
+                && Duration.between(snapshot.receivedAt(), LocalDateTime.now()).compareTo(Duration.ofSeconds(2)) <= 0;
+        boolean knownFlightState = "GROUNDED".equals(snapshot.flightState())
+                || "AIRBORNE".equals(snapshot.flightState());
+        return new ControlOperationalSnapshot(
+                fresh && knownFlightState ? snapshot.flightState() : "UNKNOWN",
+                fresh && knownFlightState,
+                snapshot.receivedAt(),
+                snapshot.connectionState()
+        );
     }
 
     public void observeGatewayPoseBatch(JsonNode payload, long sequence) {
@@ -197,6 +242,8 @@ public class RuntimeStateService {
         LocalDateTime now = LocalDateTime.now();
         observations.clear();
         unityRuntimeSnapshots.clear();
+        deviceStatusSnapshots.clear();
+        gatewayConnected = false;
         for (Device device : deviceRepository.findAllByDeletedFalse(Sort.by(Sort.Direction.ASC, "id"))) {
             if (!RUNTIME_TYPES.contains(device.getType())) {
                 continue;
@@ -388,6 +435,27 @@ public class RuntimeStateService {
             Set<String> deviceCodes,
             Long trajectorySequence,
             LocalDateTime observedAt
+    ) {
+    }
+
+    private record DeviceStatusSnapshot(
+            String deviceCode,
+            String connectionState,
+            String flightState,
+            boolean armed,
+            String activeCommandId,
+            LocalDateTime receivedAt,
+            long sequence,
+            String source,
+            String streamId
+    ) {
+    }
+
+    public record ControlOperationalSnapshot(
+            String state,
+            boolean fresh,
+            LocalDateTime receivedAt,
+            String connectionState
     ) {
     }
 }

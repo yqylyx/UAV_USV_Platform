@@ -6,6 +6,7 @@ import com.uavusv.platform.module.device.entity.DeviceType;
 import com.uavusv.platform.module.monitoring.entity.DeviceTelemetry;
 import com.uavusv.platform.module.monitoring.entity.RuntimeDeviceStatus;
 import com.uavusv.platform.module.monitoring.service.GeoCoordinateService;
+import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -34,12 +35,17 @@ public record RuntimeNodeResponse(
         LocalDateTime telemetryAt,
         String telemetrySource,
         boolean telemetryStale,
+        String controlOperationalState,
+        boolean controlStateFresh,
+        LocalDateTime controlStateReceivedAt,
+        String controlConnectionState,
         String detail
 ) {
     public static RuntimeNodeResponse from(
             Device device,
             RuntimeDeviceStatus runtime,
             DeviceTelemetry telemetry,
+            RuntimeStateService.ControlOperationalSnapshot controlState,
             GeoCoordinateService geoCoordinateService,
             LocalDateTime now,
             int telemetryStaleSeconds
@@ -87,6 +93,10 @@ public record RuntimeNodeResponse(
                 telemetryAt,
                 telemetry == null ? runtime == null ? null : runtime.getSource() : telemetry.getSource(),
                 isStale(telemetryAt, now, telemetryStaleSeconds),
+                controlState.state(),
+                controlState.fresh(),
+                controlState.receivedAt(),
+                controlState.connectionState(),
                 runtime == null ? "尚未收到真实心跳" : runtime.getDetail()
         );
     }
@@ -133,6 +143,10 @@ public record RuntimeNodeResponse(
                 telemetryAt,
                 telemetry == null ? null : telemetry.getSource(),
                 true,
+                "UNKNOWN",
+                false,
+                null,
+                "UNKNOWN",
                 detail
         );
     }

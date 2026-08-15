@@ -37,6 +37,77 @@ class RuntimeStateServiceGatewayV1Tests {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void authoritativeDeviceStatusIsExposedAndFailsClosed() throws Exception {
+        Device device = device("uav-01", DeviceType.UAV);
+        RuntimeDeviceStatus runtime = new RuntimeDeviceStatus(device.getId());
+        TestServices services = services(List.of(device), runtime);
+        JsonNode grounded = objectMapper.readTree("""
+                {"deviceCode":"uav_01","connectionState":"ONLINE","flightState":"GROUNDED","armed":false}
+                """);
+
+        services.runtimeStateService.observeGatewayConnection(true);
+        services.runtimeStateService.observeGatewayDeviceStatus(
+                grounded, "uav_usv_fleet_gateway", "device.status.uav_01", 1L);
+
+        var groundedNode = services.monitoringService.listRuntimeNodes(null, null).get(0);
+        assertThat(groundedNode.controlOperationalState()).isEqualTo("GROUNDED");
+        assertThat(groundedNode.controlStateFresh()).isTrue();
+        assertThat(groundedNode.controlConnectionState()).isEqualTo("ONLINE");
+
+        services.runtimeStateService.observeGatewayConnection(false);
+        var disconnectedNode = services.monitoringService.listRuntimeNodes(null, null).get(0);
+        assertThat(disconnectedNode.controlOperationalState()).isEqualTo("UNKNOWN");
+        assertThat(disconnectedNode.controlStateFresh()).isFalse();
+    }
+
+    @Test
+    void unknownAndOfflineDeviceStatusAreNeverControllable() throws Exception {
+        Device device = device("uav-01", DeviceType.UAV);
+        RuntimeDeviceStatus runtime = new RuntimeDeviceStatus(device.getId());
+        TestServices services = services(List.of(device), runtime);
+        services.runtimeStateService.observeGatewayConnection(true);
+
+        services.runtimeStateService.observeGatewayDeviceStatus(objectMapper.readTree(
+                "{\"deviceCode\":\"uav_01\",\"connectionState\":\"ONLINE\",\"flightState\":\"UNKNOWN\"}"),
+                "gateway", "device.status.uav_01", 1L);
+        assertThat(services.runtimeStateService.getControlOperationalSnapshot("uav-01").state()).isEqualTo("UNKNOWN");
+
+        services.runtimeStateService.observeGatewayDeviceStatus(objectMapper.readTree(
+                "{\"deviceCode\":\"uav_01\",\"connectionState\":\"OFFLINE\",\"flightState\":\"GROUNDED\"}"),
+                "gateway", "device.status.uav_01", 2L);
+        assertThat(services.runtimeStateService.getControlOperationalSnapshot("uav-01").state()).isEqualTo("UNKNOWN");
+    }
+
+    @Test
+    void airborneAndExpiredDeviceStatusAreHandledAuthoritatively() throws Exception {
+        Device device = device("uav-01", DeviceType.UAV);
+        RuntimeDeviceStatus runtime = new RuntimeDeviceStatus(device.getId());
+        TestServices services = services(List.of(device), runtime);
+        services.runtimeStateService.observeGatewayConnection(true);
+        services.runtimeStateService.observeGatewayDeviceStatus(objectMapper.readTree(
+                "{\"deviceCode\":\"uav_01\",\"connectionState\":\"ONLINE\",\"flightState\":\"AIRBORNE\"}"),
+                "gateway", "device.status.uav_01", 1L);
+
+        assertThat(services.runtimeStateService.getControlOperationalSnapshot("uav-01").state()).isEqualTo("AIRBORNE");
+        Thread.sleep(2100);
+        assertThat(services.runtimeStateService.getControlOperationalSnapshot("uav-01").state()).isEqualTo("UNKNOWN");
+        assertThat(services.runtimeStateService.getControlOperationalSnapshot("uav-01").fresh()).isFalse();
+    }
+
+    @Test
+    void usvFlightStateNeverBecomesUavControlAuthority() throws Exception {
+        Device device = device("usv-01", DeviceType.USV);
+        RuntimeDeviceStatus runtime = new RuntimeDeviceStatus(device.getId());
+        TestServices services = services(List.of(device), runtime);
+        services.runtimeStateService.observeGatewayConnection(true);
+        services.runtimeStateService.observeGatewayDeviceStatus(objectMapper.readTree(
+                "{\"deviceCode\":\"usv_01\",\"connectionState\":\"ONLINE\",\"flightState\":\"GROUNDED\"}"),
+                "gateway", "device.status.usv_01", 1L);
+
+        assertThat(services.runtimeStateService.getControlOperationalSnapshot("usv-01").state()).isEqualTo("UNKNOWN");
+    }
+
+    @Test
     void gatewayPoseBatchUpdatesVehicleOnlineState() throws Exception {
         Device device = device("uav-01", DeviceType.UAV);
         RuntimeDeviceStatus runtime = new RuntimeDeviceStatus(device.getId());
@@ -186,6 +257,7 @@ class RuntimeStateServiceGatewayV1Tests {
                 runtimeStatusRepository,
                 telemetryRepository,
                 new GeoCoordinateService(false, 0, 0, "X", "Z"),
+                runtimeStateService,
                 10
         );
         return new TestServices(runtimeStateService, monitoringService, runtimeStatusRepository,

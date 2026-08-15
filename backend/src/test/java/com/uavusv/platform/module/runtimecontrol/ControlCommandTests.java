@@ -63,6 +63,20 @@ class ControlCommandTests {
     }
 
     @Test
+    void rejectedCommandShouldRemainTerminal() {
+        ControlCommand command = new ControlCommand(null, CommandType.UAV_TAKEOFF, "admin");
+
+        command.reject("TAKEOFF_ALREADY_IN_PROGRESS", "vehicle takeoff is already in progress");
+        command.timeout("late timeout");
+        command.succeedResult("late success");
+
+        assertEquals(CommandStatus.REJECTED, command.getStatus());
+        assertEquals("TAKEOFF_ALREADY_IN_PROGRESS", command.getErrorCode());
+        assertEquals("vehicle takeoff is already in progress", command.getDetail());
+        assertNotNull(command.getCompletedAt());
+    }
+
+    @Test
     void shouldKeepVehicleSpecificCommandSemantics() {
         ControlCommand uav = new ControlCommand(1L, null, 11L, CommandType.UAV_HOVER, "{}", "admin");
         ControlCommand usv = new ControlCommand(1L, null, 21L, CommandType.USV_HOLD, "{}", "admin");

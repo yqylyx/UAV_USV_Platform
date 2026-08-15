@@ -15,6 +15,35 @@ class GatewayProtobufDecoderTests {
     private final GatewayProtobufDecoder decoder = new GatewayProtobufDecoder(new ObjectMapper());
 
     @Test
+    void shouldDecodeDeviceStatusFlightState() {
+        UavUsvGatewayV1.DeviceStatus status = UavUsvGatewayV1.DeviceStatus.newBuilder()
+                .setDeviceCode("uav_01")
+                .setConnectionState("ONLINE")
+                .setArmed(false)
+                .setActiveCommandId("")
+                .setFlightState("GROUNDED")
+                .build();
+        UavUsvGatewayV1.GatewayEnvelope protobufEnvelope = UavUsvGatewayV1.GatewayEnvelope.newBuilder()
+                .setSpecVersion("1.0")
+                .setMessageType("device.status")
+                .setSource("uav_usv_fleet_gateway")
+                .setDeviceCode("uav_01")
+                .setStreamId("device.status.uav_01")
+                .setSequence(7)
+                .setDeviceStatus(status)
+                .build();
+
+        GatewayEnvelope envelope = decoder.decode(protobufEnvelope.toByteArray());
+
+        assertEquals(GatewayMessageType.DEVICE_STATUS, envelope.type());
+        assertEquals("device.status.uav_01", envelope.streamId());
+        assertEquals("uav_01", envelope.payload().path("deviceCode").asText());
+        assertEquals("ONLINE", envelope.payload().path("connectionState").asText());
+        assertEquals("GROUNDED", envelope.payload().path("flightState").asText());
+        assertEquals(false, envelope.payload().path("armed").asBoolean());
+    }
+
+    @Test
     void shouldDecodePoseBatchEnvelope() {
         Instant timestamp = Instant.parse("2026-08-09T10:04:16.645841Z");
         UavUsvGatewayV1.Vector3 position = UavUsvGatewayV1.Vector3.newBuilder()

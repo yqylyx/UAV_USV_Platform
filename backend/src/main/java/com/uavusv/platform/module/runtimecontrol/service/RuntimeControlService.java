@@ -71,6 +71,10 @@ public class RuntimeControlService {
             CommandType.USV_STOP,
             CommandType.USV_EMERGENCY_STOP
     );
+    private static final EnumSet<CommandStatus> ACTIVE_COMMAND_STATUSES = EnumSet.of(
+            CommandStatus.PENDING, CommandStatus.DISPATCHED,
+            CommandStatus.ACCEPTED, CommandStatus.EXECUTING
+    );
 
     private final RuntimeStateService runtimeStateService;
     private final SimulationSessionRepository sessionRepository;
@@ -326,7 +330,27 @@ public class RuntimeControlService {
         if (request.runId() != null && runtimeScope != RuntimeScope.MISSION_CENTER) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "任务执行批次只能向任务中心运行实例下发指令");
         }
-        ensureNoPendingCommand(request.runId(), deviceId);
+        if (request.commandType() == CommandType.UAV_TAKEOFF
+                && commandRepository.existsByDeviceIdAndCommandTypeAndStatusIn(
+                        deviceId, CommandType.UAV_TAKEOFF, ACTIVE_COMMAND_STATUSES)) {
+            ControlCommand rejected = commandRepository.save(new ControlCommand(
+                    sessionId,
+                    request.runId(),
+                    deviceId,
+                    request.commandType(),
+                    request.payload(),
+                    username,
+                    runtimeScope,
+                    request.runtimeInstanceId()
+            ));
+            rejected.reject("TAKEOFF_ALREADY_IN_PROGRESS", "vehicle takeoff is already in progress");
+            rejected = commandRepository.save(rejected);
+            publishTerminalCommandStatus(rejected);
+            return RuntimeCommandResponse.from(rejected);
+        }
+        if (!isUsvSafetyStop(request.commandType())) {
+            ensureNoPendingCommand(request.runId(), deviceId);
+        }
         log.info("[issueCommand] validation ms={} runtimeScope={} deviceId={}",
                 System.currentTimeMillis() - stageStartedAt, runtimeScope, deviceId);
         stageStartedAt = System.currentTimeMillis();
@@ -451,7 +475,9 @@ public class RuntimeControlService {
             case "SUCCEEDED", "SUCCESS", "COMPLETED" -> command.succeedResult(message);
             case "CANCELLED" -> command.cancel(message);
             case "TIMEOUT", "EXPIRED" -> command.timeout(message);
-            case "FAILED", "REJECTED" -> command.fail(
+            case "REJECTED" -> command.reject(
+                    errorCode == null ? "ROS_GATEWAY_V1_COMMAND_REJECTED" : errorCode, message);
+            case "FAILED" -> command.fail(
                     errorCode == null ? "ROS_GATEWAY_V1_COMMAND_FAILED" : errorCode, message);
             default -> { return RuntimeCommandResponse.from(command); }
         }
@@ -606,11 +632,9 @@ private void requestUnityStop() throws IOException {
 
     private void ensureNoPendingCommand(Long runId, Long deviceId) {
         if (runId == null) return;
-        EnumSet<CommandStatus> pendingStatuses = EnumSet.of(
-                CommandStatus.PENDING, CommandStatus.DISPATCHED, CommandStatus.ACCEPTED, CommandStatus.EXECUTING);
         boolean duplicated = deviceId == null
-                ? commandRepository.existsByRunIdAndDeviceIdIsNullAndStatusIn(runId, pendingStatuses)
-                : commandRepository.existsByRunIdAndDeviceIdAndStatusIn(runId, deviceId, pendingStatuses);
+                ? commandRepository.existsByRunIdAndDeviceIdIsNullAndStatusIn(runId, ACTIVE_COMMAND_STATUSES)
+                : commandRepository.existsByRunIdAndDeviceIdAndStatusIn(runId, deviceId, ACTIVE_COMMAND_STATUSES);
         if (duplicated) {
             throw new BusinessException(
                     ErrorCode.BAD_REQUEST,
@@ -619,8 +643,13 @@ private void requestUnityStop() throws IOException {
         }
     }
 
+    private boolean isUsvSafetyStop(CommandType commandType) {
+        return commandType == CommandType.USV_STOP || commandType == CommandType.USV_EMERGENCY_STOP;
+    }
+
     private void publishTerminalCommandStatus(ControlCommand command) {
         if (command.getStatus() != CommandStatus.SUCCEEDED
+                && command.getStatus() != CommandStatus.REJECTED
                 && command.getStatus() != CommandStatus.FAILED
                 && command.getStatus() != CommandStatus.TIMEOUT
                 && command.getStatus() != CommandStatus.CANCELLED) {

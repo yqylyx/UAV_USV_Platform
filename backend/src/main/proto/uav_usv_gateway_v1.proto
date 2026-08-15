@@ -164,6 +164,7 @@ message DeviceStatus {
   uint32 satellite_count = 11;
   string health = 12;
   string active_command_id = 13;
+  string flight_state = 14;
 }
 
 message BoundingBox { double x = 1; double y = 2; double width = 3; double height = 4; }

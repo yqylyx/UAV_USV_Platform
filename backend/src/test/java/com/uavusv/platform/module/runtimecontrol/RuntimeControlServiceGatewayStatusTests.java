@@ -65,15 +65,15 @@ class RuntimeControlServiceGatewayStatusTests {
     }
 
     @Test
-    void systemOverviewRejectWithoutRunIdBecomesFailed() {
+    void systemOverviewRejectWithoutRunIdRemainsRejected() {
         ControlCommand command = command(null, RuntimeScope.SYSTEM_OVERVIEW);
 
         service.applyGatewayCommandStatus(command.getCommandKey(), null, "REJECTED",
-                "rejected", null, "ROS_GATEWAY_V1");
+                "vehicle is already airborne", "VEHICLE_ALREADY_AIRBORNE", "ROS_GATEWAY_V1");
 
-        assertEquals(CommandStatus.FAILED, command.getStatus());
-        assertEquals("ROS_GATEWAY_V1_COMMAND_FAILED", command.getErrorCode());
-        assertEquals("rejected", command.getDetail());
+        assertEquals(CommandStatus.REJECTED, command.getStatus());
+        assertEquals("VEHICLE_ALREADY_AIRBORNE", command.getErrorCode());
+        assertEquals("vehicle is already airborne", command.getDetail());
         verify(commandRepository).save(command);
     }
 

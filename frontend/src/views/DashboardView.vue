@@ -362,6 +362,25 @@ const selectedOverviewActions = computed<OverviewQuickAction[]>(() => {
   ]
 })
 
+function authoritativeUavControlState(device: RuntimeNode | undefined) {
+  freshnessClock.value
+  const receivedAt = device?.controlStateReceivedAt ? Date.parse(device.controlStateReceivedAt) : 0
+  if (device?.controlStateFresh !== true
+    || device.controlConnectionState !== 'ONLINE'
+    || receivedAt <= 0
+    || Date.now() - receivedAt > 2000) return 'UNKNOWN'
+  return device.controlOperationalState ?? 'UNKNOWN'
+}
+
+function isSelectedOverviewActionAllowed(action: OverviewQuickAction) {
+  if (action.commandType !== 'UAV_TAKEOFF') return true
+  return authoritativeUavControlState(selectedOverviewDevice.value) === 'GROUNDED'
+}
+
+function isUsvSafetyStop(commandType: RuntimeCommandType) {
+  return commandType === 'USV_STOP' || commandType === 'USV_EMERGENCY_STOP'
+}
+
 function clampPercent(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return null
   return Math.min(100, Math.max(0, Math.round(value)))
@@ -403,6 +422,7 @@ async function issueSelectedQuickCommand(action: OverviewQuickAction) {
     ElMessage.error('没有可控制的设备')
     return
   }
+  if (!isSelectedOverviewActionAllowed(action)) return
   await sendVehicleCommand({
     commandType: action.commandType,
     deviceCodes: [device.code],
@@ -425,7 +445,6 @@ async function handleOverviewMissionToggle() {
 
 function operationalStateAfterCommand(commandType: RuntimeCommandType) {
   const states: Partial<Record<RuntimeCommandType, string>> = {
-    UAV_TAKEOFF: 'AIRBORNE', UAV_HOVER: 'HOLDING', UAV_RESUME: 'AIRBORNE', UAV_RETURN: 'RETURNING', UAV_LAND: 'LANDING',
     USV_DEPART: 'SAILING', USV_HOLD: 'HOLDING', USV_RESUME: 'SAILING', USV_RETURN: 'RETURNING', USV_STOP: 'STOPPED',
   }
   return states[commandType]
@@ -649,7 +668,7 @@ async function sendVehicleCommand(
   command: VehicleQuickCommand,
   options: { manageBusy?: boolean; notify?: boolean } = {},
 ): Promise<VehicleBatchResult> {
-  const manageBusy = options.manageBusy ?? true
+  const manageBusy = (options.manageBusy ?? true) && !isUsvSafetyStop(command.commandType)
   const notify = options.notify ?? true
   if (!command.deviceCodes.length) {
     return { total: 0, acknowledged: 0, failed: 0, allAcknowledged: false }
@@ -733,7 +752,7 @@ async function sendOverviewFleetCommand(
     UAV_TAKEOFF: ['GROUNDED'], UAV_HOVER: ['AIRBORNE', 'RETURNING'], UAV_RESUME: ['HOLDING'],
     UAV_RETURN: ['AIRBORNE', 'HOLDING'], UAV_LAND: ['AIRBORNE', 'HOLDING', 'RETURNING'],
     USV_DEPART: ['MOORED', 'STOPPED'], USV_HOLD: ['SAILING', 'RETURNING'], USV_RESUME: ['HOLDING'],
-    USV_RETURN: ['SAILING', 'HOLDING'], USV_STOP: ['SAILING', 'HOLDING', 'RETURNING'],
+    USV_RETURN: ['SAILING', 'HOLDING'], USV_STOP: ['DEPARTING', 'SAILING', 'HOLDING', 'RETURNING'],
   }
   const desiredStates: Partial<Record<VehicleQuickCommand['commandType'], string[]>> = {
     UAV_TAKEOFF: ['TAKING_OFF', 'AIRBORNE', 'HOLDING'], UAV_HOVER: ['HOLDING'], UAV_RESUME: ['AIRBORNE'],
@@ -742,11 +761,19 @@ async function sendOverviewFleetCommand(
     USV_RETURN: ['RETURNING'], USV_STOP: ['STOPPED', 'MOORED'],
   }
   const devices = quickControlDevices.value.filter((device) => device.type === vehicleType)
-  const isDeploymentCommand = commandType === 'UAV_TAKEOFF' || commandType === 'USV_DEPART'
+  const isDeploymentCommand = commandType === 'USV_DEPART'
   const eligible: string[] = []
   let alreadySatisfied = 0
   let invalid = 0
   for (const device of devices) {
+    if (commandType === 'UAV_TAKEOFF') {
+      const runtimeDevice = overviewFleetCards.value.find(item => item.code === normalizeDeviceCode(device.code))
+      const controlState = authoritativeUavControlState(runtimeDevice)
+      if (controlState === 'AIRBORNE') alreadySatisfied += 1
+      else if (controlState === 'GROUNDED') eligible.push(device.code)
+      else invalid += 1
+      continue
+    }
     const state = normalizeOperationalState(operationalStates.value[normalizeDeviceCode(device.code)], vehicleType)
     if ((desiredStates[commandType] ?? []).includes(state)) alreadySatisfied += 1
     else if (isDeploymentCommand || (allowedStates[commandType] ?? []).includes(state)) eligible.push(device.code)
@@ -1214,7 +1241,7 @@ watch(
                 :key="action.commandType"
                 type="button"
                 :class="{ danger: action.danger }"
-                :disabled="commandBusy"
+                :disabled="(commandBusy && !isUsvSafetyStop(action.commandType)) || !isSelectedOverviewActionAllowed(action)"
                 @click="issueSelectedQuickCommand(action)"
               >
                 <component :is="action.icon" :size="19" :stroke-width="1.9" />

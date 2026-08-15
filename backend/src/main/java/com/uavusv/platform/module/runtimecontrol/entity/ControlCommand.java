@@ -145,6 +145,14 @@ public class ControlCommand extends BaseEntity {
         this.completedAt = LocalDateTime.now();
     }
 
+    public void reject(String errorCode, String detail) {
+        if (isTerminal()) return;
+        this.status = CommandStatus.REJECTED;
+        this.errorCode = errorCode;
+        this.detail = detail;
+        this.completedAt = LocalDateTime.now();
+    }
+
     public void timeout(String detail) {
         timeout("ACK_TIMEOUT", detail);
     }
@@ -165,7 +173,8 @@ public class ControlCommand extends BaseEntity {
     }
 
     public boolean isTerminal() {
-        return status == CommandStatus.SUCCEEDED || status == CommandStatus.FAILED
+        return status == CommandStatus.SUCCEEDED || status == CommandStatus.REJECTED
+                || status == CommandStatus.FAILED
                 || status == CommandStatus.TIMEOUT || status == CommandStatus.CANCELLED;
     }
 

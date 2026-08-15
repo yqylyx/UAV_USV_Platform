@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Anchor, CirclePause, CircleStop, Navigation, PlaneLanding, PlaneTakeoff, Play, RotateCcw, ShieldAlert } from '@lucide/vue'
 import type { Component } from 'vue'
 
@@ -31,6 +31,8 @@ const vehicles = computed(() => props.devices.filter((device) => device.type ===
 const selected = computed(() => vehicles.value.find((device) => device.code.toLowerCase() === props.selectedDeviceCode.toLowerCase()) ?? vehicles.value[0])
 const state = computed(() => props.operationalStates[selected.value?.code.toLowerCase() ?? ''] ?? 'UNKNOWN')
 const lastFeedback = computed(() => props.feedback[selected.value?.code.toLowerCase() ?? ''])
+const freshnessClock = ref(Date.now())
+let freshnessTimer: number | null = null
 const stateLabel = computed(() => {
   const labels: Record<string, string> = {
     UNKNOWN: '等待遥测', GROUNDED: '地面待命', TAKING_OFF: '起飞中', AIRBORNE: '空中执行',
@@ -57,14 +59,38 @@ const actions = computed<Action[]>(() => selected.value?.type === 'USV'
       { label: '紧急降落', commandType: 'UAV_EMERGENCY_LAND', icon: ShieldAlert, danger: true },
     ])
 
+function isActionAllowed(action: Action) {
+  if (action.commandType !== 'UAV_TAKEOFF') return true
+  freshnessClock.value
+  const device = selected.value
+  const receivedAt = device?.controlStateReceivedAt ? Date.parse(device.controlStateReceivedAt) : 0
+  return device?.controlOperationalState === 'GROUNDED'
+    && device.controlStateFresh === true
+    && device.controlConnectionState === 'ONLINE'
+    && receivedAt > 0
+    && Date.now() - receivedAt <= 2000
+}
+
+function isUsvSafetyStop(action: Action) {
+  return action.commandType === 'USV_STOP' || action.commandType === 'USV_EMERGENCY_STOP'
+}
+
 function send(action: Action) {
-  if (!selected.value) return
+  if (!selected.value || !isActionAllowed(action)) return
   emit('command', { commandType: action.commandType, deviceCodes: [selected.value.code], label: action.label })
 }
 
 function formatPose(value: number | null) {
   return value === null ? '--' : value.toFixed(2)
 }
+
+onMounted(() => {
+  freshnessTimer = window.setInterval(() => { freshnessClock.value = Date.now() }, 500)
+})
+
+onBeforeUnmount(() => {
+  if (freshnessTimer !== null) window.clearInterval(freshnessTimer)
+})
 </script>
 
 <template>
@@ -90,7 +116,7 @@ function formatPose(value: number | null) {
     </div>
     <p v-if="disabledReason" class="disabled-reason">{{ disabledReason }}</p>
     <div class="command-grid">
-      <button v-for="action in actions" :key="action.commandType" type="button" :class="{ danger: action.danger }" :disabled="busy || !!disabledReason || !selected" @click="send(action)">
+      <button v-for="action in actions" :key="action.commandType" type="button" :class="{ danger: action.danger }" :disabled="(busy && !isUsvSafetyStop(action)) || !!disabledReason || !selected || !isActionAllowed(action)" @click="send(action)">
         <component :is="action.icon" :size="21" /><span>{{ action.label }}</span>
       </button>
     </div>

@@ -97,6 +97,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     public void reconnect() {
         WebSocket current = socket;
         socket = null;
+        runtimeStateService.observeGatewayConnection(false);
         if (current != null) {
             current.abort();
         }
@@ -121,6 +122,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     @Override
     public void onOpen(WebSocket webSocket) {
         socket = webSocket;
+        runtimeStateService.observeGatewayConnection(true);
         log.info("ROS Gateway v1 connected");
         webSocket.request(1);
     }
@@ -171,6 +173,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         closing = true;
         WebSocket current = socket;
         socket = null;
+        runtimeStateService.observeGatewayConnection(false);
         reconnectExecutor.shutdownNow();
         if (current != null) {
             current.sendClose(WebSocket.NORMAL_CLOSURE, "platform stopping");
@@ -213,6 +216,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
 
     private void handleDisconnect(String detail) {
         socket = null;
+        runtimeStateService.observeGatewayConnection(false);
         if (!closing) {
             log.warn("ROS Gateway v1 disconnected: {}", detail);
             scheduleReconnect();
@@ -254,6 +258,11 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         }
         if (envelope.type() == GatewayMessageType.TELEMETRY_POSE_BATCH) {
             runtimeStateService.observeGatewayPoseBatch(envelope.payload(), envelope.sequence());
+            return;
+        }
+        if (envelope.type() == GatewayMessageType.DEVICE_STATUS) {
+            runtimeStateService.observeGatewayDeviceStatus(
+                    envelope.payload(), envelope.source(), envelope.streamId(), envelope.sequence());
         }
     }
 

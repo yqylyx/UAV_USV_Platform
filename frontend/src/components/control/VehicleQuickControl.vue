@@ -111,7 +111,7 @@ const actions = computed<QuickAction[]>(() => {
     { label: '离泊启动', commandType: 'USV_DEPART', tone: 'primary', allowedStates: ['MOORED', 'STOPPED'] },
     ...motionActions,
     { label: '返航', commandType: 'USV_RETURN', allowedStates: ['SAILING', 'HOLDING'] },
-    { label: '停止推进', commandType: 'USV_STOP', tone: 'warning', allowedStates: ['SAILING', 'HOLDING', 'RETURNING'] },
+    { label: '停止推进', commandType: 'USV_STOP', tone: 'warning', allowedStates: ['DEPARTING', 'SAILING', 'HOLDING', 'RETURNING'] },
   ]
 })
 
@@ -189,8 +189,12 @@ function displayState() {
 
 function issue(action: QuickAction) {
   const deviceCodes = availableDevices(action).map((device) => device.code)
-  if (!deviceCodes.length || props.busy) return
+  if (!deviceCodes.length || (props.busy && !isUsvSafetyStop(action.commandType))) return
   emit('command', { commandType: action.commandType, deviceCodes, label: action.label })
+}
+
+function isUsvSafetyStop(commandType: RuntimeCommandType) {
+  return commandType === 'USV_STOP' || commandType === 'USV_EMERGENCY_STOP'
 }
 
 const actionIcons: Partial<Record<RuntimeCommandType, typeof PlaneTakeoff>> = {
@@ -253,7 +257,7 @@ function actionIcon(commandType: RuntimeCommandType) {
         :key="action.commandType"
         type="button"
         :class="action.tone"
-        :disabled="busy || availableDevices(action).length === 0"
+        :disabled="(busy && !isUsvSafetyStop(action.commandType)) || availableDevices(action).length === 0"
         @click="issue(action)"
       >
         <component :is="actionIcon(action.commandType)" class="command-icon" :stroke-width="1.8" />

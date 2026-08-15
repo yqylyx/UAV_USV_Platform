@@ -34,6 +34,14 @@ class GatewaySequenceGuardRunIsolationTests {
         assertEquals(GatewaySequenceGuard.SequenceCheckStatus.OUT_OF_ORDER, guard.inspect(controlAck(null, 1)).status());
     }
 
+    @Test void keepsDeviceStatusSequencesIndependentPerStream() {
+        GatewayEnvelope uav1 = deviceStatus("device.status.uav_01", 8);
+        GatewayEnvelope uav2 = deviceStatus("device.status.uav_02", 1);
+        assertEquals(GatewaySequenceGuard.SequenceCheckStatus.ACCEPTED, guard.inspect(uav1).status());
+        assertEquals(GatewaySequenceGuard.SequenceCheckStatus.ACCEPTED, guard.inspect(uav2).status());
+        assertEquals(GatewaySequenceGuard.SequenceCheckStatus.DUPLICATE, guard.inspect(uav1).status());
+    }
+
     private GatewayEnvelope envelope(String runId, long sequence) {
         return new GatewayEnvelope("1.0", GatewayMessageType.TELEMETRY_POSE_BATCH,
                 "ros", Instant.now(), runId, "pose", sequence, mapper.createObjectNode());
@@ -42,5 +50,10 @@ class GatewaySequenceGuardRunIsolationTests {
     private GatewayEnvelope controlAck(String runId, long sequence) {
         return new GatewayEnvelope("1.0", GatewayMessageType.CONTROL_ACK,
                 "ros", Instant.now(), runId, "control", sequence, mapper.createObjectNode());
+    }
+
+    private GatewayEnvelope deviceStatus(String streamId, long sequence) {
+        return new GatewayEnvelope("1.0", GatewayMessageType.DEVICE_STATUS,
+                "ros", Instant.now(), null, streamId, sequence, mapper.createObjectNode());
     }
 }

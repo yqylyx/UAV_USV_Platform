@@ -47,6 +47,7 @@ public class GatewayProtobufDecoder {
         return switch (envelope.getBodyCase()) {
             case GATEWAY_HELLO -> gatewayHello(envelope.getGatewayHello());
             case GATEWAY_HEARTBEAT -> gatewayHeartbeat(envelope.getGatewayHeartbeat());
+            case DEVICE_STATUS -> deviceStatus(envelope.getDeviceStatus());
             case POSE_BATCH -> poseBatch(envelope.getPoseBatch());
             case MISSION_STATUS -> missionStatus(envelope.getMissionStatus());
             case CONTROL_ACK -> controlAck(envelope.getControlAck());
@@ -76,6 +77,18 @@ public class GatewayProtobufDecoder {
         node.put("uptimeMs", message.getUptimeMs());
         node.put("cpuPercent", message.getCpuPercent());
         node.put("memoryPercent", message.getMemoryPercent());
+        return node;
+    }
+
+    private ObjectNode deviceStatus(UavUsvGatewayV1.DeviceStatus message) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("deviceCode", message.getDeviceCode());
+        node.put("connectionState", message.getConnectionState());
+        node.put("operationState", message.getOperationState());
+        node.put("controlMode", message.getControlMode());
+        node.put("armed", message.getArmed());
+        node.put("activeCommandId", message.getActiveCommandId());
+        node.put("flightState", message.getFlightState());
         return node;
     }
 

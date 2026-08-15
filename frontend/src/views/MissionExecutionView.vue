@@ -245,6 +245,10 @@ const runtimeNodes = computed<RuntimeNode[]>(() => {
         positionX: agent.x,
         positionY: agent.y,
         positionZ: agent.z,
+        controlOperationalState: existing?.controlOperationalState,
+        controlStateFresh: existing?.controlStateFresh,
+        controlStateReceivedAt: existing?.controlStateReceivedAt,
+        controlConnectionState: existing?.controlConnectionState,
         detail: agent.state,
       }
     })
@@ -515,7 +519,8 @@ async function placeThreat(x: number, y: number) {
 
 async function sendVehicleCommand(command: VehicleQuickCommand) {
   if (!detail.value?.currentRun || !command.deviceCodes.length) return
-  busy.value = true
+  const manageBusy = command.commandType !== 'USV_STOP' && command.commandType !== 'USV_EMERGENCY_STOP'
+  if (manageBusy) busy.value = true
   let acknowledged = 0
   try {
     for (const code of command.deviceCodes) {
@@ -544,7 +549,7 @@ async function sendVehicleCommand(command: VehicleQuickCommand) {
     }
     if (acknowledged === command.deviceCodes.length) ElMessage.success(`${command.label}：${acknowledged}/${command.deviceCodes.length} 台已确认`)
     else ElMessage.error(`${command.label}：成功 ${acknowledged}，失败 ${command.deviceCodes.length - acknowledged}`)
-  } finally { busy.value = false }
+  } finally { if (manageBusy) busy.value = false }
 }
 
 function changeMode(next: '2d' | '3d' | 'vision') {

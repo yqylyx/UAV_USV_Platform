@@ -6,6 +6,7 @@ public enum CommandStatus {
     ACCEPTED,
     EXECUTING,
     SUCCEEDED,
+    REJECTED,
     FAILED,
     TIMEOUT,
     CANCELLED
