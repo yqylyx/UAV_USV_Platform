@@ -161,6 +161,57 @@ public class RuntimeStateService {
         );
     }
 
+    public TakeoffReadiness getUavTakeoffReadiness(String deviceCode) {
+        String normalized = deviceCode == null ? "" : deviceCode.trim().toLowerCase().replace('_', '-');
+        if (!normalized.startsWith("uav-")) {
+            return new TakeoffReadiness(false, "TARGET_IS_NOT_UAV", "target is not a UAV", "UNKNOWN", null);
+        }
+        Observation observation = observations.get(normalized);
+        boolean poseFresh = observation != null
+                && observation.online()
+                && Duration.between(observation.observedAt(), LocalDateTime.now()).getSeconds() <= heartbeatTimeoutSeconds;
+        Double altitude = poseFresh && observation.pose() != null ? observation.pose().positionY() : null;
+        if (altitude != null && altitude > 1.0) {
+            return new TakeoffReadiness(
+                    false,
+                    "UAV_ALREADY_AIRBORNE",
+                    "UAV takeoff rejected because current altitude is " + String.format("%.2f", altitude) + " m",
+                    "AIRBORNE",
+                    altitude
+            );
+        }
+
+        ControlOperationalSnapshot control = getControlOperationalSnapshot(normalized);
+        if (!control.fresh()) {
+            return new TakeoffReadiness(
+                    false,
+                    "UAV_CONTROL_STATE_STALE",
+                    "UAV takeoff requires a fresh ROS Gateway device.status frame",
+                    control.state(),
+                    altitude
+            );
+        }
+        if (!"ONLINE".equals(control.connectionState())) {
+            return new TakeoffReadiness(
+                    false,
+                    "UAV_CONTROL_OFFLINE",
+                    "UAV takeoff requires an online control connection",
+                    control.state(),
+                    altitude
+            );
+        }
+        if (!"GROUNDED".equals(control.state())) {
+            return new TakeoffReadiness(
+                    false,
+                    "UAV_NOT_GROUNDED",
+                    "UAV takeoff requires GROUNDED state, current state is " + control.state(),
+                    control.state(),
+                    altitude
+            );
+        }
+        return new TakeoffReadiness(true, null, "UAV is grounded and ready for takeoff", control.state(), altitude);
+    }
+
     public void observeGatewayPoseBatch(JsonNode payload, long sequence) {
         if (payload == null || !payload.path("vehicles").isArray()) {
             return;
@@ -456,6 +507,15 @@ public class RuntimeStateService {
             boolean fresh,
             LocalDateTime receivedAt,
             String connectionState
+    ) {
+    }
+
+    public record TakeoffReadiness(
+            boolean allowed,
+            String errorCode,
+            String detail,
+            String state,
+            Double altitude
     ) {
     }
 }

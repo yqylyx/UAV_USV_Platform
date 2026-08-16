@@ -374,7 +374,7 @@ function authoritativeUavControlState(device: RuntimeNode | undefined) {
 
 function isSelectedOverviewActionAllowed(action: OverviewQuickAction) {
   if (action.commandType !== 'UAV_TAKEOFF') return true
-  return authoritativeUavControlState(selectedOverviewDevice.value) === 'GROUNDED'
+  return true
 }
 
 function isUsvSafetyStop(commandType: RuntimeCommandType) {
