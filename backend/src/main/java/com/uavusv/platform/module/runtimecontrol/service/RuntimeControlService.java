@@ -348,6 +348,26 @@ public class RuntimeControlService {
             publishTerminalCommandStatus(rejected);
             return RuntimeCommandResponse.from(rejected);
         }
+        if (request.commandType() == CommandType.UAV_TAKEOFF) {
+            RuntimeStateService.TakeoffReadiness readiness =
+                    runtimeStateService.getUavTakeoffReadiness(request.deviceCode());
+            if (readiness != null && !readiness.allowed()) {
+                ControlCommand rejected = commandRepository.save(new ControlCommand(
+                        sessionId,
+                        request.runId(),
+                        deviceId,
+                        request.commandType(),
+                        request.payload(),
+                        username,
+                        runtimeScope,
+                        request.runtimeInstanceId()
+                ));
+                rejected.reject(readiness.errorCode(), readiness.detail());
+                rejected = commandRepository.save(rejected);
+                publishTerminalCommandStatus(rejected);
+                return RuntimeCommandResponse.from(rejected);
+            }
+        }
         if (!isUsvSafetyStop(request.commandType())) {
             ensureNoPendingCommand(request.runId(), deviceId);
         }

@@ -38,6 +38,7 @@ class RuntimeControlServiceTakeoffDeduplicationTests {
     private ControlCommandRepository commandRepository;
     private RuntimeCommandDispatcher commandDispatcher;
     private MissionRunRepository missionRunRepository;
+    private RuntimeStateService runtimeStateService;
     private RuntimeControlService service;
 
     @BeforeEach
@@ -51,8 +52,9 @@ class RuntimeControlServiceTakeoffDeduplicationTests {
         when(device.getType()).thenReturn(DeviceType.UAV);
         when(deviceRepository.findByCode("uav-01")).thenReturn(Optional.of(device));
         when(commandRepository.save(any(ControlCommand.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        runtimeStateService = mock(RuntimeStateService.class);
         service = new RuntimeControlService(
-                mock(RuntimeStateService.class),
+                runtimeStateService,
                 mock(SimulationSessionRepository.class),
                 commandRepository,
                 deviceRepository,
@@ -109,6 +111,27 @@ class RuntimeControlServiceTakeoffDeduplicationTests {
         assertFalse(statuses.getValue().contains(CommandStatus.FAILED));
         assertFalse(statuses.getValue().contains(CommandStatus.TIMEOUT));
         assertFalse(statuses.getValue().contains(CommandStatus.CANCELLED));
+    }
+
+    @Test
+    void airborneTakeoffIsRejectedWithoutDispatch() {
+        when(commandRepository.existsByDeviceIdAndCommandTypeAndStatusIn(
+                eq(11L), eq(CommandType.UAV_TAKEOFF), any())).thenReturn(false);
+        when(runtimeStateService.getUavTakeoffReadiness("uav-01")).thenReturn(
+                new RuntimeStateService.TakeoffReadiness(
+                        false,
+                        "UAV_ALREADY_AIRBORNE",
+                        "UAV takeoff rejected because current altitude is 19.80 m",
+                        "AIRBORNE",
+                        19.8
+                )
+        );
+
+        RuntimeCommandResponse response = service.issueCommand(request(null, RuntimeScope.SYSTEM_OVERVIEW), "test");
+
+        assertEquals(CommandStatus.REJECTED, response.status());
+        assertEquals("UAV_ALREADY_AIRBORNE", response.errorCode());
+        verify(commandDispatcher, never()).dispatch(any(), any());
     }
 
     @Test

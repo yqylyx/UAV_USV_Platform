@@ -63,12 +63,9 @@ function isActionAllowed(action: Action) {
   if (action.commandType !== 'UAV_TAKEOFF') return true
   freshnessClock.value
   const device = selected.value
-  const receivedAt = device?.controlStateReceivedAt ? Date.parse(device.controlStateReceivedAt) : 0
   return device?.controlOperationalState === 'GROUNDED'
     && device.controlStateFresh === true
     && device.controlConnectionState === 'ONLINE'
-    && receivedAt > 0
-    && Date.now() - receivedAt <= 2000
 }
 
 function isUsvSafetyStop(action: Action) {
