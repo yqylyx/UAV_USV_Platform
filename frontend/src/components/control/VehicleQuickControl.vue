@@ -22,6 +22,10 @@ export type QuickControlDevice = {
   name: string
   type: 'UAV' | 'USV'
   status?: string | null
+  controlOperationalState?: string
+  controlStateFresh?: boolean
+  controlStateReceivedAt?: string | null
+  controlConnectionState?: string
 }
 
 export type VehicleQuickCommand = {
@@ -111,7 +115,7 @@ const actions = computed<QuickAction[]>(() => {
     { label: '离泊启动', commandType: 'USV_DEPART', tone: 'primary', allowedStates: ['MOORED', 'STOPPED'] },
     ...motionActions,
     { label: '返航', commandType: 'USV_RETURN', allowedStates: ['SAILING', 'HOLDING'] },
-    { label: '停止推进', commandType: 'USV_STOP', tone: 'warning', allowedStates: ['SAILING', 'HOLDING', 'RETURNING'] },
+    { label: '停止推进', commandType: 'USV_STOP', tone: 'warning', allowedStates: ['DEPARTING', 'SAILING', 'HOLDING', 'RETURNING'] },
   ]
 })
 
@@ -157,9 +161,12 @@ function statusLabel(status?: string | null) {
     MAINTENANCE: '维护中',
     PENDING: '等待下发',
     DISPATCHED: '等待确认',
-    ACKNOWLEDGED: '已确认',
+    ACCEPTED: 'ROS 已接收',
+    EXECUTING: 'ROS 执行中',
+    SUCCEEDED: '执行成功',
     FAILED: '执行失败',
     TIMEOUT: '确认超时',
+    CANCELLED: '已取消',
   }
   return status ? labels[status] ?? status : '等待遥测'
 }
@@ -170,12 +177,21 @@ function operationalState(deviceCode: string) {
 
 function availableDevices(action: QuickAction) {
   const candidates = groupMode.value ? typeDevices.value : selectedDevice.value ? [selectedDevice.value] : []
+  if (props.vehicleType === 'UAV' && action.commandType === 'UAV_TAKEOFF') {
+    return candidates.filter(authoritativeTakeoffAllowed)
+  }
   return candidates.filter((device) => action.allowedStates.includes(operationalState(device.code)))
+}
+
+function authoritativeTakeoffAllowed(device: QuickControlDevice) {
+  return device.controlOperationalState === 'GROUNDED'
+    && device.controlStateFresh === true
+    && device.controlConnectionState === 'ONLINE'
 }
 
 function displayState() {
   const feedback = selectedFeedback.value
-  if (feedback && feedback !== 'ACKNOWLEDGED') return statusLabel(feedback)
+  if (feedback && feedback !== 'SUCCEEDED') return statusLabel(feedback)
   if (groupMode.value) {
     const states = new Set(typeDevices.value.map((device) => operationalState(device.code)))
     return states.size === 1 ? operationalStateLabels[[...states][0] ?? ''] ?? '编组待命' : '状态不一致'
@@ -186,8 +202,12 @@ function displayState() {
 
 function issue(action: QuickAction) {
   const deviceCodes = availableDevices(action).map((device) => device.code)
-  if (!deviceCodes.length || props.busy) return
+  if (!deviceCodes.length || (props.busy && !isUsvSafetyStop(action.commandType))) return
   emit('command', { commandType: action.commandType, deviceCodes, label: action.label })
+}
+
+function isUsvSafetyStop(commandType: RuntimeCommandType) {
+  return commandType === 'USV_STOP' || commandType === 'USV_EMERGENCY_STOP'
 }
 
 const actionIcons: Partial<Record<RuntimeCommandType, typeof PlaneTakeoff>> = {
@@ -250,7 +270,7 @@ function actionIcon(commandType: RuntimeCommandType) {
         :key="action.commandType"
         type="button"
         :class="action.tone"
-        :disabled="busy || availableDevices(action).length === 0"
+        :disabled="(busy && !isUsvSafetyStop(action.commandType)) || availableDevices(action).length === 0"
         @click="issue(action)"
       >
         <component :is="actionIcon(action.commandType)" class="command-icon" :stroke-width="1.8" />

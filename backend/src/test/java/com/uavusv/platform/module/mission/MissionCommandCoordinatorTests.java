@@ -32,7 +32,7 @@ class MissionCommandCoordinatorTests {
 
         fixture.coordinator.handleCommandStatus(new ControlCommandStatusChangedEvent(
                 30L, "command-30", 20L, CommandType.START_MISSION,
-                CommandStatus.ACKNOWLEDGED, "mock acknowledged", null
+                CommandStatus.SUCCEEDED, "mock succeeded", null
         ));
 
         assertEquals(MissionStatus.RUNNING, fixture.mission.getStatus());

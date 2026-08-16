@@ -3,7 +3,11 @@ package com.uavusv.platform.module.runtimecontrol.entity;
 public enum CommandStatus {
     PENDING,
     DISPATCHED,
-    ACKNOWLEDGED,
+    ACCEPTED,
+    EXECUTING,
+    SUCCEEDED,
+    REJECTED,
     FAILED,
-    TIMEOUT
+    TIMEOUT,
+    CANCELLED
 }

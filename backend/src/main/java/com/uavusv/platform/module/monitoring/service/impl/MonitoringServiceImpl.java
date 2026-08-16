@@ -12,6 +12,7 @@ import com.uavusv.platform.module.monitoring.repository.DeviceTelemetryRepositor
 import com.uavusv.platform.module.monitoring.repository.RuntimeDeviceStatusRepository;
 import com.uavusv.platform.module.monitoring.service.GeoCoordinateService;
 import com.uavusv.platform.module.monitoring.service.MonitoringService;
+import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -39,6 +40,7 @@ public class MonitoringServiceImpl implements MonitoringService {
     private final RuntimeDeviceStatusRepository runtimeStatusRepository;
     private final DeviceTelemetryRepository telemetryRepository;
     private final GeoCoordinateService geoCoordinateService;
+    private final RuntimeStateService runtimeStateService;
     private final int telemetryStaleSeconds;
 
     public MonitoringServiceImpl(
@@ -46,12 +48,14 @@ public class MonitoringServiceImpl implements MonitoringService {
             RuntimeDeviceStatusRepository runtimeStatusRepository,
             DeviceTelemetryRepository telemetryRepository,
             GeoCoordinateService geoCoordinateService,
+            RuntimeStateService runtimeStateService,
             @Value("${app.runtime.telemetry-stale-seconds:10}") int telemetryStaleSeconds
     ) {
         this.deviceRepository = deviceRepository;
         this.runtimeStatusRepository = runtimeStatusRepository;
         this.telemetryRepository = telemetryRepository;
         this.geoCoordinateService = geoCoordinateService;
+        this.runtimeStateService = runtimeStateService;
         this.telemetryStaleSeconds = telemetryStaleSeconds;
     }
 
@@ -86,6 +90,7 @@ public class MonitoringServiceImpl implements MonitoringService {
                         device,
                         runtimeStatuses.get(device.getId()),
                         latestTelemetry.get(device.getId()),
+                        runtimeStateService.getControlOperationalSnapshot(device.getCode()),
                         geoCoordinateService,
                         now,
                         telemetryStaleSeconds

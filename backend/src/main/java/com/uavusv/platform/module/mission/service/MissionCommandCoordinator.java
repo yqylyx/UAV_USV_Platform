@@ -51,9 +51,10 @@ public class MissionCommandCoordinator {
             return;
         }
 
-        if (event.status() == CommandStatus.ACKNOWLEDGED) {
+        if (event.status() == CommandStatus.SUCCEEDED) {
             applyAcknowledgedAction(mission, run, event);
-        } else if (event.status() == CommandStatus.FAILED || event.status() == CommandStatus.TIMEOUT) {
+        } else if (event.status() == CommandStatus.FAILED || event.status() == CommandStatus.TIMEOUT
+                || event.status() == CommandStatus.CANCELLED) {
             applyRejectedAction(mission, run, event);
         }
     }

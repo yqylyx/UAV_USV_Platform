@@ -8,6 +8,8 @@ import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandResponse;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeControlResponse;
 import com.uavusv.platform.module.runtimecontrol.service.RuntimeControlService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,6 +24,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/runtime-control")
 public class RuntimeControlController {
+    private static final Logger log = LoggerFactory.getLogger(RuntimeControlController.class);
+
     private final RuntimeControlService runtimeControlService;
 
     public RuntimeControlController(RuntimeControlService runtimeControlService) {
@@ -56,6 +60,9 @@ public class RuntimeControlController {
             @Valid @RequestBody RuntimeCommandRequest request,
             Authentication authentication
     ) {
+        log.info("[runtime-control-controller] issueCommand commandType={} deviceCode={} scope={} principal={}",
+                request.commandType(), request.deviceCode(), request.runtimeScope(),
+                authentication == null ? "" : authentication.getName());
         return ApiResponse.success(runtimeControlService.issueCommand(request, authentication.getName()));
     }
 

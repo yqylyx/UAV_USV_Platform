@@ -710,6 +710,11 @@
                 productName: 'UAV_USV_WebGL',
                 buildId: 'unity-20260809-platform-bridge',
               });
+              postUnityMessage('unityReady', {
+                mode: 'webgl',
+                productName: 'UAV_USV_WebGL',
+                buildId: 'unity-20260804-175129-camera-v5',
+              });
               fullscreenButton.onclick = function () {
                 unityInstance.SetFullscreen(1);
               };

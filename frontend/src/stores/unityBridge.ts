@@ -370,7 +370,7 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
         const command = await acknowledgeRuntimeCommand(commandKey, success, detail)
         removePendingCommandAck(scope, requestId)?.resolve({
           requestId,
-          success: success && command.status === 'ACKNOWLEDGED',
+          success: success && command.status === 'SUCCEEDED',
           status: detail,
           deviceCode: String(payload.deviceCode ?? ''),
           commandType: String(payload.commandType ?? ''),

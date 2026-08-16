@@ -25,16 +25,20 @@ import { useMissionStore } from '@/stores/mission'
 import { useActiveExperimentStore } from '@/stores/activeExperiment'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useRealtimeStore } from '@/stores/realtime'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
+import type { TrajectoryAgentType, UnityTrajectoryFrame } from '@/stores/trajectory'
 import type { AlgorithmRuntimeFrame, Mission, MissionDetail } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
+import type { VehiclePoseSample } from '@/types/realtime'
 
 const route = useRoute()
 const missionStore = useMissionStore()
 const activeExperimentStore = useActiveExperimentStore()
 const monitoringStore = useMonitoringStore()
+const realtimeStore = useRealtimeStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const sessionStore = useMissionTrajectorySessionStore()
@@ -47,7 +51,6 @@ const algorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
 const algorithmPolling = ref(false)
 
 const unityChannel = computed(() => unityBridgeStore.channels.MISSION_CENTER)
-const trajectoryFrame = computed(() => trajectoryStore.channels.MISSION_CENTER.frame)
 const currentRunId = computed(() => detail.value?.currentRun?.id ?? null)
 const activeAlgorithmCode = computed(() => detail.value?.mission.algorithmCode ?? '')
 const activeMission = computed(() => detail.value?.mission ?? null)
@@ -69,12 +72,110 @@ const statusLabel = computed(() => {
 })
 const runSyncText = computed(() => {
   if (!detail.value?.currentRun) return '等待创建 RUN'
-  return `RUN ${detail.value.currentRun.runNo} · 同步帧 ${algorithmFrame.value?.sequence ?? 0}`
+  return `RUN ${detail.value.currentRun.runNo} · 同步帧 ${displayAlgorithmFrame.value?.sequence ?? 0}`
 })
 
 let algorithmPollTimer: number | null = null
 let algorithmAbortController: AbortController | null = null
 let loadedScenarioKey = ''
+let lastRealtimePoseFrameKey = ''
+
+function poseDeviceType(deviceCode: string): TrajectoryAgentType {
+  return deviceCode.toLowerCase().startsWith('usv') ? 'USV' : 'UAV'
+}
+
+function validPoseSample(sample: VehiclePoseSample) {
+  const position = sample.localPositionEnuM
+  return !!position
+    && Number.isFinite(position.x)
+    && Number.isFinite(position.y)
+    && Number.isFinite(position.z)
+}
+
+function poseState(sample: VehiclePoseSample) {
+  if (sample.fresh === false || sample.positionValid === false) return 'STALE'
+  return 'ACTIVE'
+}
+
+const realtimeTrajectoryFrame = computed<UnityTrajectoryFrame | null>(() => {
+  const envelope = realtimeStore.poseBatch
+  if (!envelope?.runId || String(envelope.runId) !== String(currentRunId.value ?? '')) return null
+  const vehicles = envelope?.payload.vehicles?.filter(validPoseSample) ?? []
+  if (!envelope || !vehicles.length) return null
+  return {
+    sequence: envelope.sequence,
+    source: envelope.source,
+    coordinateSystem: 'ROS_ENU',
+    mission: {
+      phase: realtimeStore.missionStatus?.payload.phase ?? realtimeStore.missionStatus?.payload.state ?? 'ROS_GATEWAY_V1',
+      elapsed: 0,
+      captureRadius: 16,
+      defenseRadius: 18,
+      captureReady: false,
+      formationHolding: false,
+    },
+    agents: vehicles.map((vehicle) => {
+      const position = vehicle.localPositionEnuM!
+      return {
+        code: vehicle.deviceCode.trim().toLowerCase(),
+        type: poseDeviceType(vehicle.deviceCode),
+        x: position.x,
+        y: position.z,
+        z: position.y,
+        yaw: vehicle.headingDeg ?? 0,
+        state: poseState(vehicle),
+      }
+    }),
+    receivedAt: Date.parse(envelope.timestamp) || Date.now(),
+  }
+})
+
+const trajectoryFrame = computed<UnityTrajectoryFrame | null>(() =>
+  realtimeTrajectoryFrame.value ?? trajectoryStore.channels.MISSION_CENTER.frame,
+)
+
+const realtimeAlgorithmFrame = computed<AlgorithmRuntimeFrame | null>(() => {
+  const frame = realtimeTrajectoryFrame.value
+  if (!frame) return null
+  const poseRunId = Number(realtimeStore.poseBatch?.runId)
+  const runId = currentRunId.value ?? (Number.isFinite(poseRunId) && poseRunId > 0 ? poseRunId : 0)
+  return {
+    runId,
+    algorithmCode: activeAlgorithmCode.value || 'GB_SFLA_CS',
+    sequence: frame.sequence,
+    timestamp: frame.receivedAt,
+    phase: frame.mission.phase,
+    agents: frame.agents
+      .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
+      .map(agent => ({
+        code: agent.code,
+        type: agent.type as 'UAV' | 'USV',
+        x: agent.x,
+        y: agent.z,
+        z: agent.y,
+        heading: agent.yaw,
+        role: agent.state,
+        status: agent.state,
+      })),
+    targets: frame.agents
+      .filter(agent => agent.type === 'TARGET')
+      .map(agent => ({
+        code: agent.code,
+        type: 'CAPTURE_TARGET' as const,
+        x: agent.x,
+        y: agent.z,
+        z: agent.y,
+        heading: agent.yaw,
+        visible: true,
+      })),
+    metrics: {},
+    route: [],
+    obstacles: [],
+    terminalStatus: null,
+  }
+})
+
+const displayAlgorithmFrame = computed(() => realtimeAlgorithmFrame.value ?? algorithmFrame.value)
 
 const runtimeNodes = computed<RuntimeNode[]>(() => {
   const frame = trajectoryFrame.value
@@ -95,11 +196,11 @@ const runtimeNodes = computed<RuntimeNode[]>(() => {
         status: 'ONLINE',
         host: null,
         port: null,
-        endpoint: 'unity://mission-center',
+        endpoint: frame.coordinateSystem === 'ROS_ENU' ? 'ros-gateway-v1://pose-batch' : 'unity://mission-center',
         rosNamespace: null,
         lastHeartbeatAt: new Date(frame.receivedAt).toISOString(),
         heartbeatAgeSeconds: Math.max(0, Math.round((Date.now() - frame.receivedAt) / 1000)),
-        source: 'UNITY_WEBGL',
+        source: frame.coordinateSystem === 'ROS_ENU' ? 'ROS_GATEWAY_V1' : 'UNITY_WEBGL',
         instanceId: unityViewportStore.missionInstanceId,
         positionX: agent.x,
         positionY: agent.y,
@@ -135,6 +236,46 @@ function sendAlgorithmPoseFrame(frame: AlgorithmRuntimeFrame) {
   })
 }
 
+function sendRealtimePoseFrameToUnity(frame: UnityTrajectoryFrame | null) {
+  const run = detail.value?.currentRun
+  const mission = activeMission.value
+  if (!frame || frame.coordinateSystem !== 'ROS_ENU' || !run || !mission) return
+  if (!['GB_SFLA_CS', 'ESCORT_GUARD'].includes(mission.algorithmCode)) return
+  if (!unityChannel.value.controlsReady) return
+  const frameKey = `${run.id}:${frame.source}:${frame.sequence}`
+  if (frameKey === lastRealtimePoseFrameKey) return
+  lastRealtimePoseFrameKey = frameKey
+  unityBridgeStore.sendFor('MISSION_CENTER', 'poseFrame', {
+    algorithmCode: mission.algorithmCode,
+    runId: run.id,
+    sequence: frame.sequence,
+    timestamp: frame.receivedAt,
+    phase: frame.mission.phase,
+    agents: frame.agents
+      .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
+      .map(agent => ({
+        code: agent.code,
+        type: agent.type,
+        x: agent.x,
+        y: agent.z,
+        z: agent.y,
+        heading: agent.yaw,
+      })),
+    targets: frame.agents
+      .filter(agent => agent.type === 'TARGET')
+      .map(agent => ({
+        code: agent.code,
+        type: 'TARGET',
+        x: agent.x,
+        y: agent.z,
+        z: agent.y,
+        heading: agent.yaw,
+        visible: true,
+      })),
+    route: [],
+  })
+}
+
 function ensureMissionScenarioLoaded() {
   if (!unityChannel.value.controlsReady) {
     loadedScenarioKey = ''
@@ -152,6 +293,7 @@ function ensureMissionScenarioLoaded() {
     runId: run.id,
   })
   if (algorithmFrame.value?.runId === run.id) sendAlgorithmPoseFrame(algorithmFrame.value)
+  sendRealtimePoseFrameToUnity(realtimeTrajectoryFrame.value)
   loadedScenarioKey = key
 }
 
@@ -305,8 +447,19 @@ watch(
   { immediate: true },
 )
 
+watch(
+  [
+    realtimeTrajectoryFrame,
+    () => unityChannel.value.controlsReady,
+    currentRunId,
+  ],
+  ([frame]) => sendRealtimePoseFrameToUnity(frame),
+  { immediate: true },
+)
+
 onMounted(async () => {
   unityViewportStore.park()
+  realtimeStore.connect()
   monitoringStore.connectEvents()
   await refreshWorkspace()
   unityViewportStore.park()
@@ -317,6 +470,7 @@ let resumeAfterDeactivation = false
 onActivated(() => {
   if (!resumeAfterDeactivation) return
   resumeAfterDeactivation = false
+  realtimeStore.connect()
   monitoringStore.connectEvents()
   if (activeRun.value || currentRunId.value) startAlgorithmPolling()
   unityViewportStore.park()
@@ -339,7 +493,7 @@ onBeforeUnmount(() => {
     <template #actions>
       <div class="mission-health">
         <span><i :class="{ online: rosOnline }" />ROS {{ rosOnline ? '在线' : '离线' }}</span>
-        <span><i :class="{ online: !!algorithmFrame }" />轨迹数据 {{ algorithmFrame ? '实时' : '等待中' }}</span>
+        <span><i :class="{ online: !!displayAlgorithmFrame }" />轨迹数据 {{ displayAlgorithmFrame ? '实时' : '等待中' }}</span>
         <span><i :class="{ online: onlineVehicleCount >= 6 }" />设备 {{ onlineVehicleCount }}/6</span>
       </div>
     </template>
@@ -358,7 +512,7 @@ onBeforeUnmount(() => {
 
         <main class="execution-stage">
           <AlgorithmTrajectoryMap
-            :frame="algorithmFrame"
+            :frame="displayAlgorithmFrame"
             :selected-device-code="selectedDeviceCode"
             @select="selectObservationDevice"
             @place-threat="placeThreat"

@@ -482,7 +482,7 @@ function applyVehicleCommand(
     const normalizedCode = deviceCode.trim().toLowerCase()
     const status = statuses[index] ?? 'PENDING'
     localFeedback.value = { ...localFeedback.value, [normalizedCode]: status }
-    if (status !== 'ACKNOWLEDGED') {
+    if (status !== 'SUCCEEDED') {
       if (status === 'FAILED' || status === 'TIMEOUT') {
         const motion = deviceMotion.value[normalizedCode]
         if (motion) motion.state = 'ERROR'
