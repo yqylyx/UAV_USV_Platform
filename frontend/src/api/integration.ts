@@ -9,7 +9,7 @@ export interface IntegrationHeartbeatPayload {
   state: IntegrationState
   detail: string
   rosConnectionStatus: string
-  runtimeScope?: 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
+  runtimeScope?: 'SYSTEM_OVERVIEW' | 'MISSION_CENTER' | 'VIRTUAL_FLEET'
   missionId?: number
   runId?: number
   controlsReady?: boolean
