@@ -83,6 +83,7 @@
 
       function postUnityMessage(type, payload) {
         if (!window.parent) return;
+        var messagePayload = payload || {};
         window.parent.postMessage(
           {
             source: 'unity-webgl',
@@ -90,13 +91,13 @@
             runtimeInstanceId: runtimeInstanceId,
             message: {
               type: type,
-              requestId: payload && payload.requestId ? payload.requestId : '',
+              requestId: messagePayload.requestId ? messagePayload.requestId : '',
               timestamp: Date.now(),
-              payload: Object.assign({}, payload || {}, {
+              payload: Object.assign({}, messagePayload, {
                 runtimeScope: runtimeScope,
                 runtimeInstanceId: runtimeInstanceId,
-                missionId: missionId,
-                runId: runId,
+                missionId: messagePayload.missionId || missionId,
+                runId: messagePayload.runId || runId,
               }),
             },
           },
@@ -110,11 +111,12 @@
         delete flat.requestId;
         delete flat.timestamp;
         delete flat.payload;
-        return Object.assign(flat, parsed && parsed.payload ? parsed.payload : {}, {
+        var sourcePayload = parsed && parsed.payload ? parsed.payload : {};
+        return Object.assign(flat, sourcePayload, {
           runtimeScope: runtimeScope,
           runtimeInstanceId: runtimeInstanceId,
-          missionId: missionId,
-          runId: runId,
+          missionId: sourcePayload.missionId || missionId,
+          runId: sourcePayload.runId || runId,
         });
       }
 
@@ -213,26 +215,52 @@
 
       function normalizePose(item) {
         var pose = item || {};
-        var position = Array.isArray(pose.position)
+        var inputPosition = Array.isArray(pose.position)
           ? pose.position
-          : [
-              finiteNumber(pose.x, 0),
-              finiteNumber(pose.y, 0),
-              finiteNumber(pose.z, 0),
-            ];
+          : [];
+        var eastM = finiteNumber(
+          pose.eastM,
+          inputPosition.length >= 3 ? inputPosition[0] : pose.x,
+        );
+        var northM = finiteNumber(
+          pose.northM,
+          inputPosition.length >= 3 ? inputPosition[1] : pose.y,
+        );
+        var upM = finiteNumber(
+          pose.upM,
+          inputPosition.length >= 3 ? inputPosition[2] : pose.z,
+        );
+        var velocityEastMps = finiteNumber(pose.velocityEastMps, 0);
+        var velocityNorthMps = finiteNumber(pose.velocityNorthMps, 0);
+        var rawHeading = Number(pose.headingDeg);
+        var headingDeg = Number.isFinite(rawHeading)
+          ? rawHeading
+          : Math.atan2(velocityEastMps, velocityNorthMps) * 180 / Math.PI;
+        if (headingDeg < 0) headingDeg += 360;
         var normalized = {
           deviceCode: pose.deviceCode || pose.deviceId || pose.code || pose.id || '',
+          deviceType: pose.deviceType || pose.type || '',
           type: pose.type || '',
+          state: pose.state || '',
+          valid: pose.valid !== false,
+          speedMps: finiteNumber(pose.speedMps, 0),
+          velocityEastMps: velocityEastMps,
+          velocityNorthMps: velocityNorthMps,
+          velocityUpMps: finiteNumber(pose.velocityUpMps, 0),
           position: [
-            finiteNumber(position[0], 0),
-            finiteNumber(position[1], 0),
-            finiteNumber(position[2], 0),
+            eastM,
+            northM,
+            upM,
           ],
-          x: finiteNumber(pose.x, position[0]),
-          y: finiteNumber(pose.y, position[1]),
-          z: finiteNumber(pose.z, position[2]),
-          yaw: finiteNumber(pose.yaw, pose.heading),
-          yawDegrees: finiteNumber(pose.yawDegrees, 0),
+          eastM: eastM,
+          northM: northM,
+          upM: upM,
+          headingDeg: headingDeg,
+          x: eastM,
+          y: northM,
+          z: upM,
+          yaw: headingDeg,
+          yawDegrees: headingDeg,
         };
         if (Array.isArray(pose.orientation) && pose.orientation.length >= 4) {
           normalized.orientation = pose.orientation.slice(0, 4).map(function (value) {
@@ -250,8 +278,14 @@
         if (!rawPoses.length && Array.isArray(source.agents)) rawPoses = rawPoses.concat(source.agents);
         if (Array.isArray(source.targets)) rawPoses = rawPoses.concat(source.targets);
         return {
-          runId: String(source.runId || runId || ''),
+          runtimeMode: String(source.runtimeMode || 'VIRTUAL_SIMULATION'),
+          coordinateFrame: String(source.coordinateFrame || 'GLOBAL_ENU'),
+          runId: finiteNumber(source.runId || runId, 0),
           sequence: finiteNumber(source.sequence, 0),
+          sampleTime: finiteNumber(
+            source.sampleTime || source.timestamp,
+            Date.now(),
+          ),
           timestamp: finiteNumber(source.timestamp, Date.now()),
           timestamp_ms: finiteNumber(
             source.timestamp_ms || source.timestampMs || source.timestamp,
@@ -264,18 +298,23 @@
       }
 
       function normalizeMissionState(message) {
-        var payload = message.payload || {};
+        var payload = Object.assign({}, message.payload || {}, {
+          requestId: message.requestId || (message.payload && message.payload.requestId) || '',
+        });
         var type = normalizeCommand(payload.command || message.type);
         var states = {
           missionstart: 'RUNNING',
           missionresume: 'RUNNING',
           missionpause: 'PAUSED',
+          missionstop: 'STOPPED',
+          missionreset: 'RESET',
           missioncomplete: 'COMPLETED',
           missionfail: 'FAILED',
           missioncancel: 'CANCELLED',
         };
         var state = String(payload.state || payload.phase || states[type] || '').toUpperCase();
         return {
+          requestId: payload.requestId,
           runId: String(payload.runId || runId || ''),
           sequence: finiteNumber(payload.sequence, 0),
           state: state,
@@ -299,24 +338,52 @@
             runId: String(payload.runId || runId || ''),
             coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
             platform: String(payload.platform || 'vue-webgl'),
-            protocolVersion: String(payload.protocolVersion || '1.0'),
+            requestId: message.requestId || '',
+            protocolVersion: String(payload.protocolVersion || '2.0'),
           });
         }
         if (type === 'loadscenario') {
           return sendPlatformBridge('LoadScenario', {
+            requestId: message.requestId || '',
+            runtimeMode: String(payload.runtimeMode || 'VIRTUAL_SIMULATION'),
             runId: String(payload.runId || runId || ''),
-            scenarioId: String(payload.scenarioId || payload.algorithmCode || 'default'),
+            scenarioId: String(payload.scenarioId || payload.algorithmCode || 'GB_SFLA_CS'),
+            algorithmCode: String(payload.algorithmCode || payload.scenarioId || 'GB_SFLA_CS'),
+            uavCount: finiteNumber(payload.uavCount, 3),
+            usvCount: finiteNumber(payload.usvCount, 3),
+            targetCount: finiteNumber(payload.targetCount, 1),
+            initialSpeedMps: finiteNumber(payload.initialSpeedMps, 0),
+            initialHeadingDeg: finiteNumber(payload.initialHeadingDeg, 0),
+            seed: finiteNumber(payload.seed, 0),
             sceneName: String(payload.sceneName || ''),
             coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
           });
         }
-        if (type === 'poseframe') {
-          return sendPlatformBridge('ApplyPoseBatch', normalizePoseBatch(payload));
+        if (type === 'regeneratescenario') {
+          return sendPlatformBridge('RegenerateScenario', {
+            requestId: message.requestId || '',
+            runtimeMode: String(payload.runtimeMode || 'VIRTUAL_SIMULATION'),
+            algorithmCode: String(payload.algorithmCode || 'GB_SFLA_CS'),
+            runId: String(payload.runId || runId || ''),
+            uavCount: finiteNumber(payload.uavCount, 3),
+            usvCount: finiteNumber(payload.usvCount, 3),
+            targetCount: finiteNumber(payload.targetCount, 1),
+            initialSpeedMps: finiteNumber(payload.initialSpeedMps, 0),
+            initialHeadingDeg: finiteNumber(payload.initialHeadingDeg, 0),
+            seed: finiteNumber(payload.seed, 0),
+          });
+        }
+        if (type === 'poseframe' || type === 'applyposebatch') {
+          var poseBatch = normalizePoseBatch(payload);
+          poseBatch.requestId = message.requestId || '';
+          return sendPlatformBridge('ApplyPoseBatch', poseBatch);
         }
         if (
           type === 'missionstart' ||
           type === 'missionpause' ||
           type === 'missionresume' ||
+          type === 'missionstop' ||
+          type === 'missionreset' ||
           type === 'missioncomplete' ||
           type === 'missionfail' ||
           type === 'missioncancel'
@@ -325,6 +392,7 @@
         }
         if (type === 'missionstate') {
           return sendPlatformBridge('SetMissionState', {
+            requestId: message.requestId || '',
             runId: String(payload.runId || runId || ''),
             sequence: finiteNumber(payload.sequence, 0),
             state: String(payload.state || payload.phase || ''),
@@ -335,21 +403,25 @@
         }
         if (type === 'selectdevice') {
           return sendPlatformBridge('SelectDevice', {
+            requestId: message.requestId || '',
             deviceCode: String(payload.deviceCode || payload.deviceId || ''),
           });
         }
         if (type === 'focusdevice') {
           var selected = sendPlatformBridge('SelectDevice', {
+            requestId: message.requestId || '',
             deviceCode: String(payload.deviceCode || payload.deviceId || ''),
           });
           var focused = sendPlatformBridge('SetCameraMode', {
+            requestId: message.requestId || '',
             mode: 'device-follow',
             deviceCode: String(payload.deviceCode || payload.deviceId || ''),
           });
           return selected || focused;
         }
-        if (type === 'switchcamera') {
+        if (type === 'switchcamera' || type === 'setcameramode') {
           return sendPlatformBridge('SetCameraMode', {
+            requestId: message.requestId || '',
             mode: String(payload.mode || 'overview'),
             deviceCode: String(payload.deviceCode || payload.deviceId || ''),
           });
@@ -361,7 +433,7 @@
         }
         if (
           type === 'sendcontrolcommand'
-          && /^mission(start|pause|resume|complete|fail|cancel)$/.test(
+          && /^mission(start|pause|resume|stop|reset|complete|fail|cancel)$/.test(
             normalizeCommand(payload.command),
           )
         ) {

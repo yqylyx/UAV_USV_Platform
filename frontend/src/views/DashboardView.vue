@@ -69,6 +69,9 @@ const overviewAlgorithmFallbacks: AlgorithmDefinition[] = [
 ]
 const overviewAlgorithms = ref<AlgorithmDefinition[]>([...overviewAlgorithmFallbacks])
 const selectedOverviewAlgorithm = ref('GB_SFLA_CS')
+const virtualUavCount = ref(3)
+const virtualUsvCount = ref(3)
+const virtualScenarioRunId = ref(Date.now())
 const enabledOverviewAlgorithms = computed(() => overviewAlgorithms.value.filter(item => item.enabled && ['GB_SFLA_CS','ESCORT_GUARD'].includes(item.code)))
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
@@ -336,12 +339,27 @@ const overviewMissionButtonLabel = computed(() =>
   overviewMissionRunning.value ? '终止任务' : '启动任务',
 )
 
+function sendVirtualScenario(algorithmCode = selectedOverviewAlgorithm.value) {
+  virtualScenarioRunId.value = Date.now()
+  return unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', {
+    runtimeMode: 'VIRTUAL_SIMULATION',
+    runId: virtualScenarioRunId.value,
+    algorithmCode,
+    uavCount: virtualUavCount.value,
+    usvCount: virtualUsvCount.value,
+    targetCount: 1,
+    initialSpeedMps: 2,
+    initialHeadingDeg: 0,
+    seed: virtualScenarioRunId.value % 2147483647,
+  })
+}
+
 async function selectOverviewAlgorithm(code: string) {
   if (overviewMissionRunning.value) return
   selectedOverviewAlgorithm.value = code
   overviewMissionName.value = overviewAlgorithms.value.find(item => item.code === code)?.name ?? code
   overviewDeploymentAcknowledged.value = false
-  unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', { algorithmCode: code })
+  sendVirtualScenario(code)
 }
 const selectedOverviewActions = computed<OverviewQuickAction[]>(() => {
   if (selectedOverviewDevice.value?.type === 'USV') {
@@ -887,7 +905,7 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
       if (!overviewDeploymentAcknowledged.value) {
         throw new Error('请先点击“编组部署”，确认三机三艇加入围捕编组')
       }
-      unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', { algorithmCode: selectedOverviewAlgorithm.value })
+      sendVirtualScenario()
       await runOverviewDemoCommand('start')
       ElMessage.success(`${overviewMissionName.value}已启动`)
       return
