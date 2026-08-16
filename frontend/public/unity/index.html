@@ -278,8 +278,14 @@
         if (!rawPoses.length && Array.isArray(source.agents)) rawPoses = rawPoses.concat(source.agents);
         if (Array.isArray(source.targets)) rawPoses = rawPoses.concat(source.targets);
         return {
-          runId: String(source.runId || runId || ''),
+          runtimeMode: String(source.runtimeMode || 'VIRTUAL_SIMULATION'),
+          coordinateFrame: String(source.coordinateFrame || 'GLOBAL_ENU'),
+          runId: finiteNumber(source.runId || runId, 0),
           sequence: finiteNumber(source.sequence, 0),
+          sampleTime: finiteNumber(
+            source.sampleTime || source.timestamp,
+            Date.now(),
+          ),
           timestamp: finiteNumber(source.timestamp, Date.now()),
           timestamp_ms: finiteNumber(
             source.timestamp_ms || source.timestampMs || source.timestamp,
@@ -300,6 +306,8 @@
           missionstart: 'RUNNING',
           missionresume: 'RUNNING',
           missionpause: 'PAUSED',
+          missionstop: 'STOPPED',
+          missionreset: 'RESET',
           missioncomplete: 'COMPLETED',
           missionfail: 'FAILED',
           missioncancel: 'CANCELLED',
@@ -374,6 +382,8 @@
           type === 'missionstart' ||
           type === 'missionpause' ||
           type === 'missionresume' ||
+          type === 'missionstop' ||
+          type === 'missionreset' ||
           type === 'missioncomplete' ||
           type === 'missionfail' ||
           type === 'missioncancel'
@@ -423,7 +433,7 @@
         }
         if (
           type === 'sendcontrolcommand'
-          && /^mission(start|pause|resume|complete|fail|cancel)$/.test(
+          && /^mission(start|pause|resume|stop|reset|complete|fail|cancel)$/.test(
             normalizeCommand(payload.command),
           )
         ) {

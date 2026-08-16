@@ -303,23 +303,11 @@ onBeforeUnmount(() => {
 
 <template>
   <ConsoleLayout
-    title="虚拟编队任务配置"
+    title="算法仿真"
     eyebrow="VIRTUAL FLEET / UNITY BRIDGE V3"
     :show-refresh="false"
   >
     <div class="virtual-fleet-page">
-      <section class="vf-hero">
-        <div>
-          <p class="eyebrow">INDEPENDENT UNITY INTEGRATION</p>
-          <h2>虚拟编队算法验证</h2>
-          <p>独立 Unity WebGL 实例，直接测试场景配置、批量位姿、任务状态和相机回执。</p>
-        </div>
-        <div class="vf-hero-status" :class="{ ready: unityReady }">
-          <CheckCircle2 :size="18" />
-          {{ unityReady ? 'UNITY BRIDGE ONLINE' : 'WAITING FOR UNITY' }}
-        </div>
-      </section>
-
       <div class="vf-grid">
         <aside class="vf-column">
           <section class="vf-panel">
@@ -455,15 +443,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .virtual-fleet-page { display: grid; gap: 14px; }
-.vf-hero {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 18px 20px; color: #eafffb; background: linear-gradient(135deg, #092a31, #07181e);
-  border: 1px solid rgba(108, 228, 213, .24); border-radius: 8px;
-}
-.vf-hero h2 { margin: 3px 0 6px; color: #f4fffd; font-size: 28px; }
-.vf-hero p:not(.eyebrow) { color: #8fb4b2; font-size: 13px; }
-.vf-hero-status { display: flex; align-items: center; gap: 8px; color: #ffcf72; font-size: 11px; font-weight: 900; }
-.vf-hero-status.ready { color: #68e6a8; }
 .vf-grid { display: grid; grid-template-columns: 290px minmax(0, 1fr) 290px; gap: 14px; align-items: start; }
 .vf-column { display: grid; gap: 14px; }
 .vf-panel, .vf-stage-panel { min-width: 0; padding: 15px; color: #dff8f4; background: rgba(8, 25, 30, .94); border: 1px solid rgba(108, 228, 213, .18); border-radius: 8px; }
@@ -508,5 +487,5 @@ pre { max-height: 260px; overflow: auto; margin: 0; padding: 10px; color: #bde8e
 .vf-speed-bar i { display: block; height: 100%; background: #f5ce6b; }
 .vf-speed-bar.usv i { background: #63d9e7; }
 @media (max-width: 1240px) { .vf-grid { grid-template-columns: 280px minmax(0, 1fr); } .vf-grid > .vf-column:last-child { grid-column: 1 / -1; grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 800px) { .vf-hero { align-items: flex-start; flex-direction: column; } .vf-grid, .vf-grid > .vf-column:last-child { grid-template-columns: 1fr; } .vf-grid > .vf-column:last-child { grid-column: auto; } .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 360px; height: 360px; } .vf-two-col { grid-template-columns: 1fr; } }
+@media (max-width: 800px) { .vf-grid, .vf-grid > .vf-column:last-child { grid-template-columns: 1fr; } .vf-grid > .vf-column:last-child { grid-column: auto; } .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 360px; height: 360px; } .vf-two-col { grid-template-columns: 1fr; } }
 </style>
