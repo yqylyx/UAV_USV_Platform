@@ -7,7 +7,6 @@ import LoginView from '@/views/LoginView.vue'
 import MissionWorkspaceView from '@/views/MissionWorkspaceView.vue'
 import RadarSituationView from '@/views/RadarHudView.vue'
 import VisualSensorView from '@/views/OpticalVisionView.vue'
-import VirtualFleetConfigView from '@/views/VirtualFleetConfigView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,7 +31,6 @@ const router = createRouter({
     { path: '/vision', name: 'optical-vision', component: VisualSensorView, meta: { requiresAuth: true } },
     { path: '/visual-sensors', redirect: '/vision' },
     { path: '/radar', name: 'radar-situation', component: RadarSituationView, meta: { requiresAuth: true } },
-    { path: '/virtual-fleet', name: 'virtual-fleet-config', component: VirtualFleetConfigView, meta: { requiresAuth: true } },
     { path: '/monitoring', redirect: '/situation' },
     { path: '/login', name: 'login', component: LoginView },
   ],

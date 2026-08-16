@@ -211,7 +211,6 @@ export interface AlgorithmTargetFrame {
 export interface AlgorithmRuntimeFrame {
   runId: number
   algorithmCode: string
-  coordinateFrame?: 'FLEET_LOCAL_ENU' | 'GLOBAL_ENU'
   sequence: number
   timestamp: number
   phase: string

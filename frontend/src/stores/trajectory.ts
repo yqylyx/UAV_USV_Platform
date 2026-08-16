@@ -46,7 +46,6 @@ export const useTrajectoryStore = defineStore('trajectory', {
     channels: {
       SYSTEM_OVERVIEW: { frame: null, lastSequence: 0 },
       MISSION_CENTER: { frame: null, lastSequence: 0 },
-      VIRTUAL_FLEET: { frame: null, lastSequence: 0 },
     } as Record<UnityRuntimeScope, TrajectoryChannel>,
   }),
   getters: {

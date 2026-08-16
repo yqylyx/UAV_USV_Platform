@@ -1,7 +1,7 @@
 export type VisualSensorStatus = 'ONLINE' | 'STALE' | 'WAITING'
 export type VisualSensorDeviceType = 'UAV' | 'USV'
 export type VisualSensorViewType = 'DOWN' | 'FORWARD'
-export type VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW' | 'MISSION_CENTER' | 'VIRTUAL_FLEET'
+export type VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
 
 export interface VisualSensorRuntimeContext {
   runtimeScope: VisualSensorRuntimeScope

@@ -213,7 +213,6 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
     channels: {
       SYSTEM_OVERVIEW: createChannel('SYSTEM_OVERVIEW'),
       MISSION_CENTER: createChannel('MISSION_CENTER'),
-      VIRTUAL_FLEET: createChannel('VIRTUAL_FLEET'),
     },
     loading: false,
     error: '',
