@@ -22,6 +22,10 @@ export type QuickControlDevice = {
   name: string
   type: 'UAV' | 'USV'
   status?: string | null
+  controlOperationalState?: string
+  controlStateFresh?: boolean
+  controlStateReceivedAt?: string | null
+  controlConnectionState?: string
 }
 
 export type VehicleQuickCommand = {
@@ -173,7 +177,19 @@ function operationalState(deviceCode: string) {
 
 function availableDevices(action: QuickAction) {
   const candidates = groupMode.value ? typeDevices.value : selectedDevice.value ? [selectedDevice.value] : []
+  if (props.vehicleType === 'UAV' && action.commandType === 'UAV_TAKEOFF') {
+    return candidates.filter(authoritativeTakeoffAllowed)
+  }
   return candidates.filter((device) => action.allowedStates.includes(operationalState(device.code)))
+}
+
+function authoritativeTakeoffAllowed(device: QuickControlDevice) {
+  const receivedAt = device.controlStateReceivedAt ? Date.parse(device.controlStateReceivedAt) : 0
+  return device.controlOperationalState === 'GROUNDED'
+    && device.controlStateFresh === true
+    && device.controlConnectionState === 'ONLINE'
+    && receivedAt > 0
+    && Date.now() - receivedAt <= 2000
 }
 
 function displayState() {

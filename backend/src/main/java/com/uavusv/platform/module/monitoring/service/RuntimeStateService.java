@@ -149,13 +149,13 @@ public class RuntimeStateService {
             return new ControlOperationalSnapshot("UNKNOWN", false, null, "UNKNOWN");
         }
         boolean fresh = gatewayConnected
-                && "ONLINE".equals(snapshot.connectionState())
                 && Duration.between(snapshot.receivedAt(), LocalDateTime.now()).compareTo(Duration.ofSeconds(2)) <= 0;
+        boolean online = "ONLINE".equals(snapshot.connectionState());
         boolean knownFlightState = "GROUNDED".equals(snapshot.flightState())
                 || "AIRBORNE".equals(snapshot.flightState());
         return new ControlOperationalSnapshot(
-                fresh && knownFlightState ? snapshot.flightState() : "UNKNOWN",
-                fresh && knownFlightState,
+                fresh && online && knownFlightState ? snapshot.flightState() : "UNKNOWN",
+                fresh,
                 snapshot.receivedAt(),
                 snapshot.connectionState()
         );

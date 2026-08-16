@@ -70,12 +70,16 @@ class RuntimeStateServiceGatewayV1Tests {
         services.runtimeStateService.observeGatewayDeviceStatus(objectMapper.readTree(
                 "{\"deviceCode\":\"uav_01\",\"connectionState\":\"ONLINE\",\"flightState\":\"UNKNOWN\"}"),
                 "gateway", "device.status.uav_01", 1L);
-        assertThat(services.runtimeStateService.getControlOperationalSnapshot("uav-01").state()).isEqualTo("UNKNOWN");
+        var unknownState = services.runtimeStateService.getControlOperationalSnapshot("uav-01");
+        assertThat(unknownState.state()).isEqualTo("UNKNOWN");
+        assertThat(unknownState.fresh()).isTrue();
 
         services.runtimeStateService.observeGatewayDeviceStatus(objectMapper.readTree(
                 "{\"deviceCode\":\"uav_01\",\"connectionState\":\"OFFLINE\",\"flightState\":\"GROUNDED\"}"),
                 "gateway", "device.status.uav_01", 2L);
-        assertThat(services.runtimeStateService.getControlOperationalSnapshot("uav-01").state()).isEqualTo("UNKNOWN");
+        var offlineState = services.runtimeStateService.getControlOperationalSnapshot("uav-01");
+        assertThat(offlineState.state()).isEqualTo("UNKNOWN");
+        assertThat(offlineState.fresh()).isTrue();
     }
 
     @Test
