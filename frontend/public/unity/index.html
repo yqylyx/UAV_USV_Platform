@@ -215,13 +215,28 @@
 
       function normalizePose(item) {
         var pose = item || {};
-        var position = Array.isArray(pose.position)
+        var inputPosition = Array.isArray(pose.position)
           ? pose.position
-          : [
-              finiteNumber(pose.x, 0),
-              finiteNumber(pose.y, 0),
-              finiteNumber(pose.z, 0),
-            ];
+          : [];
+        var eastM = finiteNumber(
+          pose.eastM,
+          inputPosition.length >= 3 ? inputPosition[0] : pose.x,
+        );
+        var northM = finiteNumber(
+          pose.northM,
+          inputPosition.length >= 3 ? inputPosition[1] : pose.y,
+        );
+        var upM = finiteNumber(
+          pose.upM,
+          inputPosition.length >= 3 ? inputPosition[2] : pose.z,
+        );
+        var velocityEastMps = finiteNumber(pose.velocityEastMps, 0);
+        var velocityNorthMps = finiteNumber(pose.velocityNorthMps, 0);
+        var rawHeading = Number(pose.headingDeg);
+        var headingDeg = Number.isFinite(rawHeading)
+          ? rawHeading
+          : Math.atan2(velocityEastMps, velocityNorthMps) * 180 / Math.PI;
+        if (headingDeg < 0) headingDeg += 360;
         var normalized = {
           deviceCode: pose.deviceCode || pose.deviceId || pose.code || pose.id || '',
           deviceType: pose.deviceType || pose.type || '',
@@ -229,16 +244,23 @@
           state: pose.state || '',
           valid: pose.valid !== false,
           speedMps: finiteNumber(pose.speedMps, 0),
+          velocityEastMps: velocityEastMps,
+          velocityNorthMps: velocityNorthMps,
+          velocityUpMps: finiteNumber(pose.velocityUpMps, 0),
           position: [
-            finiteNumber(position[0], 0),
-            finiteNumber(position[1], 0),
-            finiteNumber(position[2], 0),
+            eastM,
+            northM,
+            upM,
           ],
-          x: finiteNumber(pose.x, position[0]),
-          y: finiteNumber(pose.y, position[1]),
-          z: finiteNumber(pose.z, position[2]),
-          yaw: finiteNumber(pose.yaw, pose.heading),
-          yawDegrees: finiteNumber(pose.yawDegrees, 0),
+          eastM: eastM,
+          northM: northM,
+          upM: upM,
+          headingDeg: headingDeg,
+          x: eastM,
+          y: northM,
+          z: upM,
+          yaw: headingDeg,
+          yawDegrees: headingDeg,
         };
         if (Array.isArray(pose.orientation) && pose.orientation.length >= 4) {
           normalized.orientation = pose.orientation.slice(0, 4).map(function (value) {

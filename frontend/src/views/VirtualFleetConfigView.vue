@@ -13,6 +13,12 @@ import {
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
+import type { AlgorithmRuntimeFrame } from '@/types/mission'
+import {
+  adaptVirtualAlgorithmFrame,
+  type EnuOrigin,
+  type VirtualPoseStateMap,
+} from '@/utils/virtualAlgorithmFrameAdapter'
 
 type UnityMessage = {
   type: string
@@ -27,7 +33,14 @@ const lastMessage = ref<UnityMessage | null>(null)
 const selectedDevice = ref('')
 const logs = ref<string[]>([])
 const scenarioReadyRunId = ref<number | null>(null)
+const scenarioLoading = ref(false)
 const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
+let previousAlgorithmPoses: VirtualPoseStateMap = new Map()
+const fleetOriginEnu: EnuOrigin = {
+  eastM: -75,
+  northM: -310,
+  upM: 0,
+}
 
 const state = reactive({
   algorithm: 'GB_SFLA_CS',
@@ -79,6 +92,7 @@ function onUnityReady() {
 
 function onUnityError(message: string) {
   unityReady.value = false
+  scenarioLoading.value = false
   addLog(`Unity 错误: ${message}`)
 }
 
@@ -91,6 +105,7 @@ function onUnityMessage(message: UnityMessage) {
     const readyRunId = Number(message.payload?.runId ?? 0)
     const success = message.payload?.success === true
     scenarioReadyRunId.value = success && readyRunId === state.runId ? readyRunId : null
+    if (readyRunId === state.runId) scenarioLoading.value = false
     addLog(
       `scenarioReady: ${success ? 'success' : 'failed'}`
       + ` runId=${readyRunId || '-'}`,
@@ -99,9 +114,22 @@ function onUnityMessage(message: UnityMessage) {
   if (message.type === 'poseFrameApplied') {
     const success = message.payload?.success === true
     const code = String(message.payload?.code ?? '')
+    const trackedDeviceCode = String(message.payload?.trackedDeviceCode ?? '')
+    const unityPosition = trackedDeviceCode
+      ? ` ${trackedDeviceCode} unity=(${Number(message.payload?.unityPositionX ?? 0).toFixed(2)},`
+        + `${Number(message.payload?.unityPositionY ?? 0).toFixed(2)},`
+        + `${Number(message.payload?.unityPositionZ ?? 0).toFixed(2)})`
+        + ` heading=${Number(message.payload?.unityHeadingDeg ?? 0).toFixed(1)}`
+        + ` model=(${Number(message.payload?.transformPositionX ?? 0).toFixed(2)},`
+        + `${Number(message.payload?.transformPositionY ?? 0).toFixed(2)},`
+        + `${Number(message.payload?.transformPositionZ ?? 0).toFixed(2)})`
+        + ` heading=${Number(message.payload?.transformHeadingDeg ?? 0).toFixed(1)}`
+      : ''
     addLog(
       `poseFrameApplied: sequence=${message.payload?.sequence ?? '-'}`
-      + ` ${success ? 'success' : code || 'failed'}`,
+      + ` ${success ? 'success' : code || 'failed'}`
+      + trackedDeviceCode
+      + unityPosition,
     )
   }
   if (message.type === 'cameraChanged') addLog(`cameraChanged: ${message.payload?.deviceCode ?? '-'}`)
@@ -112,7 +140,7 @@ function validateSpeed(value: number, max: number) {
 }
 
 function generateScenario() {
-  if (sceneLocked.value) return
+  if (sceneLocked.value || scenarioLoading.value) return
   state.uavSpeed = validateSpeed(state.uavSpeed, 15)
   state.usvSpeed = validateSpeed(state.usvSpeed, 2)
   // Each generated scenario needs an isolated run id so delayed pose
@@ -120,7 +148,10 @@ function generateScenario() {
   state.runId = Date.now()
   state.sequence = 0
   state.mission = 'STOPPED'
+  previousAlgorithmPoses = new Map()
   scenarioReadyRunId.value = null
+  scenarioLoading.value = true
+  addLog(`loadScenario pending: runId=${state.runId}`)
   send('loadScenario', {
     runtimeMode: 'VIRTUAL_SIMULATION',
     algorithmCode: state.algorithm,
@@ -137,12 +168,17 @@ function startMission() {
   if (
     !unityReady.value
     || !speedValid.value
+    || scenarioLoading.value
     || scenarioReadyRunId.value !== state.runId
   ) {
     addLog(`missionStart blocked: waiting for scenarioReady runId=${state.runId}`)
     return
   }
   state.mission = 'RUNNING'
+  addLog(
+    `algorithm coordinates: FLEET_LOCAL_ENU`
+    + ` origin=(${fleetOriginEnu.eastM},${fleetOriginEnu.northM},${fleetOriginEnu.upM})`,
+  )
   send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
   sendPoseBatch()
 }
@@ -161,6 +197,7 @@ function stopMission() {
 function resetMission() {
   state.mission = 'STOPPED'
   state.sequence = 0
+  previousAlgorithmPoses = new Map()
   send('missionReset', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
 }
 
@@ -171,44 +208,70 @@ function sendPoseBatch() {
     || scenarioReadyRunId.value !== state.runId
   ) return
   state.sequence += 1
-  const vehicles = vehicleCodes.value.map((deviceCode, index) => {
+  const timestamp = Date.now()
+  const agents = vehicleCodes.value.map((deviceCode, index) => {
     const isUav = deviceCode.startsWith('UAV-')
     const speedMps = isUav ? state.uavSpeed : state.usvSpeed
+    const radiusM = 20
+    // Keep the demo motion tied to the configured physical speed. Unity
+    // converts these metric coordinates to its presentation scale.
+    const phase = index * 0.35 + state.sequence * (speedMps / radiusM)
+    const eastM = Math.sin(phase) * radiusM
+    const northM = Math.cos(phase) * radiusM
+    const headingDeg = (
+      Math.atan2(Math.cos(phase) * speedMps, -Math.sin(phase) * speedMps) * 180 / Math.PI + 360
+    ) % 360
     return {
-      deviceCode,
-      deviceType: isUav ? 'UAV' : 'USV',
-      eastM: Math.sin(index + state.sequence * 0.05) * 20,
-      northM: Math.cos(index + state.sequence * 0.05) * 20,
-      upM: isUav ? 25 + (index % 4) * 4 : 0,
-      velocityEastMps: speedMps,
-      velocityNorthMps: 0,
-      velocityUpMps: 0,
-      headingDeg: 90,
-      speedMps,
+      code: deviceCode,
+      type: isUav ? 'UAV' as const : 'USV' as const,
+      x: eastM,
+      y: northM,
+      z: isUav
+        ? 25 + (index % 4) * 4 + Math.sin(phase * 0.7) * 2
+        : 0,
+      heading: headingDeg,
       role: state.algorithm === 'GB_SFLA_CS' ? 'capture' : 'escort',
-      targetCode: 'TARGET-001',
-      state: isUav ? 'AIRBORNE' : 'SAILING',
-      valid: true,
+      status: isUav ? 'AIRBORNE' : 'SAILING',
     }
   })
-  addLog(`applyPoseBatch: sequence=${state.sequence}`)
-  send('applyPoseBatch', {
-    runtimeMode: 'VIRTUAL_SIMULATION',
+  const frame: AlgorithmRuntimeFrame = {
     runId: state.runId,
+    algorithmCode: state.algorithm,
+    coordinateFrame: 'FLEET_LOCAL_ENU',
     sequence: state.sequence,
-    sampleTime: Date.now(),
-    vehicles,
+    timestamp,
+    phase: state.algorithm === 'GB_SFLA_CS' ? 'ENCIRCLEMENT' : 'ESCORT',
+    agents,
     targets: [{
-      deviceCode: 'TARGET-001',
-      eastM: 0,
-      northM: 0,
-      upM: 0,
-      headingDeg: 0,
-      speedMps: 0,
-      state: 'ACTIVE',
-      valid: true,
+      code: state.algorithm === 'GB_SFLA_CS' ? 'TARGET' : 'ESCORT_TARGET',
+      type: state.algorithm === 'GB_SFLA_CS' ? 'CAPTURE_TARGET' : 'ESCORT_TARGET',
+      x: 0,
+      y: 0,
+      z: 0,
+      heading: 0,
+      visible: true,
     }],
-  })
+    metrics: {},
+    route: [],
+    obstacles: [],
+    terminalStatus: null,
+  }
+  const adapted = adaptVirtualAlgorithmFrame(
+    frame,
+    previousAlgorithmPoses,
+    { fleetOrigin: fleetOriginEnu },
+  )
+  previousAlgorithmPoses = adapted.nextState
+  const trackedPose = adapted.payload.vehicles.find((pose) => pose.deviceCode === 'UAV-001')
+  addLog(
+    `applyPoseBatch: sequence=${state.sequence}`
+    + (trackedPose
+      ? ` UAV-001 pos=(${trackedPose.eastM.toFixed(2)},`
+        + `${trackedPose.northM.toFixed(2)},${trackedPose.upM.toFixed(2)})`
+        + ` heading=${trackedPose.headingDeg.toFixed(1)}`
+      : ''),
+  )
+  send('applyPoseBatch', { ...adapted.payload })
 }
 
 function selectDevice(code: string) {
@@ -288,7 +351,7 @@ onBeforeUnmount(() => {
               <input v-model.number="state.seed" type="number" step="1" :disabled="sceneLocked">
             </label>
             <div class="vf-actions">
-              <button class="vf-button primary" type="button" :disabled="sceneLocked || !unityReady" @click="generateScenario">
+              <button class="vf-button primary" type="button" :disabled="sceneLocked || !unityReady || scenarioLoading" @click="generateScenario">
                 <RefreshCw :size="15" /> 生成场景
               </button>
               <button class="vf-button" type="button" :disabled="!unityReady" @click="resetMission">
@@ -300,7 +363,7 @@ onBeforeUnmount(() => {
           <section class="vf-panel">
             <div class="vf-panel-head"><h3>任务控制</h3><span>{{ state.mission }}</span></div>
             <div class="vf-actions">
-              <button class="vf-button success" type="button" :disabled="state.mission === 'RUNNING' || !unityReady || !speedValid" @click="startMission">
+              <button class="vf-button success" type="button" :disabled="state.mission === 'RUNNING' || !unityReady || !speedValid || scenarioLoading || scenarioReadyRunId !== state.runId" @click="startMission">
                 <Play :size="15" /> 开始
               </button>
               <button class="vf-button" type="button" :disabled="state.mission !== 'RUNNING'" @click="pauseMission">
