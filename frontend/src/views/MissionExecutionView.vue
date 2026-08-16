@@ -13,17 +13,21 @@ import { issueRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useRealtimeStore } from '@/stores/realtime'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
 import { useVisualSensorStore } from '@/stores/visualSensor'
+import type { TrajectoryAgentType, UnityTrajectoryFrame } from '@/stores/trajectory'
 import type { AlgorithmRuntimeFrame, MissionDetail } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
+import type { VehiclePoseSample } from '@/types/realtime'
 import type { VisualSensorRuntimeContext } from '@/types/visualSensor'
 
 const route = useRoute()
 const router = useRouter()
 const monitoringStore = useMonitoringStore()
+const realtimeStore = useRealtimeStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const sessionStore = useMissionTrajectorySessionStore()
@@ -43,7 +47,6 @@ const visualDisplayMode = ref<'grid' | 'focus'>('grid')
 const missionId = computed(() => Number(route.params.missionId))
 const runId = computed(() => Number(route.params.runId))
 const unityChannel = computed(() => unityBridgeStore.channels.MISSION_CENTER)
-const trajectoryFrame = computed(() => trajectoryStore.channels.MISSION_CENTER.frame)
 const missionVisualStats = computed(() => visualSensorStore.streamStatsFor('MISSION_CENTER'))
 const missionVisualConnected = computed(() =>
   visualSensorStore.unityBridgeReadyFor('MISSION_CENTER')
@@ -59,6 +62,7 @@ const externalAlgorithm = computed(() => !!detail.value && ['GB_SFLA_CS', 'ESCOR
 let algorithmPollTimer: number | null = null
 let algorithmAbortController: AbortController | null = null
 let loadedScenarioKey = ''
+let lastRealtimePoseFrameKey = ''
 let algorithmRecoveryPromise: Promise<void> | null = null
 
 function missionVisualContext(): VisualSensorRuntimeContext {
@@ -163,6 +167,60 @@ function ensureMissionScenarioLoaded() {
   loadedScenarioKey = key
 }
 
+function poseDeviceType(deviceCode: string): TrajectoryAgentType {
+  return deviceCode.toLowerCase().startsWith('usv') ? 'USV' : 'UAV'
+}
+
+function validPoseSample(sample: VehiclePoseSample) {
+  const position = sample.localPositionEnuM
+  return !!position
+    && Number.isFinite(position.x)
+    && Number.isFinite(position.y)
+    && Number.isFinite(position.z)
+}
+
+function poseState(sample: VehiclePoseSample) {
+  if (sample.fresh === false || sample.positionValid === false) return 'STALE'
+  return 'ACTIVE'
+}
+
+const realtimeTrajectoryFrame = computed<UnityTrajectoryFrame | null>(() => {
+  const envelope = realtimeStore.poseBatch
+  if (!envelope?.runId || String(envelope.runId) !== String(runId.value)) return null
+  const vehicles = envelope?.payload.vehicles?.filter(validPoseSample) ?? []
+  if (!envelope || !vehicles.length) return null
+  return {
+    sequence: envelope.sequence,
+    source: envelope.source,
+    coordinateSystem: 'ROS_ENU',
+    mission: {
+      phase: realtimeStore.missionStatus?.payload.phase ?? realtimeStore.missionStatus?.payload.state ?? 'ROS_GATEWAY_V1',
+      elapsed: 0,
+      captureRadius: 16,
+      defenseRadius: 18,
+      captureReady: false,
+      formationHolding: false,
+    },
+    agents: vehicles.map((vehicle) => {
+      const position = vehicle.localPositionEnuM!
+      return {
+        code: vehicle.deviceCode.trim().toLowerCase(),
+        type: poseDeviceType(vehicle.deviceCode),
+        x: position.x,
+        y: position.z,
+        z: position.y,
+        yaw: vehicle.headingDeg ?? 0,
+        state: poseState(vehicle),
+      }
+    }),
+    receivedAt: Date.parse(envelope.timestamp) || Date.now(),
+  }
+})
+
+const trajectoryFrame = computed<UnityTrajectoryFrame | null>(() =>
+  realtimeTrajectoryFrame.value ?? trajectoryStore.channels.MISSION_CENTER.frame,
+)
+
 const runtimeNodes = computed<RuntimeNode[]>(() => {
   const frame = trajectoryFrame.value
   if (!frame) return monitoringStore.nodes.filter(node => node.type === 'UAV' || node.type === 'USV')
@@ -178,15 +236,19 @@ const runtimeNodes = computed<RuntimeNode[]>(() => {
         status: 'ONLINE',
         host: null,
         port: null,
-        endpoint: 'unity://mission-center',
+        endpoint: frame.coordinateSystem === 'ROS_ENU' ? 'ros-gateway-v1://pose-batch' : 'unity://mission-center',
         rosNamespace: null,
         lastHeartbeatAt: new Date(frame.receivedAt).toISOString(),
         heartbeatAgeSeconds: Math.max(0, Math.round((Date.now() - frame.receivedAt) / 1000)),
-        source: 'UNITY_WEBGL',
+        source: frame.coordinateSystem === 'ROS_ENU' ? 'ROS_GATEWAY_V1' : 'UNITY_WEBGL',
         instanceId: unityViewportStore.missionInstanceId,
         positionX: agent.x,
         positionY: agent.y,
         positionZ: agent.z,
+        controlOperationalState: existing?.controlOperationalState,
+        controlStateFresh: existing?.controlStateFresh,
+        controlStateReceivedAt: existing?.controlStateReceivedAt,
+        controlConnectionState: existing?.controlConnectionState,
         detail: agent.state,
       }
     })
@@ -256,6 +318,44 @@ function sendAlgorithmPoseFrame(frame: AlgorithmRuntimeFrame) {
   })
 }
 
+function sendRealtimePoseFrameToUnity(frame: UnityTrajectoryFrame | null) {
+  const run = detail.value?.currentRun
+  if (!frame || frame.coordinateSystem !== 'ROS_ENU' || !run || !externalAlgorithm.value) return
+  if (!unityChannel.value.controlsReady) return
+  const frameKey = `${run.id}:${frame.source}:${frame.sequence}`
+  if (frameKey === lastRealtimePoseFrameKey) return
+  lastRealtimePoseFrameKey = frameKey
+  unityBridgeStore.sendFor('MISSION_CENTER', 'poseFrame', {
+    algorithmCode: detail.value?.mission.algorithmCode ?? 'GB_SFLA_CS',
+    runId: run.id,
+    sequence: frame.sequence,
+    timestamp: frame.receivedAt,
+    phase: frame.mission.phase,
+    agents: frame.agents
+      .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
+      .map(agent => ({
+        code: agent.code,
+        type: agent.type,
+        x: agent.x,
+        y: agent.z,
+        z: agent.y,
+        heading: agent.yaw,
+      })),
+    targets: frame.agents
+      .filter(agent => agent.type === 'TARGET')
+      .map(agent => ({
+        code: agent.code,
+        type: 'TARGET',
+        x: agent.x,
+        y: agent.z,
+        z: agent.y,
+        heading: agent.yaw,
+        visible: true,
+      })),
+    route: [],
+  })
+}
+
 function ingestAlgorithmFrame(frame: AlgorithmRuntimeFrame) {
   if (frame.runId !== runId.value || frame.runId !== detail.value?.currentRun?.id) return
   if (algorithmFrame.value && frame.sequence <= algorithmFrame.value.sequence) return
@@ -297,6 +397,12 @@ watch([
   () => detail.value?.currentRun?.id,
   () => unityViewportStore.missionInstanceId,
 ], ensureMissionScenarioLoaded, { immediate: true })
+
+watch([
+  realtimeTrajectoryFrame,
+  () => unityChannel.value.controlsReady,
+  () => detail.value?.currentRun?.id,
+], ([frame]) => sendRealtimePoseFrameToUnity(frame), { immediate: true })
 
 async function pollAlgorithmFrames() {
   if (!externalAlgorithm.value || !detail.value?.currentRun || algorithmPolling.value) return
@@ -343,12 +449,11 @@ async function runMissionAction(action: 'pause' | 'resume' | 'complete' | 'cance
   try {
     const activeRunId = detail.value.currentRun?.id
     const usesExternalAlgorithm = externalAlgorithm.value
-    if (!unityChannel.value.connected || !unityChannel.value.controlsReady) throw new Error('任务中心 Unity 指令桥尚未就绪')
     const result = await executeMissionAction(detail.value.mission.id, action, 'MISSION_CONTROL', unityViewportStore.missionInstanceId)
     if (result.command) {
       if (result.command.status === 'FAILED' || result.command.status === 'TIMEOUT') throw new Error(result.command.detail || '任务指令创建失败')
-      const ack = await unityBridgeStore.sendControlCommandAndWaitFor('MISSION_CENTER', missionUnityCommand(action), '', result.command.commandKey)
-      if (!ack.success) throw new Error(ack.status || 'Unity 未确认任务指令')
+      const rosStatus = await realtimeStore.waitForCommandResult(result.command.commandKey)
+      if (rosStatus !== 'SUCCEEDED') throw new Error(rosStatus)
     }
     let algorithmControlWarning = ''
     if (activeRunId && usesExternalAlgorithm) {
@@ -414,11 +519,8 @@ async function placeThreat(x: number, y: number) {
 
 async function sendVehicleCommand(command: VehicleQuickCommand) {
   if (!detail.value?.currentRun || !command.deviceCodes.length) return
-  if (!unityChannel.value.connected || !unityChannel.value.controlsReady) {
-    ElMessage.error('任务中心 Unity 指令桥尚未就绪')
-    return
-  }
-  busy.value = true
+  const manageBusy = command.commandType !== 'USV_STOP' && command.commandType !== 'USV_EMERGENCY_STOP'
+  if (manageBusy) busy.value = true
   let acknowledged = 0
   try {
     for (const code of command.deviceCodes) {
@@ -435,16 +537,19 @@ async function sendVehicleCommand(command: VehicleQuickCommand) {
           runtimeInstanceId: unityViewportStore.missionInstanceId,
         })
         if (result.status === 'FAILED' || result.status === 'TIMEOUT') throw new Error(result.detail)
-        const ack = await unityBridgeStore.sendControlCommandAndWaitFor('MISSION_CENTER', vehicleUnityCommand(command.commandType), key, result.commandKey)
-        commandFeedback.value = { ...commandFeedback.value, [key]: ack.success ? 'ACKNOWLEDGED' : 'FAILED' }
-        if (ack.success) acknowledged += 1
+        const rosStatus = await realtimeStore.waitForCommandResult(result.commandKey)
+        const status: RuntimeCommandStatus = rosStatus === 'SUCCEEDED' ? 'SUCCEEDED'
+          : rosStatus === 'CANCELLED' ? 'CANCELLED'
+            : rosStatus === 'TIMEOUT' || rosStatus === 'EXPIRED' ? 'TIMEOUT' : 'FAILED'
+        commandFeedback.value = { ...commandFeedback.value, [key]: status }
+        if (status === 'SUCCEEDED') acknowledged += 1
       } catch {
         commandFeedback.value = { ...commandFeedback.value, [key]: 'FAILED' }
       }
     }
     if (acknowledged === command.deviceCodes.length) ElMessage.success(`${command.label}：${acknowledged}/${command.deviceCodes.length} 台已确认`)
     else ElMessage.error(`${command.label}：成功 ${acknowledged}，失败 ${command.deviceCodes.length - acknowledged}`)
-  } finally { busy.value = false }
+  } finally { if (manageBusy) busy.value = false }
 }
 
 function changeMode(next: '2d' | '3d' | 'vision') {
@@ -471,6 +576,7 @@ async function closeExecution() {
 
 onMounted(async () => {
   unityViewportStore.park()
+  realtimeStore.connect()
   monitoringStore.connectEvents()
   await monitoringStore.refresh({}, true)
   try {

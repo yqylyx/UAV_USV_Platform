@@ -51,6 +51,20 @@ let probeTimer: number | null = null
 let heartbeatTimer: number | null = null
 let readyEmitted = false
 let lastRuntimeReportAt = 0
+let heartbeatInFlight = false
+
+type HeartbeatReport = {
+  state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED'
+  detail: string
+}
+
+let pendingHeartbeat: HeartbeatReport | null = null
+
+type UnityFrameWindow = Window & {
+  uavUsvUnityInstance?: {
+    Quit?: () => Promise<void>
+  }
+}
 
 const iframeUrl = computed(() => {
   const separator = props.iframeSrc.includes('?') ? '&' : '?'
@@ -188,6 +202,7 @@ function handleWindowMessage(event: MessageEvent) {
       ].filter(Boolean)
       markError(`Unity 平台桥未完整就绪：${missing.join('、') || '未知能力'}`)
     } else {
+      markReady()
       flushUnityOutbox()
       reportRuntimeSnapshot(true)
     }
@@ -210,6 +225,7 @@ function handleWindowMessage(event: MessageEvent) {
   }
 
   if (message.type === 'bridgeReady') {
+    markReady()
     controlsReady.value = message.payload?.controlsReady === true
     unityBridgeStore.setControlsReadyFor(props.runtimeScope, controlsReady.value)
     reportRuntimeSnapshot(true)
@@ -437,27 +453,41 @@ function sendPoseFrame(payload: Record<string, unknown>) {
 }
 
 async function reportHeartbeat(
-  state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED',
+  state: HeartbeatReport['state'],
   detail: string,
 ) {
+  if (heartbeatInFlight) {
+    pendingHeartbeat = { state, detail }
+    return
+  }
+  heartbeatInFlight = true
+  let current: HeartbeatReport | null = { state, detail }
   try {
-    await sendIntegrationHeartbeat({
-      componentCode: 'unity-client-01',
-      instanceId: props.runtimeInstanceId,
-      state,
-      detail,
-      rosConnectionStatus: 'UNKNOWN',
-      runtimeScope: props.runtimeScope,
-      missionId: props.missionId,
-      runId: props.runId,
-      controlsReady: controlsReady.value,
-      deviceCodes: trajectoryStore.channels[props.runtimeScope].frame?.agents
-        .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
-        .map(agent => agent.code.toLowerCase()) ?? [],
-      trajectorySequence: trajectoryStore.channels[props.runtimeScope].frame?.sequence,
-    })
-  } catch {
-    // Heartbeat failure must not interrupt the local WebGL runtime.
+    while (current) {
+      try {
+        await sendIntegrationHeartbeat({
+          componentCode: 'unity-client-01',
+          instanceId: props.runtimeInstanceId,
+          state: current.state,
+          detail: current.detail,
+          rosConnectionStatus: 'UNKNOWN',
+          runtimeScope: props.runtimeScope,
+          missionId: props.missionId,
+          runId: props.runId,
+          controlsReady: controlsReady.value,
+          deviceCodes: trajectoryStore.channels[props.runtimeScope].frame?.agents
+            .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
+            .map(agent => agent.code.toLowerCase()) ?? [],
+          trajectorySequence: trajectoryStore.channels[props.runtimeScope].frame?.sequence,
+        })
+      } catch {
+        // Heartbeat failure must not interrupt the local WebGL runtime.
+      }
+      current = pendingHeartbeat
+      pendingHeartbeat = null
+    }
+  } finally {
+    heartbeatInFlight = false
   }
 }
 
@@ -507,6 +537,18 @@ onBeforeUnmount(() => {
   window.removeEventListener('message', handleWindowMessage)
   if (probeTimer !== null) window.clearInterval(probeTimer)
   if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer)
+  try {
+    const frame = iframeRef.value
+    const frameWindow = frame?.contentWindow as UnityFrameWindow | null | undefined
+    const unityInstance = frameWindow?.uavUsvUnityInstance
+    if (unityInstance?.Quit) {
+      void unityInstance.Quit().catch(() => undefined)
+    }
+    if (frame) frame.src = 'about:blank'
+    iframeRef.value = null
+  } catch {
+    iframeRef.value = null
+  }
 })
 </script>
 

@@ -11,16 +11,16 @@ import java.util.Collection;
 import java.util.List;
 
 public interface DeviceTelemetryRepository extends JpaRepository<DeviceTelemetry, Long> {
-    @Query("""
-            select telemetry
-            from DeviceTelemetry telemetry
-            where telemetry.deviceId in :deviceIds
-              and telemetry.recordedAt = (
-                select max(candidate.recordedAt)
-                from DeviceTelemetry candidate
-                where candidate.deviceId = telemetry.deviceId
-              )
-            """)
+    @Query(value = """
+            select telemetry.*
+            from device_telemetry telemetry
+            join (
+                select device_id, max(id) as latest_id
+                from device_telemetry
+                where device_id in (:deviceIds)
+                group by device_id
+            ) latest on latest.latest_id = telemetry.id
+            """, nativeQuery = true)
     List<DeviceTelemetry> findLatestByDeviceIds(@Param("deviceIds") Collection<Long> deviceIds);
 
     @Modifying

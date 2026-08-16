@@ -223,7 +223,10 @@ function commandTypeLabel(type: string) {
 }
 
 function commandStatusLabel(status: string) {
-  if (status === 'ACKNOWLEDGED') return '已确认'
+  if (status === 'ACCEPTED') return '已接收'
+  if (status === 'EXECUTING') return '执行中'
+  if (status === 'SUCCEEDED') return '执行成功'
+  if (status === 'CANCELLED') return '已取消'
   if (status === 'DISPATCHED') return '已下发'
   if (status === 'FAILED') return '失败'
   if (status === 'TIMEOUT') return '确认超时'

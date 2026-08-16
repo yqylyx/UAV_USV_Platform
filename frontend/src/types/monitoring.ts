@@ -24,6 +24,10 @@ export interface RuntimeNode {
   telemetryAt?: string | null
   telemetrySource?: string | null
   telemetryStale?: boolean
+  controlOperationalState?: string
+  controlStateFresh?: boolean
+  controlStateReceivedAt?: string | null
+  controlConnectionState?: string
   detail: string | null
 }
 

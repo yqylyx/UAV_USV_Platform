@@ -33,6 +33,12 @@ management:
       show-details: never
 
 app:
+  ros:
+    transport: ${ROS_TRANSPORT:v1}
+    state-authority: ${ROS_STATE_AUTHORITY:v1}
+  gateway:
+    v1:
+      websocket-url: ${ROS_GATEWAY_V1_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv/v1}
   runtime:
     ros-websocket-url: ${ROS_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv}
     heartbeat-timeout-seconds: 5
@@ -49,8 +55,9 @@ app:
   integration:
     token: ${PLATFORM_INTEGRATION_TOKEN}
   control:
-    command-dispatch-mode: ${COMMAND_DISPATCH_MODE:browser-unity}
+    command-dispatch-mode: ${COMMAND_DISPATCH_MODE:ros-gateway-v1}
     command-ack-timeout-seconds: ${COMMAND_ACK_TIMEOUT_SECONDS:15}
+    command-result-timeout-seconds: ${COMMAND_RESULT_TIMEOUT_SECONDS:75}
     wsl-distribution: ${WSL_DISTRIBUTION:Ubuntu22}
     ros-script: ${ROS_RUNTIME_SCRIPT:F:/UAV_USV_Platform/scripts/uav-usv-runtime.sh}
     unity-editor: ${UNITY_EDITOR_PATH:F:/Unity/Editors/2022.3.57f1/Editor/Unity.exe}

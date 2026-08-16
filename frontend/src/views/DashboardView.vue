@@ -16,13 +16,13 @@ import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import VehicleGlyph from '@/components/control/VehicleGlyph.vue'
 import type { VehicleQuickCommand } from '@/components/control/VehicleQuickControl.vue'
-import { sendIntegrationHeartbeat } from '@/api/integration'
 import { fetchAlgorithms } from '@/api/algorithm'
 import { executeMissionAction, fetchMission, fetchMissions } from '@/api/mission'
 import type { MissionAction } from '@/api/mission'
 import { issueRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeControl'
 import { useMonitoringStore } from '@/stores/monitoring'
+import { useRealtimeStore } from '@/stores/realtime'
 import { useActiveExperimentStore } from '@/stores/activeExperiment'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
@@ -39,6 +39,7 @@ type UnityMessage = {
 }
 
 const monitoringStore = useMonitoringStore()
+const realtimeStore = useRealtimeStore()
 const activeExperimentStore = useActiveExperimentStore()
 const overviewAlgorithmFallbacks: AlgorithmDefinition[] = [
   {
@@ -100,7 +101,6 @@ const overviewMissionStatus = ref<MissionStatus>('READY')
 const overviewMissionControlSource = ref('UNKNOWN')
 const overviewDeploymentAcknowledged = ref(false)
 let poseFrameSequence = 0
-let heartbeatTimer: number | null = null
 let freshnessTimer: number | null = null
 const unityInstanceId = 'overview-unity-01'
 
@@ -246,20 +246,16 @@ function ensureOverviewCamera(force = false) {
   lastUnityEvent.value = 'switchCamera:overview:initial'
 }
 
-const rosBridgeOnline = computed(() =>
-  monitoringStore.nodes.some((node) => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
-)
+const realtimeVehicles = computed(() => realtimeStore.poseBatch?.payload.vehicles ?? [])
+const rosBridgeOnline = computed(() => realtimeStore.connected && realtimeStore.poseBatch !== null)
 const unityReady = computed(() => unityConnection.value.includes('Unity WebGL 已连接'))
 const realtimePoseCount = computed(
-  () =>
-    monitoringStore.nodes.filter(
-      (node) => ['UAV', 'USV'].includes(node.type) && node.status === 'ONLINE' && hasRuntimePosition(node),
-    ).length,
+  () => realtimeVehicles.value.filter(
+    vehicle => vehicle.fresh !== false && vehicle.positionValid !== false && vehicle.localPositionEnuM,
+  ).length,
 )
 const onlineNodeCount = computed(() => displayedNodes.value.filter((node) => node.status === 'ONLINE').length)
-const onlineVehicleCount = computed(() =>
-  selectableDevices.value.filter((node) => node.status === 'ONLINE').length,
-)
+const onlineVehicleCount = computed(() => realtimePoseCount.value)
 const taskStateText = computed(() => {
   if (!unityReady.value) return '等待 Unity'
   if (rosBridgeOnline.value && realtimePoseCount.value > 0) return '实时同步'
@@ -366,6 +362,25 @@ const selectedOverviewActions = computed<OverviewQuickAction[]>(() => {
   ]
 })
 
+function authoritativeUavControlState(device: RuntimeNode | undefined) {
+  freshnessClock.value
+  const receivedAt = device?.controlStateReceivedAt ? Date.parse(device.controlStateReceivedAt) : 0
+  if (device?.controlStateFresh !== true
+    || device.controlConnectionState !== 'ONLINE'
+    || receivedAt <= 0
+    || Date.now() - receivedAt > 2000) return 'UNKNOWN'
+  return device.controlOperationalState ?? 'UNKNOWN'
+}
+
+function isSelectedOverviewActionAllowed(action: OverviewQuickAction) {
+  if (action.commandType !== 'UAV_TAKEOFF') return true
+  return true
+}
+
+function isUsvSafetyStop(commandType: RuntimeCommandType) {
+  return commandType === 'USV_STOP' || commandType === 'USV_EMERGENCY_STOP'
+}
+
 function clampPercent(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return null
   return Math.min(100, Math.max(0, Math.round(value)))
@@ -407,6 +422,7 @@ async function issueSelectedQuickCommand(action: OverviewQuickAction) {
     ElMessage.error('没有可控制的设备')
     return
   }
+  if (!isSelectedOverviewActionAllowed(action)) return
   await sendVehicleCommand({
     commandType: action.commandType,
     deviceCodes: [device.code],
@@ -429,7 +445,6 @@ async function handleOverviewMissionToggle() {
 
 function operationalStateAfterCommand(commandType: RuntimeCommandType) {
   const states: Partial<Record<RuntimeCommandType, string>> = {
-    UAV_TAKEOFF: 'AIRBORNE', UAV_HOVER: 'HOLDING', UAV_RESUME: 'AIRBORNE', UAV_RETURN: 'RETURNING', UAV_LAND: 'LANDING',
     USV_DEPART: 'SAILING', USV_HOLD: 'HOLDING', USV_RESUME: 'SAILING', USV_RETURN: 'RETURNING', USV_STOP: 'STOPPED',
   }
   return states[commandType]
@@ -464,56 +479,6 @@ function pushPoseFrameToUnity() {
     timestampMs: Date.now(),
     poses,
   })
-}
-
-function unityHeartbeatDetail() {
-  return [
-    `Unity WebGL page active`,
-    `camera=${selectedCameraMode.value}`,
-    `selected=${selectedDeviceCode.value}`,
-    `lastEvent=${lastUnityEvent.value}`,
-    `commandState=${unityCommandState.value}`,
-    `poseFrames=${poseFrameSequence}`,
-  ].join(' | ')
-}
-
-function unityRosConnectionStatus() {
-  if (rosBridgeOnline.value && realtimePoseCount.value > 0) {
-    return `ROS pose sync active, vehicles=${realtimePoseCount.value}`
-  }
-  if (rosBridgeOnline.value) return 'ROS bridge online, waiting for vehicle poses'
-  return 'ROS bridge offline or no live pose frame'
-}
-
-async function sendUnityHeartbeat(state: 'ONLINE' | 'STOPPED' | 'FAILED' = 'ONLINE') {
-  try {
-    await sendIntegrationHeartbeat({
-      componentCode: 'unity-client-01',
-      instanceId: unityInstanceId,
-      state,
-      detail: state === 'STOPPED' ? 'Unity WebGL page closed or route left' : unityHeartbeatDetail(),
-      rosConnectionStatus: unityRosConnectionStatus(),
-    })
-    if (state !== 'STOPPED') void monitoringStore.refresh({}, true)
-  } catch (error) {
-    console.warn('Unity heartbeat failed', error)
-  }
-}
-
-function startUnityHeartbeat() {
-  void sendUnityHeartbeat('ONLINE')
-  if (heartbeatTimer !== null) return
-  heartbeatTimer = window.setInterval(() => {
-    void sendUnityHeartbeat('ONLINE')
-  }, 2000)
-}
-
-function stopUnityHeartbeat() {
-  if (heartbeatTimer !== null) {
-    window.clearInterval(heartbeatTimer)
-    heartbeatTimer = null
-  }
-  void sendUnityHeartbeat('STOPPED')
 }
 
 function applyOverviewMissionDetail(detail: MissionDetail) {
@@ -660,37 +625,17 @@ async function selectDevice(deviceCode: string) {
     lastUnityEvent.value = `selectDevice:${normalizedCode}:waiting`
     return
   }
-  try {
-    await sendTrackedUnityCommand(
-      'SELECT_DEVICE',
-      '系统总览选择协同设备',
-      'selectDevice',
-      { deviceCode: normalizedCode },
-      normalizedCode,
-    )
-    selectedDeviceSyncedToUnity = normalizedCode
-    lastUnityEvent.value = `selectDevice:${normalizedCode}`
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '设备视角切换失败')
-  }
+  unityBridgeStore.send('selectDevice', { deviceCode: normalizedCode })
+  selectedDeviceSyncedToUnity = normalizedCode
+  lastUnityEvent.value = `selectDevice:${normalizedCode}`
 }
 
 async function switchCamera(mode: string) {
   const deviceCode = selectedOrDefaultDeviceCode()
-  try {
-    await sendTrackedUnityCommand(
-      'SWITCH_CAMERA',
-      'Unity 切换态势观察视角',
-      'switchCamera',
-      { mode, deviceCode },
-      deviceCode,
-    )
-    selectedCameraMode.value = mode
-    if (mode === 'device-follow') selectedDeviceSyncedToUnity = deviceCode
-    lastUnityEvent.value = `switchCamera:${mode}`
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'Unity 视角切换失败')
-  }
+  unityBridgeStore.send('switchCamera', { mode, deviceCode })
+  selectedCameraMode.value = mode
+  if (mode === 'device-follow') selectedDeviceSyncedToUnity = deviceCode
+  lastUnityEvent.value = `switchCamera:${mode}`
 }
 
 async function toggleUnityTrajectory() {
@@ -698,13 +643,7 @@ async function toggleUnityTrajectory() {
   const visible = !unityBridgeStore.trajectoryVisible
   unityBridgeStore.setTrajectoryTogglePending(true)
   try {
-    const result = await recordRuntimeCommand(
-      'TOGGLE_TRAJECTORY',
-      visible ? 'Unity 显示现有轨迹' : 'Unity 隐藏现有轨迹',
-      '',
-      { visible },
-    )
-    unityBridgeStore.send('toggleTrajectory', { visible }, result.commandKey)
+    unityBridgeStore.send('toggleTrajectory', { visible })
     lastUnityEvent.value = `toggleTrajectory:${visible ? 'show' : 'hide'}`
     if (trajectoryToggleTimer !== null) window.clearTimeout(trajectoryToggleTimer)
     trajectoryToggleTimer = window.setTimeout(() => {
@@ -718,24 +657,6 @@ async function toggleUnityTrajectory() {
   }
 }
 
-function unityBridgeCommand(commandType: RuntimeCommandType) {
-  const commands: Partial<Record<RuntimeCommandType, string>> = {
-    UAV_TAKEOFF: 'uavTakeoff',
-    UAV_HOVER: 'uavHover',
-    UAV_RESUME: 'uavResume',
-    UAV_RETURN: 'uavReturn',
-    UAV_LAND: 'uavLand',
-    UAV_EMERGENCY_LAND: 'uavEmergencyLand',
-    USV_DEPART: 'usvDepart',
-    USV_HOLD: 'usvHold',
-    USV_RESUME: 'usvResume',
-    USV_RETURN: 'usvReturn',
-    USV_STOP: 'usvStop',
-    USV_EMERGENCY_STOP: 'usvEmergencyStop',
-  }
-  return commands[commandType] ?? commandType.toLowerCase()
-}
-
 type VehicleBatchResult = {
   total: number
   acknowledged: number
@@ -747,29 +668,15 @@ async function sendVehicleCommand(
   command: VehicleQuickCommand,
   options: { manageBusy?: boolean; notify?: boolean } = {},
 ): Promise<VehicleBatchResult> {
-  const manageBusy = options.manageBusy ?? true
+  const manageBusy = (options.manageBusy ?? true) && !isUsvSafetyStop(command.commandType)
   const notify = options.notify ?? true
   if (!command.deviceCodes.length) {
     return { total: 0, acknowledged: 0, failed: 0, allAcknowledged: false }
   }
-  if (!unityControlReady.value) {
-    const feedback = { ...commandFeedback.value }
-    for (const deviceCode of command.deviceCodes) feedback[normalizeDeviceCode(deviceCode)] = 'FAILED'
-    commandFeedback.value = feedback
-    if (notify) ElMessage.error(`${command.label}：Unity 控制桥尚未就绪，未创建后端控制指令`)
-    return {
-      total: command.deviceCodes.length,
-      acknowledged: 0,
-      failed: command.deviceCodes.length,
-      allAcknowledged: false,
-    }
-  }
   if (manageBusy) commandBusy.value = true
-  const bridgeCommand = unityBridgeCommand(command.commandType)
   try {
     const statuses: RuntimeCommandStatus[] = []
-    // Unity WebGL exposes a single command bridge. Keep the request/ACK pairs
-    // ordered so a six-device deployment cannot lose one three-device group.
+    // Send in order so each ROS result maps back to the correct device button.
     for (const deviceCode of command.deviceCodes) {
       const status = await (async (): Promise<RuntimeCommandStatus> => {
         const key = normalizeDeviceCode(deviceCode)
@@ -779,27 +686,18 @@ async function sendVehicleCommand(
             command.commandType,
             `${command.label} / ${deviceCode}`,
             key,
-            { action: bridgeCommand },
           )
           if (result.status === 'FAILED' || result.status === 'TIMEOUT') {
             commandFeedback.value = { ...commandFeedback.value, [key]: result.status }
             return result.status
           }
-          if (!unityBridgeStore.connected) throw new Error('Unity WebGL 尚未连接')
-
-          const acknowledgement = await unityBridgeStore.sendControlCommandAndWait(
-            bridgeCommand,
-            key,
-            result.commandKey,
-          )
-          const status: RuntimeCommandStatus = acknowledgement.success ? 'ACKNOWLEDGED' : 'FAILED'
+          const rosStatus = await realtimeStore.waitForCommandResult(result.commandKey, 90000)
+          const status: RuntimeCommandStatus = rosStatus === 'SUCCEEDED' ? 'SUCCEEDED'
+            : rosStatus === 'CANCELLED' ? 'CANCELLED'
+              : rosStatus === 'TIMEOUT' || rosStatus === 'EXPIRED' ? 'TIMEOUT' : 'FAILED'
           commandFeedback.value = { ...commandFeedback.value, [key]: status }
-          if (acknowledgement.success) {
-            const reportedState = normalizeOperationalState(
-              acknowledgement.status.split(':', 1)[0]?.trim(),
-              key.startsWith('uav') ? 'UAV' : 'USV',
-            )
-            const state = reportedState || operationalStateAfterCommand(command.commandType)
+          if (status === 'SUCCEEDED') {
+            const state = operationalStateAfterCommand(command.commandType)
             if (state) operationalStates.value = { ...operationalStates.value, [key]: state }
           }
           return status
@@ -811,7 +709,7 @@ async function sendVehicleCommand(
       })()
       statuses.push(status)
     }
-    const acknowledged = statuses.filter((status) => status === 'ACKNOWLEDGED').length
+    const acknowledged = statuses.filter((status) => status === 'SUCCEEDED').length
     const failed = statuses.length - acknowledged
     const result = {
       total: statuses.length,
@@ -819,8 +717,6 @@ async function sendVehicleCommand(
       failed,
       allAcknowledged: statuses.length > 0 && acknowledged === statuses.length,
     }
-    lastUnityEvent.value = `vehicle-command:${bridgeCommand}`
-    unityCommandState.value = `${command.label}：${acknowledged}/${statuses.length} 已确认`
     if (notify) {
       if (result.allAcknowledged) ElMessage.success(`${command.label}：${acknowledged}/${statuses.length} 台已确认`)
       else ElMessage.error(`${command.label}：成功 ${acknowledged}，失败 ${failed}`)
@@ -856,7 +752,7 @@ async function sendOverviewFleetCommand(
     UAV_TAKEOFF: ['GROUNDED'], UAV_HOVER: ['AIRBORNE', 'RETURNING'], UAV_RESUME: ['HOLDING'],
     UAV_RETURN: ['AIRBORNE', 'HOLDING'], UAV_LAND: ['AIRBORNE', 'HOLDING', 'RETURNING'],
     USV_DEPART: ['MOORED', 'STOPPED'], USV_HOLD: ['SAILING', 'RETURNING'], USV_RESUME: ['HOLDING'],
-    USV_RETURN: ['SAILING', 'HOLDING'], USV_STOP: ['SAILING', 'HOLDING', 'RETURNING'],
+    USV_RETURN: ['SAILING', 'HOLDING'], USV_STOP: ['DEPARTING', 'SAILING', 'HOLDING', 'RETURNING'],
   }
   const desiredStates: Partial<Record<VehicleQuickCommand['commandType'], string[]>> = {
     UAV_TAKEOFF: ['TAKING_OFF', 'AIRBORNE', 'HOLDING'], UAV_HOVER: ['HOLDING'], UAV_RESUME: ['AIRBORNE'],
@@ -865,11 +761,19 @@ async function sendOverviewFleetCommand(
     USV_RETURN: ['RETURNING'], USV_STOP: ['STOPPED', 'MOORED'],
   }
   const devices = quickControlDevices.value.filter((device) => device.type === vehicleType)
-  const isDeploymentCommand = commandType === 'UAV_TAKEOFF' || commandType === 'USV_DEPART'
+  const isDeploymentCommand = commandType === 'USV_DEPART'
   const eligible: string[] = []
   let alreadySatisfied = 0
   let invalid = 0
   for (const device of devices) {
+    if (commandType === 'UAV_TAKEOFF') {
+      const runtimeDevice = overviewFleetCards.value.find(item => item.code === normalizeDeviceCode(device.code))
+      const controlState = authoritativeUavControlState(runtimeDevice)
+      if (controlState === 'AIRBORNE') alreadySatisfied += 1
+      else if (controlState === 'GROUNDED') eligible.push(device.code)
+      else invalid += 1
+      continue
+    }
     const state = normalizeOperationalState(operationalStates.value[normalizeDeviceCode(device.code)], vehicleType)
     if ((desiredStates[commandType] ?? []).includes(state)) alreadySatisfied += 1
     else if (isDeploymentCommand || (allowedStates[commandType] ?? []).includes(state)) eligible.push(device.code)
@@ -1025,7 +929,6 @@ function handleUnityReady() {
   unityConnection.value = 'Unity WebGL 已连接'
   lastUnityEvent.value = 'sceneLoaded'
   pushPoseFrameToUnity()
-  startUnityHeartbeat()
 }
 
 function handleUnityMessage(message: UnityMessage) {
@@ -1047,7 +950,7 @@ function handleUnityMessage(message: UnityMessage) {
     if (deviceCode) {
       commandFeedback.value = {
         ...commandFeedback.value,
-        [deviceCode]: success ? 'ACKNOWLEDGED' : 'FAILED',
+        [deviceCode]: success ? 'SUCCEEDED' : 'FAILED',
       }
       if (success) {
         const unityState = normalizeOperationalState(
@@ -1115,10 +1018,10 @@ function handleUnityError(message: string) {
   unityConnection.value = 'Unity WebGL 加载失败'
   lastUnityEvent.value = 'unityError'
   ElMessage.error(message)
-  void sendUnityHeartbeat('FAILED')
 }
 
 onMounted(() => {
+  realtimeStore.connect()
   selectedOrDefaultDeviceCode()
   unityViewportStore.show('dashboard')
   freshnessTimer = window.setInterval(() => { freshnessClock.value = Date.now() }, 500)
@@ -1146,7 +1049,6 @@ onBeforeUnmount(() => {
   if (freshnessTimer !== null) window.clearInterval(freshnessTimer)
   if (trajectoryToggleTimer !== null) window.clearTimeout(trajectoryToggleTimer)
   if (cameraToolsTimer !== null) window.clearTimeout(cameraToolsTimer)
-  stopUnityHeartbeat()
   monitoringStore.disconnectEvents()
 })
 
@@ -1339,7 +1241,7 @@ watch(
                 :key="action.commandType"
                 type="button"
                 :class="{ danger: action.danger }"
-                :disabled="commandBusy || !unityControlReady"
+                :disabled="(commandBusy && !isUsvSafetyStop(action.commandType)) || !isSelectedOverviewActionAllowed(action)"
                 @click="issueSelectedQuickCommand(action)"
               >
                 <component :is="action.icon" :size="19" :stroke-width="1.9" />
@@ -1374,7 +1276,7 @@ watch(
             <header>
               <strong>{{ device.code.toUpperCase() }}</strong>
               <b :class="(device.feedback || device.status || 'UNKNOWN').toLowerCase()">
-                {{ device.feedback === 'ACKNOWLEDGED' ? '已确认' : runtimeStatusLabel(device.status) }}
+                {{ device.feedback === 'SUCCEEDED' ? '执行成功' : runtimeStatusLabel(device.status) }}
               </b>
             </header>
 
