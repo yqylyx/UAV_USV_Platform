@@ -3,6 +3,9 @@ package com.uavusv.platform.module.gateway.v1;
 import jakarta.annotation.PreDestroy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
+import com.uavusv.platform.module.sensor.service.RadarScanInput;
+import com.uavusv.platform.module.sensor.service.SensorRuntimeService;
+import com.uavusv.platform.module.visualsensor.service.VisualSensorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +21,8 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
@@ -38,6 +43,8 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private final RealtimeHub realtimeHub;
     private final ApplicationEventPublisher eventPublisher;
     private final RuntimeStateService runtimeStateService;
+    private final VisualSensorService visualSensorService;
+    private final SensorRuntimeService sensorRuntimeService;
     private final URI endpoint;
     private final boolean stateAuthority;
     private final HttpClient httpClient;
@@ -56,6 +63,8 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             RealtimeHub realtimeHub,
             ApplicationEventPublisher eventPublisher,
             RuntimeStateService runtimeStateService,
+            VisualSensorService visualSensorService,
+            SensorRuntimeService sensorRuntimeService,
             @Value("${app.gateway.v1.websocket-url:ws://127.0.0.1:8765/uav_usv/v1}") String websocketUrl,
             @Value("${app.ros.state-authority:v1}") String stateAuthority
     ) {
@@ -65,6 +74,8 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         this.realtimeHub = realtimeHub;
         this.eventPublisher = eventPublisher;
         this.runtimeStateService = runtimeStateService;
+        this.visualSensorService = visualSensorService;
+        this.sensorRuntimeService = sensorRuntimeService;
         this.endpoint = URI.create(websocketUrl);
         this.stateAuthority = "v1".equalsIgnoreCase(stateAuthority);
         this.httpClient = HttpClient.newBuilder()
@@ -186,9 +197,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             log.info("ROS Gateway v1 message type {}", envelope.type().wireName());
             GatewaySequenceGuard.SequenceCheckResult result = gatewaySequenceGuard.inspect(envelope);
             if (result.accepted()) {
-                realtimeHub.publish(envelope);
-                if (stateAuthority) observeRuntimeState(envelope);
-                publishControlAckEvent(envelope);
+                handleAcceptedEnvelope(envelope);
             } else {
                 log.warn("ROS Gateway v1 rejected sequence result {}", result.status());
             }
@@ -203,15 +212,52 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             log.info("ROS Gateway v1 binary message type {}", envelope.type().wireName());
             GatewaySequenceGuard.SequenceCheckResult result = gatewaySequenceGuard.inspect(envelope);
             if (result.accepted()) {
-                realtimeHub.publish(envelope);
-                if (stateAuthority) observeRuntimeState(envelope);
-                publishControlAckEvent(envelope);
+                handleAcceptedEnvelope(envelope);
             } else {
                 log.warn("ROS Gateway v1 rejected binary sequence result {}", result.status());
             }
         } catch (IllegalArgumentException exception) {
             log.warn("Ignored invalid ROS Gateway v1 binary message: {}", exception.getMessage());
         }
+    }
+
+    private void handleAcceptedEnvelope(GatewayEnvelope envelope) {
+        if (observeHighVolumeSensor(envelope)) {
+            return;
+        }
+        realtimeHub.publish(envelope);
+        if (stateAuthority) observeRuntimeState(envelope);
+        publishControlAckEvent(envelope);
+    }
+
+    private boolean observeHighVolumeSensor(GatewayEnvelope envelope) {
+        if (envelope.type() == GatewayMessageType.MEDIA_CAMERA_JPEG) {
+            JsonNode payload = envelope.payload();
+            visualSensorService.observeJpegFrame(
+                    text(payload, "cameraId"),
+                    text(payload, "jpegBase64"),
+                    payload.path("width").asInt(),
+                    payload.path("height").asInt(),
+                    payload.path("timestampMs").asLong(envelope.timestamp().toEpochMilli()),
+                    -1
+            );
+            return true;
+        }
+        if (envelope.type() == GatewayMessageType.PERCEPTION_RADAR_SCAN) {
+            JsonNode payload = envelope.payload();
+            sensorRuntimeService.observeRadarScan(new RadarScanInput(
+                    text(payload, "sensorId"),
+                    payload.path("timestampMs").asLong(envelope.timestamp().toEpochMilli()),
+                    payload.path("angleMinRad").asDouble(),
+                    payload.path("angleIncrementRad").asDouble(),
+                    payload.path("rangeMinM").asDouble(),
+                    payload.path("rangeMaxM").asDouble(),
+                    doubles(payload.path("rangesM")),
+                    doubles(payload.path("intensities"))
+            ));
+            return true;
+        }
+        return false;
     }
 
     private void handleDisconnect(String detail) {
@@ -279,6 +325,15 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         }
         JsonNode value = payload.path(fieldName);
         return value.isTextual() ? value.asText().trim() : "";
+    }
+
+    private List<Double> doubles(JsonNode array) {
+        if (array == null || !array.isArray()) {
+            return List.of();
+        }
+        List<Double> values = new ArrayList<>(array.size());
+        array.forEach(value -> values.add(value.asDouble()));
+        return values;
     }
 
     private void scheduleReconnect() {

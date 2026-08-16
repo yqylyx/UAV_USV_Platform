@@ -45,4 +45,28 @@ class VisualSensorServiceTests {
                 stored -> assertThat(stored).isEqualTo(jpeg)
         );
     }
+
+    @Test
+    void normalizesGatewayCameraIdsBeforeCaching() {
+        VisualSensorService service = new VisualSensorService();
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, 3, 4, (byte) 0xff, (byte) 0xd9};
+
+        service.observeJpegFrame(
+                "usv_01_front",
+                Base64.getEncoder().encodeToString(jpeg),
+                240,
+                135,
+                System.currentTimeMillis(),
+                0.02
+        );
+
+        var overview = service.overview();
+        assertThat(overview.onlineCount()).isEqualTo(1);
+        assertThat(overview.sensors().get(3).cameraId()).isEqualTo("usv_01");
+        assertThat(overview.sensors().get(3).status()).isEqualTo("ONLINE");
+        assertThat(service.latestFrame("usv_01")).hasValueSatisfying(
+                stored -> assertThat(stored).isEqualTo(jpeg)
+        );
+        assertThat(service.latestFrame("usv_01_front")).isEmpty();
+    }
 }

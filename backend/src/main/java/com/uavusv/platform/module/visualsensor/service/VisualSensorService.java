@@ -44,7 +44,7 @@ public class VisualSensorService {
     }
 
     public synchronized void observeFrame(JsonNode frame) {
-        String cameraId = frame.path("camera_id").asText("");
+        String cameraId = normalizeCameraId(frame.path("camera_id").asText(""));
         FrameState state = frames.get(cameraId);
         if (state == null || !"jpeg".equalsIgnoreCase(frame.path("encoding").asText("jpeg"))) {
             return;
@@ -86,6 +86,7 @@ public class VisualSensorService {
             long timestampMillis,
             double ageSeconds
     ) {
+        cameraId = normalizeCameraId(cameraId);
         if (!frames.containsKey(cameraId) || jpegBase64 == null || jpegBase64.isBlank()) {
             return;
         }
@@ -179,6 +180,21 @@ public class VisualSensorService {
 
     public List<String> cameraIds() {
         return DEFINITIONS.stream().map(SensorDefinition::cameraId).toList();
+    }
+
+    static String normalizeCameraId(String cameraId) {
+        if (cameraId == null || cameraId.isBlank()) {
+            return "";
+        }
+        return switch (cameraId.trim()) {
+            case "uav_01_down" -> "uav_01";
+            case "uav_02_down" -> "uav_02";
+            case "uav_03_down" -> "uav_03";
+            case "usv_01_front" -> "usv_01";
+            case "usv_02_front" -> "usv_02";
+            case "usv_03_front" -> "usv_03";
+            default -> cameraId.trim();
+        };
     }
 
     private record SensorDefinition(

@@ -19,16 +19,16 @@ onBeforeUnmount(()=>{if(timer)clearInterval(timer)})
 </script>
 
 <template>
-  <ConsoleLayout title="雷达态势" eyebrow="RADAR SITUATION" :show-refresh="false">
-    <template #actions><span class="chip" :class="{online:overview.connected}"><Wifi :size="14"/>雷达源 {{ overview.onlineCount }}/{{ overview.totalCount||'--' }}</span><span class="chip"><Crosshair :size="14"/>点迹 {{ overview.items.length }}</span><span class="chip"><Timer :size="14"/>{{ freshness==null?'--':`${freshness} ms` }}</span></template>
+  <ConsoleLayout title="基地雷达仿真回波" eyebrow="RADAR ECHO" :show-refresh="false">
+    <template #actions><span class="chip" :class="{online:overview.connected}"><Wifi :size="14"/>base_radar {{ overview.onlineCount }}/{{ overview.totalCount||'--' }}</span><span class="chip"><Crosshair :size="14"/>扫描点 {{ overview.items.length }}</span><span class="chip"><Timer :size="14"/>{{ freshness==null?'--':`${freshness} ms` }}</span></template>
     <section class="radar-stage">
       <div class="ppi"><RadarPpiCanvas :items="overview.items" :selected-id="selected?.id" @select="selected=$event"/></div>
-      <article class="island link"><span>RADAR LINK</span><b>{{ overview.connected?'融合链路在线':'等待真实雷达数据' }}</b><dl><div><dt>在线源</dt><dd>{{ overview.onlineCount }}/{{ overview.totalCount||'--' }}</dd></div><div><dt>刷新周期</dt><dd>750 ms</dd></div><div><dt>最近障碍</dt><dd>{{ fmt(overview.nearestObstacleRange) }} m</dd></div></dl></article>
-      <article class="island evidence" :class="{empty:!selected}"><span>TARGET EVIDENCE</span><template v-if="selected"><b>{{ selected.id }}</b><dl><div><dt>类型</dt><dd>{{ selected.kind }}</dd></div><div><dt>距离</dt><dd>{{ fmt(selected.range) }} m</dd></div><div><dt>方位</dt><dd>{{ fmt(selected.bearing) }}°</dd></div><div><dt>置信度</dt><dd>{{ selected.confidence==null?'--':`${Math.round(selected.confidence*100)}%` }}</dd></div></dl></template><p v-else>点击真实 PPI 点迹查看证据字段</p></article>
-      <article class="island legend"><span>图例与量程</span><div><i class="target"/>目标点迹</div><div><i class="obstacle"/>障碍点迹</div><div><i class="selected"/>当前选中</div><small>量程由当前真实点迹自动计算，无数据时保持基础 100 m</small></article>
-      <article class="island events"><span>RECENT EVENTS</span><div v-for="item in latestEvents" :key="`${item.deviceId}-${item.id}-${item.timestampMs}`"><time>{{ time(item.timestampMs) }}</time><b>{{ item.id }}</b><em>{{ item.kind }}</em></div><p v-if="!latestEvents.length">暂无真实雷达事件</p></article>
+      <article class="island link"><span>RADAR LINK</span><b>{{ overview.connected?'仿真回波在线':'等待 base_radar 数据' }}</b><dl><div><dt>在线源</dt><dd>{{ overview.onlineCount }}/{{ overview.totalCount||'--' }}</dd></div><div><dt>刷新周期</dt><dd>750 ms</dd></div><div><dt>最近回波</dt><dd>{{ fmt(overview.nearestObstacleRange) }} m</dd></div></dl></article>
+      <article class="island evidence" :class="{empty:!selected}"><span>SCAN SAMPLE</span><template v-if="selected"><b>{{ selected.id }}</b><dl><div><dt>类型</dt><dd>{{ selected.kind }}</dd></div><div><dt>距离</dt><dd>{{ fmt(selected.range) }} m</dd></div><div><dt>方位</dt><dd>{{ fmt(selected.bearing) }}°</dd></div><div><dt>强度</dt><dd>{{ selected.confidence==null?'--':`${Math.round(selected.confidence*100)}%` }}</dd></div></dl></template><p v-else>点击扫描点查看回波字段</p></article>
+      <article class="island legend"><span>图例与量程</span><div><i class="target"/>扫描回波</div><div><i class="obstacle"/>兼容障碍点</div><div><i class="selected"/>当前选中</div><small>当前显示 Gazebo base_radar 仿真传感器回波；无数据时保持基础 100 m 量程</small></article>
+      <article class="island events"><span>RECENT ECHOES</span><div v-for="item in latestEvents" :key="`${item.deviceId}-${item.id}-${item.timestampMs}`"><time>{{ time(item.timestampMs) }}</time><b>{{ item.id }}</b><em>{{ item.kind }}</em></div><p v-if="!latestEvents.length">暂无 base_radar 扫描回波</p></article>
       <div class="run"><Radio :size="13"/>{{ experiment.label }} · {{ experiment.algorithmCode||'等待算法任务' }}</div>
-      <div class="counter"><span>障碍 {{ overview.obstacleCount }}</span><span>检测 {{ overview.detectionCount }}</span><span>最近目标 {{ overview.latestTargetId||'--' }}</span></div>
+      <div class="counter"><span>障碍 {{ overview.obstacleCount }}</span><span>扫描点 {{ overview.detectionCount }}</span><span>最新航迹 {{ overview.latestTargetId||'--' }}</span></div>
     </section>
   </ConsoleLayout>
 </template>
