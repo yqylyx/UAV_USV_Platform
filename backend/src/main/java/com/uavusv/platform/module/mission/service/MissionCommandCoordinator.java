@@ -54,7 +54,7 @@ public class MissionCommandCoordinator {
         if (event.status() == CommandStatus.SUCCEEDED) {
             applyAcknowledgedAction(mission, run, event);
         } else if (event.status() == CommandStatus.FAILED || event.status() == CommandStatus.TIMEOUT
-                || event.status() == CommandStatus.CANCELLED) {
+                || event.status() == CommandStatus.CANCELLED || event.status() == CommandStatus.REJECTED) {
             applyRejectedAction(mission, run, event);
         }
     }

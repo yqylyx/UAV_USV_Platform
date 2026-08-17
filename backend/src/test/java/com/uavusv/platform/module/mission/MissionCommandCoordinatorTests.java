@@ -56,6 +56,22 @@ class MissionCommandCoordinatorTests {
         verify(fixture.eventRepository).save(any());
     }
 
+    @Test
+    void shouldKeepMissionReadyWhenStartCommandRejected() {
+        Fixture fixture = fixture();
+
+        fixture.coordinator.handleCommandStatus(new ControlCommandStatusChangedEvent(
+                32L, "command-32", 20L, CommandType.START_MISSION,
+                CommandStatus.REJECTED, "ros rejected", "ROS_REJECTED"
+        ));
+
+        assertEquals(MissionStatus.READY, fixture.mission.getStatus());
+        assertEquals(MissionRunStatus.FAILED, fixture.run.getStatus());
+        assertEquals("ros rejected", fixture.run.getFailureReason());
+        assertNotNull(fixture.run.getEndedAt());
+        verify(fixture.eventRepository).save(any());
+    }
+
     private Fixture fixture() {
         MissionRunRepository runRepository = mock(MissionRunRepository.class);
         MissionTaskRepository taskRepository = mock(MissionTaskRepository.class);
