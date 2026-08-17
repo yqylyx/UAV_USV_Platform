@@ -52,11 +52,13 @@ const logs = ref<string[]>([])
 const scenarioReadyRunId = ref<number | null>(null)
 const scenarioLoading = ref(false)
 const algorithmPrepared = ref(false)
+const algorithmPreparing = ref(false)
 const initialScenarioPoses = ref<ScenarioInitialPose[]>([])
 const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
 let previousAlgorithmPoses: VirtualPoseStateMap = new Map()
 let algorithmPollTimer: number | null = null
 let algorithmPollInFlight = false
+let algorithmPreparePromise: Promise<boolean> | null = null
 const fleetOriginEnu: EnuOrigin = {
   eastM: -75,
   northM: -310,
@@ -199,6 +201,7 @@ function generateScenario() {
   state.sequence = 0
   state.mission = 'STOPPED'
   algorithmPrepared.value = false
+  algorithmPreparePromise = null
   stopAlgorithmPolling()
   previousAlgorithmPoses = new Map()
   initialScenarioPoses.value = []
@@ -217,10 +220,16 @@ function generateScenario() {
   })
 }
 
-async function prepareExternalAlgorithm() {
-  if (algorithmPrepared.value || scenarioLoading.value) return
-  try {
-    const status = await prepareAlgorithmRun(state.runId, state.algorithm, {
+function prepareExternalAlgorithm(): Promise<boolean> {
+  if (algorithmPrepared.value) return Promise.resolve(true)
+  if (scenarioLoading.value) return Promise.resolve(false)
+  if (algorithmPreparePromise) return algorithmPreparePromise
+
+  const prepareRunId = state.runId
+  algorithmPreparing.value = true
+  algorithmPreparePromise = (async () => {
+    try {
+      const status = await prepareAlgorithmRun(prepareRunId, state.algorithm, {
       uavCount: state.uavCount,
       usvCount: state.usvCount,
       targetCount: 1,
@@ -233,14 +242,22 @@ async function prepareExternalAlgorithm() {
       initialPoses: initialScenarioPoses.value,
       targetBehavior: 'MOVING',
       standaloneVirtualSimulation: true,
-    })
-    algorithmPrepared.value = true
-    state.sequence = Number(status.latestSequence ?? 0)
-    addLog(`algorithm prepared: ${state.algorithm} runId=${state.runId}`)
-  } catch (error) {
-    algorithmPrepared.value = false
-    addLog(`algorithm prepare failed: ${error instanceof Error ? error.message : String(error)}`)
-  }
+      })
+      if (state.runId !== prepareRunId) return false
+      algorithmPrepared.value = true
+      state.sequence = Number(status.latestSequence ?? 0)
+      addLog(`algorithm prepared: ${state.algorithm} runId=${prepareRunId}`)
+      return true
+    } catch (error) {
+      algorithmPrepared.value = false
+      addLog(`algorithm prepare failed: ${error instanceof Error ? error.message : String(error)}`)
+      return false
+    } finally {
+      algorithmPreparing.value = false
+      algorithmPreparePromise = null
+    }
+  })()
+  return algorithmPreparePromise
 }
 
 async function startMission() {
@@ -248,11 +265,14 @@ async function startMission() {
     !unityReady.value
     || !speedValid.value
     || scenarioLoading.value
-    || !algorithmPrepared.value
     || scenarioReadyRunId.value !== state.runId
   ) {
     addLog(`missionStart blocked: waiting for algorithm preparation runId=${state.runId}`)
     return
+  }
+  if (!algorithmPrepared.value) {
+    addLog(`missionStart: preparing algorithm runId=${state.runId}`)
+    if (!(await prepareExternalAlgorithm())) return
   }
   try {
     await controlAlgorithmRun(state.runId, 'start')
@@ -303,6 +323,7 @@ async function resetMission() {
   state.mission = 'STOPPED'
   state.sequence = 0
   algorithmPrepared.value = false
+  algorithmPreparePromise = null
   previousAlgorithmPoses = new Map()
   send('missionReset', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
 }
@@ -433,8 +454,8 @@ onBeforeUnmount(() => {
           <section class="vf-panel">
             <div class="vf-panel-head"><h3>任务控制</h3><span>{{ state.mission }}</span></div>
             <div class="vf-actions">
-              <button class="vf-button success" type="button" :disabled="state.mission === 'RUNNING' || !unityReady || !speedValid || scenarioLoading || scenarioReadyRunId !== state.runId" @click="startMission">
-                <Play :size="15" /> 开始
+              <button class="vf-button success" type="button" :disabled="state.mission === 'RUNNING' || !unityReady || !speedValid || scenarioLoading || algorithmPreparing || scenarioReadyRunId !== state.runId" @click="startMission">
+                <Play :size="15" /> {{ algorithmPreparing ? '准备中' : '开始' }}
               </button>
               <button class="vf-button" type="button" :disabled="state.mission !== 'RUNNING'" @click="pauseMission">
                 <Pause :size="15" /> 暂停
