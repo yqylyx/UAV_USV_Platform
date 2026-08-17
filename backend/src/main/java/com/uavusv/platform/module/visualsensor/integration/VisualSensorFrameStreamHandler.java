@@ -23,7 +23,6 @@ public class VisualSensorFrameStreamHandler extends TextWebSocketHandler {
     private final Map<String, Long> lastSentAtMillis = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
     private final Clock clock;
-
     @Autowired
     public VisualSensorFrameStreamHandler(ObjectMapper objectMapper) {
         this(objectMapper, Clock.systemUTC());
