@@ -21,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
-import java.util.Base64;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
@@ -84,7 +83,10 @@ public class AlgorithmRuntimeManager {
         if (!Files.isRegularFile(runnerPath)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "算法运行器不存在：" + runnerPath);
         }
+        Path configFile = null;
         try {
+            configFile = Files.createTempFile("uav-usv-algorithm-", ".json");
+            Files.write(configFile, objectMapper.writeValueAsBytes(runtimeConfig));
             List<String> command = new ArrayList<>();
             command.add(pythonCommand);
             command.add(runnerPath.toString());
@@ -92,10 +94,8 @@ public class AlgorithmRuntimeManager {
             command.add(algorithmCode);
             command.add("--run-id");
             command.add(String.valueOf(runId));
-            command.add("--config-base64");
-            command.add(Base64.getEncoder().encodeToString(
-                    objectMapper.writeValueAsBytes(runtimeConfig)
-            ));
+            command.add("--config-file");
+            command.add(configFile.toString());
             command.add("--fps");
             command.add("10");
             ProcessBuilder builder = new ProcessBuilder(command);
@@ -125,6 +125,14 @@ public class AlgorithmRuntimeManager {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new BusinessException(ErrorCode.BAD_REQUEST, "等待算法运行器时被中断");
+        } finally {
+            if (configFile != null) {
+                try {
+                    Files.deleteIfExists(configFile);
+                } catch (IOException ignored) {
+                    // The temporary file is only needed during process startup.
+                }
+            }
         }
     }
 
