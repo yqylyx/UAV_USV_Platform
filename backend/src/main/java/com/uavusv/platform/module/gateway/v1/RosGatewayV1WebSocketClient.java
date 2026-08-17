@@ -249,6 +249,9 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
                     payload.path("timestampMs").asLong(envelope.timestamp().toEpochMilli()),
                     -1
             );
+            if (accepted) {
+                visualSensorService.observeGateway(true, "ROS Gateway v1 media.camera_jpeg 在线");
+            }
             logCameraFrame(envelope, cameraId, width, height, jpegBase64.length(), accepted);
             return true;
         }
@@ -272,6 +275,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private void handleDisconnect(String detail) {
         socket = null;
         runtimeStateService.observeGatewayConnection(false);
+        visualSensorService.observeGateway(false, "ROS Gateway v1 disconnected: " + detail);
         if (!closing) {
             log.warn("ROS Gateway v1 disconnected: {}", detail);
             scheduleReconnect();

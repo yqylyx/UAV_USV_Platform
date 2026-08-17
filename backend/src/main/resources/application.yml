@@ -51,6 +51,7 @@ app:
       east-axis: ${GEO_ORIGIN_EAST_AXIS:X}
       north-axis: ${GEO_ORIGIN_NORTH_AXIS:Z}
   visual-sensor:
+    websocket-enabled: ${VISUAL_SENSOR_WEBSOCKET_ENABLED:false}
     websocket-url: ${VISUAL_SENSOR_WEBSOCKET_URL:ws://127.0.0.1:8766/visual_sensors}
   integration:
     token: ${PLATFORM_INTEGRATION_TOKEN}
