@@ -10,6 +10,7 @@ import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import uavusv.gateway.v1.UavUsvGatewayV1;
@@ -32,6 +33,7 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
     private final DeviceCodeMapper deviceCodeMapper;
     private final MissionRunRepository missionRunRepository;
 
+    @Autowired
     public RosGatewayV1CommandDispatcher(
             RosGatewayV1WebSocketClient rosGatewayV1WebSocketClient,
             DeviceCodeMapper deviceCodeMapper,
