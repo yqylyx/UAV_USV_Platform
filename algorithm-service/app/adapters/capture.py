@@ -57,6 +57,7 @@ class CaptureAdapter(AlgorithmAdapter):
             self.source = source
             self.env = source.SwarmEnv3D()
             self._reset_positions()
+            self._initial_frame_pending = True
         self.safety = SceneSafetyFilter(TASK_CENTER_SCENE_MAP)
         self.previous_scene: Dict[str, Tuple[float, float, float]] = {}
         self.avoidance_count = 0
@@ -138,8 +139,11 @@ class CaptureAdapter(AlgorithmAdapter):
 
     def step(self) -> RuntimeFrame:
         self.sequence += 1
-        with contextlib.redirect_stdout(sys.stderr):
-            self.env.step()
+        initial_frame = self._initial_frame_pending
+        self._initial_frame_pending = False
+        if not initial_frame:
+            with contextlib.redirect_stdout(sys.stderr):
+                self.env.step()
 
         # The protected vessel is inactive in capture mode. Keep it clear of
         # every USV approach corridor so the capture experiment is not bent by
@@ -170,10 +174,10 @@ class CaptureAdapter(AlgorithmAdapter):
             kind = "UAV" if int(raw[6]) == 0 else "USV"
             if kind == "UAV":
                 uav_no += 1
-                code = f"UAV-{uav_no:02d}"
+                code = f"UAV-{uav_no:03d}"
             else:
                 usv_no += 1
-                code = f"USV-{usv_no:02d}"
+                code = f"USV-{usv_no:03d}"
             proposals[code] = (kind, self._to_scene(raw[:3], kind))
             rows[code] = (index, raw)
 

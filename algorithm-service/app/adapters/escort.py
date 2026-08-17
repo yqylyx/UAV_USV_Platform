@@ -124,6 +124,7 @@ class EscortAdapter(AlgorithmAdapter):
         self.previous: Dict[str, Tuple[float, float, float]] = {}
         self.avoidance_count = 0
         self.manual_threat: Tuple[float, float] | None = None
+        self._initial_frame_pending = True
 
     def _apply_initial_scenario_poses(self) -> None:
         initial_poses = self.initial_pose_map()
@@ -317,7 +318,7 @@ class EscortAdapter(AlgorithmAdapter):
     @staticmethod
     def _platform_code(platform: object) -> str:
         code_no = int(platform.identifier[1:])
-        return f"{platform.kind}-{code_no:02d}"
+        return f"{platform.kind}-{code_no:03d}"
 
     @staticmethod
     def _platform_altitude(platform: object) -> float:
@@ -394,8 +395,11 @@ class EscortAdapter(AlgorithmAdapter):
 
     def step(self) -> RuntimeFrame:
         self.sequence += 1
-        self._advance_route()
-        self.sim.step()
+        initial_frame = self._initial_frame_pending
+        self._initial_frame_pending = False
+        if not initial_frame:
+            self._advance_route()
+            self.sim.step()
 
         own_raw = (
             float(self.sim.own_position[0]),
