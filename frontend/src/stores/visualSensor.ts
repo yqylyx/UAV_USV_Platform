@@ -18,6 +18,7 @@ import type {
 
 const UNITY_FRAME_FRESH_MS = 15_000
 const UNITY_STREAM_FRESH_MS = 4_000
+const BACKEND_FRAME_FRESH_MS = 4_000
 
 const SENSOR_CATALOG: Array<{
   cameraId: string
@@ -37,9 +38,11 @@ const SENSOR_CATALOG: Array<{
 interface VisualSensorChannelState {
   overview: VisualSensorOverview | null
   frameUrls: Record<string, string>
+  frameReceivedAtMs: Record<string, number>
   unityFrames: Record<string, UnityVisualSensorMeta>
   streamStats: UnityVisualSensorStreamStats | null
   unityBridgeReady: boolean
+  framesRefreshing: boolean
   unityFocusedCameraId: string
   context: VisualSensorRuntimeContext
 }
@@ -84,9 +87,11 @@ function createChannel(runtimeScope: VisualSensorRuntimeScope): VisualSensorChan
   return {
     overview: null,
     frameUrls: {},
+    frameReceivedAtMs: {},
     unityFrames: {},
     streamStats: null,
     unityBridgeReady: false,
+    framesRefreshing: false,
     unityFocusedCameraId: 'uav_01',
     context: createContext(runtimeScope),
   }
@@ -104,6 +109,7 @@ function decodeJpeg(jpegBase64: string) {
 function releaseChannelFrames(channel: VisualSensorChannelState) {
   Object.values(channel.frameUrls).forEach((url) => URL.revokeObjectURL(url))
   channel.frameUrls = {}
+  channel.frameReceivedAtMs = {}
   channel.unityFrames = {}
   channel.streamStats = null
 }
@@ -200,7 +206,9 @@ function buildDisplayOverview(channel: VisualSensorChannelState): VisualSensorOv
       ? `Unity GPU 六路直出 · ${directStream.activeQuality.toUpperCase()}`
       : channel.unityBridgeReady
         ? 'Unity WebGL 六路视觉桥在线'
-        : 'Unity WebGL 设备相机初始化中',
+        : base.gatewayConnected
+          ? base.gatewayDetail
+          : 'Unity WebGL 设备相机初始化中',
     onlineCount: Math.max(base.onlineCount, unityOnline),
     totalCount: SENSOR_CATALOG.length,
     focusedCameraId: channel.unityFocusedCameraId,
@@ -334,6 +342,10 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
       const frame = this.channels[scope].unityFrames[cameraId]
       return !!frame && Date.now() - frame.receivedAtMs <= UNITY_FRAME_FRESH_MS
     },
+    hasFreshBackendFrame(cameraId: string, scope: VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW') {
+      const receivedAtMs = this.channels[scope].frameReceivedAtMs[cameraId] ?? 0
+      return receivedAtMs > 0 && Date.now() - receivedAtMs <= BACKEND_FRAME_FRESH_MS
+    },
     async refreshFrames(
       focusedOnly = false,
       scope: VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW',
@@ -342,23 +354,33 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
       // The global backend JPEG endpoint is not run-scoped and must not be used.
       if (scope !== 'SYSTEM_OVERVIEW') return
       const channel = this.channels[scope]
+      if (channel.framesRefreshing) return
+      channel.framesRefreshing = true
       const sensors = buildDisplayOverview(channel).sensors
       const targets = focusedOnly
         ? sensors.filter((sensor) => sensor.cameraId === channel.unityFocusedCameraId)
         : sensors
-      await Promise.all(targets.map(async (sensor) => {
-        if (this.hasFreshUnityFrame(sensor.cameraId, scope)) return
-        try {
-          const blob = await fetchVisualSensorFrame(sensor.cameraId)
-          if (!blob) return
-          const nextUrl = URL.createObjectURL(blob)
-          const previousUrl = channel.frameUrls[sensor.cameraId]
-          channel.frameUrls[sensor.cameraId] = nextUrl
-          if (previousUrl) URL.revokeObjectURL(previousUrl)
-        } catch {
-          // Keep the last valid Unity or ROS frame during a short interruption.
-        }
-      }))
+      try {
+        await Promise.all(targets.map(async (sensor) => {
+          if (
+            this.hasFreshUnityFrame(sensor.cameraId, scope)
+            || this.hasFreshBackendFrame(sensor.cameraId, scope)
+          ) return
+          try {
+            const blob = await fetchVisualSensorFrame(sensor.cameraId)
+            if (!blob) return
+            const nextUrl = URL.createObjectURL(blob)
+            const previousUrl = channel.frameUrls[sensor.cameraId]
+            channel.frameUrls[sensor.cameraId] = nextUrl
+            channel.frameReceivedAtMs[sensor.cameraId] = Date.now()
+            if (previousUrl) URL.revokeObjectURL(previousUrl)
+          } catch {
+            // Keep the last valid Unity or ROS frame during a short interruption.
+          }
+        }))
+      } finally {
+        channel.framesRefreshing = false
+      }
     },
     disposeFrames(scope: VisualSensorRuntimeScope = 'SYSTEM_OVERVIEW') {
       const channel = this.channels[scope]

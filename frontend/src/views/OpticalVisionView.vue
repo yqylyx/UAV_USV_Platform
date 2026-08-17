@@ -29,6 +29,13 @@ const detection = computed(() => radarStore.overview?.latestTargetId
   ? { id: radarStore.overview.latestTargetId, count: radarStore.overview.detectionCount }
   : null)
 const online = computed(() => store.unityBridgeReady || overview.value.gatewayConnected)
+const linkLabel = computed(() =>
+  store.unityBridgeReady
+    ? 'Unity 视觉链路在线'
+    : overview.value.gatewayConnected
+      ? 'ROS 视觉链路在线'
+      : '等待视觉链路',
+)
 
 function channelLabel(sensor: VisualSensor) {
   return `${sensor.deviceType === 'UAV' ? '空中视角' : '水面视角'} ${sensor.cameraId.slice(-2)}`
@@ -48,6 +55,7 @@ function slotClass(cameraId: string) {
 }
 
 function subscribe(cameraId = focused.value?.cameraId || 'uav_01') {
+  if (!store.unityBridgeReady) return
   bridge.sendFor('SYSTEM_OVERVIEW', 'visualSensorSubscribe', {
     enabled: true,
     focusedCameraId: cameraId,
@@ -112,15 +120,17 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  bridge.sendFor('SYSTEM_OVERVIEW', 'visualSensorSubscribe', {
-    enabled: false,
-    focusedCameraId: focusedCameraId.value || 'uav_01',
-    displayMode: 'off',
-    quality: quality.value,
-    targetFps,
-    gpuDirect: true,
-    jpegFallback: false,
-  })
+  if (store.unityBridgeReady) {
+    bridge.sendFor('SYSTEM_OVERVIEW', 'visualSensorSubscribe', {
+      enabled: false,
+      focusedCameraId: focusedCameraId.value || 'uav_01',
+      displayMode: 'off',
+      quality: quality.value,
+      targetFps,
+      gpuDirect: true,
+      jpegFallback: false,
+    })
+  }
   if (timer) window.clearInterval(timer)
   store.disposeFrames()
 })
@@ -129,7 +139,7 @@ onBeforeUnmount(() => {
 <template>
   <ConsoleLayout title="光电视觉" eyebrow="ELECTRO-OPTICAL VISION">
     <template #actions>
-      <span class="top-chip" :class="{ online }"><Zap :size="14" />{{ online ? 'Unity 视觉链路在线' : '等待视觉链路' }}</span>
+      <span class="top-chip" :class="{ online }"><Zap :size="14" />{{ linkLabel }}</span>
       <span class="top-chip"><Camera :size="14" />{{ overview.onlineCount }}/{{ overview.totalCount }} 路在线</span>
     </template>
 
@@ -156,21 +166,21 @@ onBeforeUnmount(() => {
             slotClass(sensor.cameraId),
             {
               focused: sensor.cameraId === focusedCameraId,
-              'runtime-active': sensor.cameraId === focusedCameraId && online && !frames[sensor.cameraId],
+              'runtime-active': sensor.cameraId === focusedCameraId && store.unityBridgeReady && !frames[sensor.cameraId],
             },
           ]"
           :aria-label="`切换到${channelLabel(sensor)}`"
           @click="switchFocus(sensor.cameraId)"
         >
           <div
-            v-if="sensor.cameraId === focusedCameraId"
+            v-if="sensor.cameraId === focusedCameraId && store.unityBridgeReady"
             class="unity-runtime-anchor"
             data-unity-runtime-viewport="visual-sensors-live"
           />
           <img v-if="frames[sensor.cameraId]" :src="frames[sensor.cameraId]" :alt="channelLabel(sensor)" />
-          <div v-else-if="sensor.cameraId !== focusedCameraId || !online" class="empty">
+          <div v-else-if="sensor.cameraId !== focusedCameraId || !store.unityBridgeReady" class="empty">
             <Radio :size="20" />
-            <span>{{ sensor.cameraId === focusedCameraId ? '正在连接 Unity 视觉' : '等待该通道帧' }}</span>
+            <span>{{ sensor.cameraId === focusedCameraId ? (store.unityBridgeReady ? '正在连接 Unity 视觉' : '正在加载 ROS 图像') : '等待该通道帧' }}</span>
           </div>
           <div v-else class="focus-status"><span>Unity GPU 实时画面</span></div>
 
