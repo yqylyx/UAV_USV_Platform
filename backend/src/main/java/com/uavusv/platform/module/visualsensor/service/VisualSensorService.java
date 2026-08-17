@@ -3,6 +3,8 @@ package com.uavusv.platform.module.visualsensor.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uavusv.platform.module.visualsensor.dto.VisualSensorOverviewResponse;
 import com.uavusv.platform.module.visualsensor.dto.VisualSensorResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -16,7 +18,9 @@ import java.util.Optional;
 @Service
 public class VisualSensorService {
 
+    private static final Logger log = LoggerFactory.getLogger(VisualSensorService.class);
     private static final long FRESH_FRAME_MILLIS = 3_500;
+    private static final long DROP_LOG_INTERVAL_MILLIS = 5_000;
     private static final List<SensorDefinition> DEFINITIONS = List.of(
             new SensorDefinition("uav_01", "UAV-01", "UAV", "DOWN", "UAV-01 · 下视相机"),
             new SensorDefinition("uav_02", "UAV-02", "UAV", "DOWN", "UAV-02 · 下视相机"),
@@ -28,6 +32,7 @@ public class VisualSensorService {
 
     private final Clock clock;
     private final Map<String, FrameState> frames = new LinkedHashMap<>();
+    private final Map<String, Long> dropLogTimes = new LinkedHashMap<>();
     private volatile boolean gatewayConnected;
     private volatile String gatewayDetail = "等待视觉传感器网关";
     private volatile String focusedCameraId = "uav_01";
@@ -78,7 +83,7 @@ public class VisualSensorService {
         state.source = frame.path("source").asText("ROS / Gazebo");
     }
 
-    public synchronized void observeJpegFrame(
+    public synchronized boolean observeJpegFrame(
             String cameraId,
             String jpegBase64,
             int width,
@@ -86,18 +91,26 @@ public class VisualSensorService {
             long timestampMillis,
             double ageSeconds
     ) {
+        String rawCameraId = cameraId;
         cameraId = normalizeCameraId(cameraId);
-        if (!frames.containsKey(cameraId) || jpegBase64 == null || jpegBase64.isBlank()) {
-            return;
+        if (!frames.containsKey(cameraId)) {
+            logDroppedFrame(rawCameraId, "EMPTY_OR_UNMAPPED_CAMERA_ID");
+            return false;
+        }
+        if (jpegBase64 == null || jpegBase64.isBlank()) {
+            logDroppedFrame(rawCameraId, "EMPTY_JPEG");
+            return false;
         }
         byte[] jpeg;
         try {
             jpeg = Base64.getDecoder().decode(jpegBase64);
         } catch (IllegalArgumentException exception) {
-            return;
+            logDroppedFrame(rawCameraId, "BASE64_DECODE_FAILED");
+            return false;
         }
         if (jpeg.length < 4) {
-            return;
+            logDroppedFrame(rawCameraId, "JPEG_TOO_SHORT");
+            return false;
         }
         long now = clock.millis();
         FrameState state = frames.get(cameraId);
@@ -113,6 +126,7 @@ public class VisualSensorService {
                 : now - Math.max(0, Math.round(ageSeconds * 1000));
         state.receivedAtMillis = now;
         state.source = "ROS / Gazebo";
+        return true;
     }
 
     public void observeGateway(boolean connected, String detail) {
@@ -195,6 +209,18 @@ public class VisualSensorService {
             case "usv_03_front" -> "usv_03";
             default -> cameraId.trim();
         };
+    }
+
+    private void logDroppedFrame(String cameraId, String reason) {
+        String displayCameraId = cameraId == null || cameraId.isBlank() ? "<empty>" : cameraId.trim();
+        String key = displayCameraId + ":" + reason;
+        long now = clock.millis();
+        Long previous = dropLogTimes.get(key);
+        if (previous != null && now - previous < DROP_LOG_INTERVAL_MILLIS) {
+            return;
+        }
+        dropLogTimes.put(key, now);
+        log.warn("Dropped camera frame: cameraId={} reason={}", displayCameraId, reason);
     }
 
     private record SensorDefinition(

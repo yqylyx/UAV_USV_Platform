@@ -23,8 +23,10 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
 
     private static final Logger log = LoggerFactory.getLogger(RosGatewayV1WebSocketClient.class);
+    private static final long CAMERA_FRAME_LOG_INTERVAL_MILLIS = 5_000;
 
     private final GatewayEnvelopeDecoder gatewayEnvelopeDecoder;
     private final GatewayProtobufDecoder gatewayProtobufDecoder;
@@ -53,6 +56,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
     private final StringBuilder messageBuffer = new StringBuilder();
     private final ByteArrayOutputStream binaryMessageBuffer = new ByteArrayOutputStream();
+    private final Map<String, Long> cameraFrameLogTimes = new ConcurrentHashMap<>();
     private volatile WebSocket socket;
     private volatile boolean closing;
 
@@ -233,14 +237,19 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private boolean observeHighVolumeSensor(GatewayEnvelope envelope) {
         if (envelope.type() == GatewayMessageType.MEDIA_CAMERA_JPEG) {
             JsonNode payload = envelope.payload();
-            visualSensorService.observeJpegFrame(
-                    text(payload, "cameraId"),
-                    text(payload, "jpegBase64"),
-                    payload.path("width").asInt(),
-                    payload.path("height").asInt(),
+            String cameraId = text(payload, "cameraId");
+            String jpegBase64 = text(payload, "jpegBase64");
+            int width = payload.path("width").asInt();
+            int height = payload.path("height").asInt();
+            boolean accepted = visualSensorService.observeJpegFrame(
+                    cameraId,
+                    jpegBase64,
+                    width,
+                    height,
                     payload.path("timestampMs").asLong(envelope.timestamp().toEpochMilli()),
                     -1
             );
+            logCameraFrame(envelope, cameraId, width, height, jpegBase64.length(), accepted);
             return true;
         }
         if (envelope.type() == GatewayMessageType.PERCEPTION_RADAR_SCAN) {
@@ -334,6 +343,33 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         List<Double> values = new ArrayList<>(array.size());
         array.forEach(value -> values.add(value.asDouble()));
         return values;
+    }
+
+    private void logCameraFrame(
+            GatewayEnvelope envelope,
+            String cameraId,
+            int width,
+            int height,
+            int base64Length,
+            boolean accepted
+    ) {
+        String key = cameraId == null || cameraId.isBlank() ? envelope.streamId() : cameraId.trim();
+        long now = System.currentTimeMillis();
+        Long previous = cameraFrameLogTimes.get(key);
+        if (previous != null && now - previous < CAMERA_FRAME_LOG_INTERVAL_MILLIS) {
+            return;
+        }
+        cameraFrameLogTimes.put(key, now);
+        log.info(
+                "Gateway camera frame: streamId={} sequence={} cameraId={} size={}x{} base64Length={} accepted={}",
+                envelope.streamId(),
+                envelope.sequence(),
+                cameraId == null || cameraId.isBlank() ? "<empty>" : cameraId.trim(),
+                width,
+                height,
+                base64Length,
+                accepted
+        );
     }
 
     private void scheduleReconnect() {
