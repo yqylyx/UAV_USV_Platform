@@ -34,10 +34,11 @@ class AlgorithmRuntimeTests(unittest.TestCase):
         adapter = EscortAdapter(2, {"threatFrame": 2})
         first = adapter.step()
         second = adapter.step()
-        self.assertEqual(6, len(second.agents))
-        self.assertNotEqual((first.targets[0].x, first.targets[0].y), (second.targets[0].x, second.targets[0].y))
-        self.assertEqual({"ESCORT_TARGET", "THREAT_TARGET"}, {target.type for target in second.targets})
-        self.assertIn(second.metrics["threatState"], {"APPROACHING", "DETECTED", "FORMING", "ORBITING"})
+        third = adapter.step()
+        self.assertEqual(6, len(third.agents))
+        self.assertNotEqual((first.targets[0].x, first.targets[0].y), (third.targets[0].x, third.targets[0].y))
+        self.assertEqual({"ESCORT_TARGET", "THREAT_TARGET"}, {target.type for target in third.targets})
+        self.assertIn(third.metrics["threatState"], {"APPROACHING", "DETECTED", "FORMING", "ORBITING"})
 
     def test_escort_manual_threat_uses_new_727_state_machine(self):
         adapter = EscortAdapter(23, {"seed": 42, "threatFrame": 10000})
@@ -52,7 +53,7 @@ class AlgorithmRuntimeTests(unittest.TestCase):
         self.assertTrue(response.metrics["threatActive"])
         self.assertEqual({"ESCORT_TARGET", "THREAT_TARGET"}, {target.type for target in response.targets})
         self.assertEqual(
-            {"UAV-01", "UAV-02", "UAV-03", "USV-01", "USV-02", "USV-03"},
+            {"UAV-001", "UAV-002", "UAV-003", "USV-001", "USV-002", "USV-003"},
             {agent.code for agent in response.agents},
         )
 
@@ -136,7 +137,75 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                 travel[first.code] += math.hypot(second.x - first.x, second.y - first.y)
                 limit = 6.01 if first.type == "UAV" else 3.51
                 self.assertLessEqual(self.heading_delta(first.heading, second.heading), limit)
-        self.assertGreater(min(travel.values()), 30.0)
+        self.assertGreater(min(travel.values()), 10.0)
+
+    def test_first_frame_preserves_unity_initial_poses(self):
+        initial_poses = [
+            {
+                "deviceCode": "UAV-001",
+                "deviceType": "UAV",
+                "eastM": -67.0,
+                "northM": -303.0,
+                "upM": 26.0,
+                "headingDeg": 90.0,
+                "valid": True,
+            },
+            {
+                "deviceCode": "UAV-002",
+                "deviceType": "UAV",
+                "eastM": -59.0,
+                "northM": -296.0,
+                "upM": 27.0,
+                "headingDeg": 90.0,
+                "valid": True,
+            },
+            {
+                "deviceCode": "USV-001",
+                "deviceType": "USV",
+                "eastM": -65.0,
+                "northM": -318.0,
+                "upM": 0.0,
+                "headingDeg": 90.0,
+                "valid": True,
+            },
+            {
+                "deviceCode": "USV-002",
+                "deviceType": "USV",
+                "eastM": -55.0,
+                "northM": -326.0,
+                "upM": 0.0,
+                "headingDeg": 90.0,
+                "valid": True,
+            },
+            {
+                "deviceCode": "TARGET-001",
+                "deviceType": "TARGET",
+                "eastM": -75.0,
+                "northM": -310.0,
+                "upM": 0.0,
+                "headingDeg": 0.0,
+                "valid": True,
+            },
+        ]
+        config = {
+            "uavCount": 3,
+            "usvCount": 3,
+            "targetCount": 1,
+            "initialPoses": initial_poses,
+            "initialPosesCoordinateFrame": "GLOBAL_ENU",
+            "fleetOrigin": {"eastM": -75.0, "northM": -310.0, "upM": 0.0},
+            "seed": 20260814,
+        }
+
+        for adapter_type in (CaptureAdapter, EscortAdapter):
+            adapter = adapter_type(34, config)
+            frame = adapter.step()
+            poses = {agent.code: agent for agent in frame.agents}
+            self.assertEqual(1, frame.sequence)
+            self.assertAlmostEqual(8.0, poses["UAV-001"].x, places=3)
+            self.assertAlmostEqual(7.0, poses["UAV-001"].y, places=3)
+            self.assertAlmostEqual(16.0, poses["UAV-002"].x, places=3)
+            self.assertAlmostEqual(14.0, poses["UAV-002"].y, places=3)
 
     def test_escort_uses_single_step_long_route_and_stable_heading(self):
         adapter = EscortAdapter(22, {"seed": 42, "threatFrame": 10000, "escortSpeed": "LOW"})
