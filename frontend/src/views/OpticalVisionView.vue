@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Camera, Radio, Zap } from '@lucide/vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import { useRadarSensorStore } from '@/stores/radarSensor'
@@ -55,7 +55,6 @@ function slotClass(cameraId: string) {
 }
 
 function subscribe(cameraId = focused.value?.cameraId || 'uav_01') {
-  if (!store.unityBridgeReady) return
   bridge.sendFor('SYSTEM_OVERVIEW', 'visualSensorSubscribe', {
     enabled: true,
     focusedCameraId: cameraId,
@@ -72,7 +71,9 @@ function subscribe(cameraId = focused.value?.cameraId || 'uav_01') {
 async function refreshFocusedStream(cameraId: string) {
   await store.select(cameraId)
   subscribe(cameraId)
-  await store.refreshFrames(true)
+  await nextTick()
+  window.dispatchEvent(new CustomEvent('unity-runtime-track', { detail: { duration: 900 } }))
+  await store.refreshFrames(false)
 }
 
 async function switchFocus(cameraId: string) {
@@ -105,7 +106,7 @@ async function switchFocus(cameraId: string) {
   window.dispatchEvent(new CustomEvent('unity-runtime-track', { detail: { duration: 480 } }))
   await Promise.allSettled(animations.map(animation => animation.finished))
   switching.value = false
-  void store.refreshFrames(true)
+  void store.refreshFrames(false)
 }
 
 onMounted(async () => {
@@ -118,6 +119,17 @@ onMounted(async () => {
     void radarStore.refresh(true)
   }, 2500)
 })
+
+watch(
+  () => store.unityBridgeReady,
+  async (ready) => {
+    if (!ready) return
+    subscribe(focusedCameraId.value || focused.value?.cameraId || 'uav_01')
+    await nextTick()
+    window.dispatchEvent(new CustomEvent('unity-runtime-track', { detail: { duration: 900 } }))
+    void store.refreshFrames(false)
+  },
+)
 
 onBeforeUnmount(() => {
   if (store.unityBridgeReady) {
@@ -132,7 +144,7 @@ onBeforeUnmount(() => {
     })
   }
   if (timer) window.clearInterval(timer)
-  store.disposeFrames()
+  store.markUnityBridgeReady('SYSTEM_OVERVIEW', false)
 })
 </script>
 

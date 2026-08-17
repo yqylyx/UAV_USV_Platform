@@ -152,6 +152,7 @@ function buildDisplayOverview(channel: VisualSensorChannelState): VisualSensorOv
   const now = Date.now()
   const directStream = channel.streamStats
   const directStreamFresh = !!directStream
+    && channel.unityBridgeReady
     && directStream.active
     && directStream.gpuDirect
     && now - directStream.receivedAtMs <= UNITY_STREAM_FRESH_MS
@@ -160,7 +161,10 @@ function buildDisplayOverview(channel: VisualSensorChannelState): VisualSensorOv
       ...fallbackSensor,
       ...backendSensors.get(fallbackSensor.cameraId),
     }
-    if (directStreamFresh) {
+    if (
+      directStreamFresh
+      && (directStream.displayMode === 'grid' || sensor.cameraId === directStream.focusedCameraId)
+    ) {
       return {
         ...sensor,
         status: 'ONLINE',
@@ -193,12 +197,7 @@ function buildDisplayOverview(channel: VisualSensorChannelState): VisualSensorOv
       focused: sensor.cameraId === channel.unityFocusedCameraId,
     }
   })
-  const unityOnline = directStreamFresh
-    ? SENSOR_CATALOG.length
-    : sensors.filter((sensor) => {
-        const frame = channel.unityFrames[sensor.cameraId]
-        return !!frame && now - frame.receivedAtMs <= UNITY_FRAME_FRESH_MS
-      }).length
+  const unityOnline = sensors.filter((sensor) => sensor.status === 'ONLINE').length
   return {
     ...base,
     gatewayConnected: channel.unityBridgeReady || base.gatewayConnected,
