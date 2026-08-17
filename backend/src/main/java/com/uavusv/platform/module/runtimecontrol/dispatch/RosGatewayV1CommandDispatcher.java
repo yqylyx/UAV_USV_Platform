@@ -78,7 +78,7 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
         UavUsvGatewayV1.ControlCommand.Builder command = UavUsvGatewayV1.ControlCommand.newBuilder()
                 .setCommandId(commandKey)
                 .setClientRequestId(commandKey)
-                .setCommand(request.commandType().name())
+                .setCommand(gatewayCommandName(request.commandType()))
                 .setPriority(priority(request))
                 .setTarget(target(request));
 
@@ -139,6 +139,19 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
 
     private boolean isEmergency(CommandType commandType) {
         return commandType.name().contains("EMERGENCY");
+    }
+
+    private String gatewayCommandName(CommandType commandType) {
+        return switch (commandType) {
+            case START_MISSION -> "MISSION.START";
+            case PAUSE_MISSION -> "MISSION.PAUSE";
+            case RESUME_MISSION -> "MISSION.RESUME";
+            case CANCEL_MISSION -> "MISSION.CANCEL";
+            case COMPLETE_MISSION -> "MISSION.COMPLETE";
+            case FAIL_MISSION -> "MISSION.FAIL";
+            case STOP_MISSION -> "MISSION.STOP";
+            default -> commandType.name();
+        };
     }
 
     private Long resolveMissionId(Long runId) {

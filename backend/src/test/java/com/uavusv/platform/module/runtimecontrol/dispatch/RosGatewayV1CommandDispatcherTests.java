@@ -89,6 +89,7 @@ class RosGatewayV1CommandDispatcherTests {
 
         assertEquals("99", envelope.getMissionId());
         assertEquals("12", envelope.getRunId());
+        assertEquals("MISSION.START", envelope.getControlCommand().getCommand());
     }
 
     @Test
