@@ -40,6 +40,7 @@ class RuntimeFrame:
     route: List[List[float]] = field(default_factory=list)
     obstacles: List[Dict[str, object]] = field(default_factory=list)
     terminalStatus: Optional[str] = None
+    coordinateFrame: str = "FLEET_LOCAL_ENU"
 
     def to_dict(self) -> Dict[str, object]:
         return asdict(self)

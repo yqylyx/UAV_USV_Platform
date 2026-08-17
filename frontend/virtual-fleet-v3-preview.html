@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>虚拟编队 v3 预览</title>
+  <style>
+    :root {
+      --bg: #081116;
+      --panel: #101c22;
+      --panel-2: #14242b;
+      --line: #29424b;
+      --text: #edf7f6;
+      --muted: #8da5a9;
+      --cyan: #63d9e7;
+      --green: #63e0ac;
+      --yellow: #f5ce6b;
+      --red: #ff7979;
+      --orange: #ffad66;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--text);
+      background: var(--bg);
+      font: 14px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .shell { width: min(1420px, calc(100% - 32px)); margin: 20px auto; }
+    .topbar, .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      padding: 16px 20px;
+      border-top: 2px solid var(--cyan);
+    }
+    .eyebrow, label, .metric-label {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { margin-top: 3px; font-size: 22px; }
+    h2 { font-size: 15px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .connection { display: flex; align-items: center; gap: 8px; color: var(--green); font-size: 12px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 12px currentColor; }
+    .layout {
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr) 300px;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .panel { padding: 16px; }
+    .panel + .panel { margin-top: 14px; }
+    .panel-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .field { display: grid; gap: 6px; margin-top: 12px; }
+    input, select {
+      width: 100%;
+      min-height: 38px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      outline: 0;
+      color: var(--text);
+      background: #0b171d;
+    }
+    input:focus, select:focus { border-color: var(--cyan); }
+    .field-help { color: var(--muted); font-size: 11px; }
+    .speed-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .speed-card {
+      padding: 10px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+    .speed-card strong { display: block; margin-bottom: 7px; }
+    .speed-card.uav strong { color: var(--yellow); }
+    .speed-card.usv strong { color: var(--cyan); }
+    .speed-card small { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; }
+    .count-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .count-card {
+      padding: 11px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+    .count-card header { display: flex; justify-content: space-between; gap: 8px; }
+    .count-card header span { color: var(--muted); font-size: 11px; }
+    .counter { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 6px; margin-top: 10px; }
+    .step {
+      width: 34px;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--cyan);
+      background: transparent;
+      font-size: 18px;
+    }
+    .step:hover { background: rgba(99, 217, 231, .1); }
+    .count { text-align: center; font-size: 22px; font-weight: 800; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .btn {
+      min-height: 38px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--text);
+      background: transparent;
+    }
+    .btn:hover { border-color: var(--cyan); }
+    .btn.primary { border-color: transparent; color: #061014; background: var(--cyan); font-weight: 800; }
+    .btn.success { border-color: rgba(99, 224, 172, .5); color: var(--green); }
+    .btn.danger { border-color: rgba(255, 121, 121, .5); color: var(--red); }
+    .btn:disabled { cursor: not-allowed; opacity: .42; }
+    .notice {
+      margin-top: 13px;
+      padding: 10px;
+      border-left: 2px solid var(--orange);
+      color: #f0c89f;
+      background: rgba(255, 173, 102, .06);
+      font-size: 11px;
+    }
+    .scene {
+      position: relative;
+      min-height: 560px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(rgba(99, 217, 231, .07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99, 217, 231, .07) 1px, transparent 1px),
+        radial-gradient(circle at center, rgba(42, 125, 138, .26), transparent 48%),
+        #0b1a20;
+      background-size: 36px 36px, 36px 36px, auto;
+    }
+    .scene-label, .scene-status { position: absolute; top: 13px; font-size: 10px; letter-spacing: .11em; }
+    .scene-label { left: 14px; color: var(--cyan); }
+    .scene-status { right: 14px; color: var(--green); }
+    .arena {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: min(58%, 390px);
+      aspect-ratio: 1;
+      border: 1px dashed rgba(99, 217, 231, .42);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .arena::before, .arena::after {
+      content: "";
+      position: absolute;
+      background: rgba(99, 217, 231, .18);
+    }
+    .arena::before { left: 50%; top: 0; width: 1px; height: 100%; }
+    .arena::after { left: 0; top: 50%; width: 100%; height: 1px; }
+    .target {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--red);
+      border-radius: 50%;
+      box-shadow: 0 0 20px var(--red);
+      transform: translate(-50%, -50%);
+    }
+    .target::after {
+      content: "TARGET-001";
+      position: absolute;
+      left: 24px;
+      top: -6px;
+      color: var(--red);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .vehicle {
+      position: absolute;
+      width: 11px;
+      height: 11px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      box-shadow: 0 0 13px currentColor;
+      transform: translate(-50%, -50%);
+      transition: left .35s ease, top .35s ease, transform .25s ease;
+    }
+    .vehicle.uav { color: var(--yellow); background: var(--yellow); }
+    .vehicle.usv { color: var(--cyan); background: var(--cyan); border-radius: 3px; }
+    .vehicle.selected { outline: 3px solid rgba(255,255,255,.8); outline-offset: 4px; }
+    .vehicle::after {
+      content: attr(data-code);
+      position: absolute;
+      left: 16px;
+      top: -7px;
+      color: currentColor;
+      font-size: 9px;
+      white-space: nowrap;
+    }
+    .legend {
+      position: absolute;
+      left: 14px;
+      bottom: 13px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 13px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .legend i { width: 8px; height: 8px; display: inline-block; border-radius: 50%; }
+    .legend .uav-key { background: var(--yellow); }
+    .legend .usv-key { background: var(--cyan); border-radius: 2px; }
+    .legend .target-key { border: 2px solid var(--red); }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .metric { padding: 10px; border: 1px solid var(--line); background: var(--panel-2); }
+    .metric strong { display: block; margin-top: 3px; font-size: 18px; }
+    .metric small { color: var(--muted); font-size: 10px; }
+    .status-list { display: grid; gap: 9px; margin-top: 14px; }
+    .status-row { display: flex; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(141, 165, 169, .14); font-size: 12px; }
+    .status-row span { color: var(--muted); }
+    .status-row strong { text-align: right; }
+    .ok { color: var(--green); }
+    .selected-device {
+      min-height: 82px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .selected-device strong { display: block; margin-bottom: 5px; color: var(--text); font-size: 16px; }
+    pre {
+      max-height: 205px;
+      overflow: auto;
+      margin: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      color: #b9e9e5;
+      background: #081217;
+      font: 10px/1.5 Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .log {
+      max-height: 130px;
+      overflow: auto;
+      margin-top: 10px;
+      color: var(--muted);
+      font: 11px/1.7 Consolas, monospace;
+    }
+    @media (max-width: 1120px) {
+      .layout { grid-template-columns: 300px minmax(0, 1fr); }
+      .right-column { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+      .right-column .panel + .panel { margin-top: 0; }
+    }
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 20px, 620px); margin: 10px auto; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .layout, .right-column, .count-grid, .speed-grid { grid-template-columns: 1fr; }
+      .right-column { grid-column: auto; }
+      .scene { min-height: 390px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">VIRTUAL FLEET / PROTOCOL V3</div>
+        <h1>虚拟编队算法验证工作台</h1>
+        <p class="muted">独立预览页，不修改现有前端业务页面</p>
+      </div>
+      <div class="connection"><i class="dot"></i><span id="connectionText">独立预览模式</span></div>
+    </header>
+
+    <div class="layout">
+      <aside>
+        <section class="panel">
+          <div class="panel-title"><h2>场景配置</h2><span class="eyebrow">01 / CONFIG</span></div>
+          <div class="field">
+            <label for="algorithm">算法</label>
+            <select id="algorithm">
+              <option value="GB_SFLA_CS">GB-SFLA-CS 协同围捕（模拟）</option>
+              <option value="ESCORT_GUARD">混合 UAV/USV 护航守卫（模拟）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="seed">随机种子</label>
+            <input id="seed" type="number" value="20260814" step="1">
+            <span class="field-help">相同种子可复现初始位置</span>
+          </div>
+          <div class="field">
+            <label>设备数量</label>
+            <div class="count-grid">
+              <div class="count-card">
+                <header><strong style="color:var(--yellow)">UAV</strong><span>1 - 100</span></header>
+                <div class="counter"><button class="step" data-key="uav" data-delta="-1">−</button><div class="count" id="uavCount">3</div><button class="step" data-key="uav" data-delta="1">+</button></div>
+              </div>
+              <div class="count-card">
+                <header><strong style="color:var(--cyan)">USV</strong><span>1 - 100</span></header>
+                <div class="counter"><button class="step" data-key="usv" data-delta="-1">−</button><div class="count" id="usvCount">3</div><button class="step" data-key="usv" data-delta="1">+</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label>初始速度（真实世界 m/s）</label>
+            <div class="speed-grid">
+              <div class="speed-card uav">
+                <strong>UAV</strong>
+                <input id="uavSpeed" type="number" value="5" min="0" max="15" step="0.1">
+                <small>上限 15 m/s</small>
+              </div>
+              <div class="speed-card usv">
+                <strong>USV</strong>
+                <input id="usvSpeed" type="number" value="1" min="0" max="2" step="0.1">
+                <small>上限 2 m/s</small>
+              </div>
+            </div>
+          </div>
+          <div class="notice">速度字段使用真实 m/s。Unity 内部按 `PresentationCoordinateScale = 0.18` 转换；运动方向和轨迹由算法控制。</div>
+          <div class="button-row">
+            <button class="btn primary" id="generateButton">⟳ 生成场景</button>
+            <button class="btn" id="resetButton">↺ 重置</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title"><h2>任务控制</h2><span class="eyebrow">02 / MISSION</span></div>
+          <div class="button-row">
+            <button class="btn success" id="startButton">▶ 开始</button>
+            <button class="btn" id="pauseButton">Ⅱ 暂停</button>
+            <button class="btn danger" id="stopButton">■ 停止</button>
+          </div>
+          <p class="muted" style="margin-top:10px">任务运行中锁定数量和速度配置。</p>
+        </section>
+      </aside>
+
+      <section class="panel">
+        <div class="panel-title">
+          <div><h2>Unity 虚拟场景预览</h2><p class="muted" id="sceneDescription">算法将自动计算围捕航点和运动方向</p></div>
+          <span class="eyebrow">03 / UNITY VIEW</span>
+        </div>
+        <div class="scene" id="scene">
+          <div class="scene-label">UNITY WEBGL / RANDOM SPAWN</div>
+          <div class="scene-status" id="sceneStatus">READY</div>
+          <div class="arena"></div>
+          <div class="target"></div>
+          <div id="vehicles"></div>
+          <div class="legend"><span><i class="uav-key"></i>UAV</span><span><i class="usv-key"></i>USV</span><span><i class="target-key"></i>目标</span></div>
+        </div>
+      </section>
+
+      <aside class="right-column">
+        <section class="panel">
+          <div class="panel-title"><h2>仿真状态</h2><strong class="ok" id="missionState">STOPPED</strong></div>
+          <div class="metrics">
+            <div class="metric"><span class="metric-label">UAV</span><strong id="metricUav">3</strong><small>设备数量</small></div>
+            <div class="metric"><span class="metric-label">USV</span><strong id="metricUsv">3</strong><small>设备数量</small></div>
+            <div class="metric"><span class="metric-label">UAV MAX</span><strong>15</strong><small>m/s</small></div>
+            <div class="metric"><span class="metric-label">USV MAX</span><strong>2</strong><small>m/s</small></div>
+          </div>
+          <div class="status-list">
+            <div class="status-row"><span>运行模式</span><strong>VIRTUAL_SIMULATION</strong></div>
+            <div class="status-row"><span>当前算法</span><strong id="statusAlgorithm">GB_SFLA_CS</strong></div>
+            <div class="status-row"><span>场景回执</span><strong class="ok" id="scenarioAck">等待生成</strong></div>
+            <div class="status-row"><span>速度校验</span><strong class="ok" id="speedCheck">通过</strong></div>
+            <div class="status-row"><span>选中设备</span><strong id="selectedCode">无</strong></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title"><h2>设备与协议</h2><span class="eyebrow">04 / BRIDGE</span></div>
+          <div class="selected-device" id="selectedDevice"><strong>未选择设备</strong>点击场景中的设备查看信息并模拟 SelectDevice / SetCameraMode。</div>
+          <div class="button-row"><button class="btn" id="cameraButton" disabled>⌖ 跟随选中设备</button></div>
+          <div style="margin-top:14px"><div class="eyebrow" style="margin-bottom:7px">LAST REQUEST</div><pre id="payloadPreview">{}</pre></div>
+          <div class="log" id="log"></div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const state = {
+      uav: 3,
+      usv: 3,
+      algorithm: "GB_SFLA_CS",
+      seed: 20260814,
+      uavSpeed: 5,
+      usvSpeed: 1,
+      mission: "STOPPED",
+      selected: null,
+      sequence: 0
+    };
+    const info = {
+      GB_SFLA_CS: {
+        title: "GB-SFLA-CS 协同围捕",
+        description: "算法根据目标位置和设备状态计算分配、围捕航点、速度方向与捕获状态。",
+        role: "capture"
+      },
+      ESCORT_GUARD: {
+        title: "混合 UAV/USV 护航守卫",
+        description: "算法计算威胁方向、核心阻断点、护航弧和 UAV/USV 的动态守卫轨迹。",
+        role: "escort"
+      }
+    };
+    const $ = (id) => document.getElementById(id);
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    function log(message) {
+      const line = document.createElement("div");
+      line.textContent = `${new Date().toLocaleTimeString()}  ${message}`;
+      $("log").prepend(line);
+    }
+    function request(type, payload) {
+      const requestId = `${type}:${Date.now()}`;
+      const message = { type, requestId, timestamp: Date.now(), payload };
+      $("payloadPreview").textContent = JSON.stringify(message, null, 2);
+      window.parent.postMessage(message, "*");
+      log(`postMessage ${type} / ${requestId}`);
+      return message;
+    }
+    function seeded(seed) {
+      let value = Number(seed) || 1;
+      return () => {
+        value = (value * 1664525 + 1013904223) % 4294967296;
+        return value / 4294967296;
+      };
+    }
+    function validateSpeeds() {
+      state.uavSpeed = clamp(Number($("uavSpeed").value) || 0, 0, 15);
+      state.usvSpeed = clamp(Number($("usvSpeed").value) || 0, 0, 2);
+      $("uavSpeed").value = state.uavSpeed;
+      $("usvSpeed").value = state.usvSpeed;
+      $("speedCheck").textContent = "通过";
+      $("speedCheck").className = "ok";
+    }
+    function render() {
+      $("uavCount").textContent = state.uav;
+      $("usvCount").textContent = state.usv;
+      $("metricUav").textContent = state.uav;
+      $("metricUsv").textContent = state.usv;
+      $("statusAlgorithm").textContent = state.algorithm;
+      $("missionState").textContent = state.mission;
+      $("sceneStatus").textContent = state.mission === "RUNNING" ? "ALGORITHM ACTIVE" : "READY";
+      $("sceneDescription").textContent = info[state.algorithm].description;
+      $("selectedCode").textContent = state.selected ? state.selected.code : "无";
+      $("cameraButton").disabled = !state.selected;
+    }
+    function generateScene() {
+      validateSpeeds();
+      state.seed = Number($("seed").value) || 1;
+      state.algorithm = $("algorithm").value;
+      state.mission = "STOPPED";
+      state.sequence = 0;
+      const random = seeded(state.seed);
+      const container = $("vehicles");
+      container.innerHTML = "";
+      const devices = [];
+      for (let i = 1; i <= state.uav + state.usv; i++) {
+        const isUav = i <= state.uav;
+        const index = isUav ? i : i - state.uav;
+        const code = `${isUav ? "UAV" : "USV"}-${String(index).padStart(3, "0")}`;
+        const device = { code, type: isUav ? "UAV" : "USV", speedMps: isUav ? state.uavSpeed : state.usvSpeed };
+        devices.push(device);
+        const node = document.createElement("button");
+        node.className = `vehicle ${isUav ? "uav" : "usv"}`;
+        node.type = "button";
+        node.dataset.code = code;
+        node.title = `${code} / ${device.speedMps} m/s`;
+        node.style.left = `${20 + random() * 60}%`;
+        node.style.top = `${20 + random() * 60}%`;
+        node.addEventListener("click", () => selectDevice(device, node));
+        container.appendChild(node);
+      }
+      $("scenarioAck").textContent = "scenarioReady success";
+      request("loadScenario", {
+        runtimeMode: "VIRTUAL_SIMULATION",
+        algorithmCode: state.algorithm,
+        runId: 7001,
+        uavCount: state.uav,
+        usvCount: state.usv,
+        targetCount: 1,
+        initialSpeedMps: state.algorithm === "GB_SFLA_CS" ? state.uavSpeed : state.usvSpeed,
+        seed: state.seed
+      });
+      log(`生成 ${state.uav} UAV + ${state.usv} USV，速度校验通过`);
+      render();
+    }
+    function selectDevice(device, node) {
+      document.querySelectorAll(".vehicle").forEach((item) => item.classList.remove("selected"));
+      node.classList.add("selected");
+      state.selected = device;
+      $("selectedDevice").innerHTML = `<strong>${device.code}</strong>${device.type} / ${device.speedMps.toFixed(1)} m/s / role=${info[state.algorithm].role}`;
+      request("selectDevice", { deviceCode: device.code });
+      render();
+    }
+    $("algorithm").addEventListener("change", () => {
+      state.algorithm = $("algorithm").value;
+      render();
+      log(`切换算法：${info[state.algorithm].title}`);
+    });
+    $("uavSpeed").addEventListener("change", validateSpeeds);
+    $("usvSpeed").addEventListener("change", validateSpeeds);
+    document.querySelectorAll(".step").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (state.mission === "RUNNING") return;
+        const key = button.dataset.key;
+        state[key] = clamp(state[key] + Number(button.dataset.delta), 1, 100);
+        render();
+      });
+    });
+    $("generateButton").addEventListener("click", generateScene);
+    $("startButton").addEventListener("click", () => {
+      state.mission = "RUNNING";
+      state.sequence += 1;
+      request("missionStart", { runtimeMode: "VIRTUAL_SIMULATION", runId: 7001 });
+      request("applyPoseBatch", { runtimeMode: "VIRTUAL_SIMULATION", runId: 7001, sequence: state.sequence, sampleTime: Date.now(), vehicles: [] });
+      log("任务开始，算法接管轨迹和方向");
+      render();
+    });
+    $("pauseButton").addEventListener("click", () => {
+      state.mission = "PAUSED";
+      request("missionPause", { runtimeMode: "VIRTUAL_SIMULATION", runId: 7001 });
+      render();
+    });
+    $("stopButton").addEventListener("click", () => {
+      state.mission = "STOPPED";
+      request("missionStop", { runtimeMode: "VIRTUAL_SIMULATION", runId: 7001 });
+      render();
+    });
+    $("resetButton").addEventListener("click", () => {
+      state.uav = 3; state.usv = 3; state.mission = "STOPPED"; state.selected = null;
+      $("algorithm").value = "GB_SFLA_CS"; $("seed").value = 20260814; $("uavSpeed").value = 5; $("usvSpeed").value = 1;
+      $("vehicles").innerHTML = ""; $("selectedDevice").innerHTML = "<strong>未选择设备</strong>点击场景中的设备查看信息并模拟 SelectDevice / SetCameraMode。";
+      $("scenarioAck").textContent = "等待生成"; $("log").innerHTML = "";
+      validateSpeeds(); render();
+    });
+    $("cameraButton").addEventListener("click", () => {
+      if (!state.selected) return;
+      request("setCameraMode", { mode: "device-follow", deviceCode: state.selected.code });
+      log(`相机切换为跟随 ${state.selected.code}`);
+    });
+    render();
+    generateScene();
+  </script>
+</body>
+</html>
