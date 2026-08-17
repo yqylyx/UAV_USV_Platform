@@ -45,7 +45,7 @@ const ready = ref(false)
 const controlsReady = ref(false)
 const errorMessage = ref('')
 const loadHint = ref('正在加载真实 Unity WebGL 构建包')
-const buildStamp = Date.now()
+const reloadToken = ref(Date.now())
 
 let probeTimer: number | null = null
 let heartbeatTimer: number | null = null
@@ -56,7 +56,7 @@ const seenPoseReceiptKeys = new Set<string>()
 const iframeUrl = computed(() => {
   const separator = props.iframeSrc.includes('?') ? '&' : '?'
   const params = new URLSearchParams({
-    v: String(buildStamp),
+    v: String(reloadToken.value),
     scope: props.runtimeScope,
     instanceId: props.runtimeInstanceId,
   })
@@ -362,16 +362,32 @@ function handleIframeLoad() {
   startIframeProbe()
 }
 
+function reload() {
+  trajectoryStore.clearFor(props.runtimeScope)
+  seenPoseReceiptKeys.clear()
+  unityBridgeStore.setConnectedFor(props.runtimeScope, false)
+  loading.value = true
+  ready.value = false
+  controlsReady.value = false
+  errorMessage.value = ''
+  loadHint.value = '正在重新加载 Unity WebGL 运行实例'
+  readyEmitted = false
+  reloadToken.value += 1
+}
+
 function createRequestId(type: string) {
   return `${type}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
 }
 
 function postToUnity(type: string, payload: Record<string, unknown> = {}) {
+  // Vue reactive arrays/objects cannot cross window.postMessage via the
+  // structured-clone algorithm. Convert scenario poses to plain data first.
+  const plainPayload = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
   const message: UnityMessage = {
     type,
     requestId: createRequestId(type),
     timestamp: Date.now(),
-    payload,
+    payload: plainPayload,
   }
   unityBridgeStore.noteOutgoingFor(props.runtimeScope, {
     type: message.type,
@@ -494,6 +510,7 @@ function reportRuntimeSnapshot(force = false) {
 
 defineExpose({
   postToUnity,
+  reload,
   selectDevice,
   focusDevice,
   switchCamera,
@@ -538,6 +555,7 @@ onBeforeUnmount(() => {
   <div class="unity-webgl-panel">
     <iframe
       ref="iframeRef"
+      :key="reloadToken"
       class="unity-webgl-frame"
       :src="iframeUrl"
       title="UAV-USV Unity WebGL"

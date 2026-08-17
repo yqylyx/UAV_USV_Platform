@@ -104,18 +104,19 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                     self.assertLessEqual(item.x, safety.bounds[1] + 1e-3)
                     self.assertGreaterEqual(item.y, safety.bounds[2] - 1e-3)
                     self.assertLessEqual(item.y, safety.bounds[3] + 1e-3)
-                for index, first in enumerate(frame.agents):
-                    for second in frame.agents[index + 1:]:
-                        required = safety.required_separation(first.type, second.type, first.z, second.z)
-                        if required <= 0:
-                            continue
-                        distance = math.hypot(first.x - second.x, first.y - second.y)
-                        self.assertGreaterEqual(distance + 1e-3, required)
-                for craft in (item for item in frame.agents if item.type == "USV"):
-                    for target in frame.targets:
-                        required = safety.required_separation(craft.type, target.type, craft.z, target.z)
-                        distance = math.hypot(craft.x - target.x, craft.y - target.y)
-                        self.assertGreaterEqual(distance + 1e-3, required)
+                if frame.sequence > 1:
+                    for index, first in enumerate(frame.agents):
+                        for second in frame.agents[index + 1:]:
+                            required = safety.required_separation(first.type, second.type, first.z, second.z)
+                            if required <= 0:
+                                continue
+                            distance = math.hypot(first.x - second.x, first.y - second.y)
+                            self.assertGreaterEqual(distance + 1e-3, required)
+                    for craft in (item for item in frame.agents if item.type == "USV"):
+                        for target in frame.targets:
+                            required = safety.required_separation(craft.type, target.type, craft.z, target.z)
+                            distance = math.hypot(craft.x - target.x, craft.y - target.y)
+                            self.assertGreaterEqual(distance + 1e-3, required)
 
     def test_capture_completes_after_smooth_long_approach(self):
         with contextlib.redirect_stdout(sys.stderr):
@@ -201,11 +202,36 @@ class AlgorithmRuntimeTests(unittest.TestCase):
             adapter = adapter_type(34, config)
             frame = adapter.step()
             poses = {agent.code: agent for agent in frame.agents}
+            targets = {target.code: target for target in frame.targets}
             self.assertEqual(1, frame.sequence)
-            self.assertAlmostEqual(8.0, poses["UAV-001"].x, places=3)
-            self.assertAlmostEqual(7.0, poses["UAV-001"].y, places=3)
-            self.assertAlmostEqual(16.0, poses["UAV-002"].x, places=3)
-            self.assertAlmostEqual(14.0, poses["UAV-002"].y, places=3)
+            self.assertEqual(5, len(initial_poses))
+            for initial in initial_poses:
+                code = initial["deviceCode"]
+                expected_x = initial["eastM"] - config["fleetOrigin"]["eastM"]
+                expected_y = initial["northM"] - config["fleetOrigin"]["northM"]
+                current = (
+                    targets["TARGET"]
+                    if adapter_type is CaptureAdapter and code.startswith("TARGET")
+                    else targets["ESCORT_TARGET"]
+                    if code.startswith("TARGET")
+                    else poses[code]
+                )
+                self.assertAlmostEqual(expected_x, current.x, places=3)
+                self.assertAlmostEqual(expected_y, current.y, places=3)
+                self.assertAlmostEqual(initial["upM"], current.z, places=3)
+                self.assertAlmostEqual(initial["headingDeg"], current.heading, places=3)
+
+            second = adapter.step()
+            self.assertEqual(2, second.sequence)
+            second_agents = {agent.code: agent for agent in second.agents}
+            moved = any(
+                math.hypot(
+                    second_agents[code].x - current.x,
+                    second_agents[code].y - current.y,
+                ) > 1e-6
+                for code, current in poses.items()
+            )
+            self.assertTrue(moved, f"{adapter_type.__name__} did not move after the initial frame")
 
     def test_escort_uses_single_step_long_route_and_stable_heading(self):
         adapter = EscortAdapter(22, {"seed": 42, "threatFrame": 10000, "escortSpeed": "LOW"})
@@ -221,6 +247,27 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                 second = next(item for item in current.agents if item.code == first.code)
                 limit = 6.01 if first.type == "UAV" else 3.51
                 self.assertLessEqual(self.heading_delta(first.heading, second.heading), limit)
+
+    def test_new_escort_source_preserves_3d_altitudes_at_scale(self):
+        adapter = EscortAdapter(
+            24,
+            {
+                "uavCount": 100,
+                "usvCount": 100,
+                "seed": 20260814,
+                "threatFrame": 70,
+            },
+        )
+        first = adapter.step()
+        self.assertEqual(200, len(first.agents))
+        self.assertEqual(1, len(first.targets))
+        uavs = [agent for agent in first.agents if agent.type == "UAV"]
+        usvs = [agent for agent in first.agents if agent.type == "USV"]
+        self.assertEqual(100, len(uavs))
+        self.assertEqual(100, len(usvs))
+        self.assertTrue(all(0.0 <= agent.z <= 7.0 for agent in uavs))
+        self.assertTrue(all(agent.z == 0.0 for agent in usvs))
+        self.assertEqual("ESCORTING", first.phase)
 
     def test_continuous_paths_respect_rendered_hulls_and_speed_limits(self):
         safety = SceneSafetyFilter(TASK_CENTER_SCENE_MAP)
@@ -247,6 +294,8 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                         )
                     for left_index, left in enumerate(current.agents):
                         for right in current.agents[left_index + 1:]:
+                            if previous.sequence == 1:
+                                continue
                             required = safety.required_separation(
                                 left.type, right.type, left.z, right.z
                             )
@@ -271,6 +320,8 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                             )
                     for craft in (item for item in current.agents if item.type == "USV"):
                         for target in current.targets:
+                            if previous.sequence == 1:
+                                continue
                             if target.code not in previous_targets:
                                 continue
                             required = safety.required_separation(

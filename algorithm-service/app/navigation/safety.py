@@ -19,7 +19,9 @@ DEFAULT_SCENE_MAP: Dict[str, object] = {
 # the System Overview Unity scene: those props must neither appear in the
 # experiment view nor act as invisible collision obstacles.
 TASK_CENTER_SCENE_MAP: Dict[str, object] = {
-    "bounds": [-55.0, 55.0, -40.0, 40.0],
+    # The virtual fleet view needs enough open water for 100 UAVs and 100
+    # USVs to remain visually separable before the mission converges.
+    "bounds": [-65.0, 65.0, -55.0, 55.0],
     "obstacles": [],
 }
 
@@ -60,6 +62,10 @@ class SceneSafetyFilter:
             "THREAT_TARGET": 4.8,
         }
         self.clearance_margin = 1.0
+        # Virtual UAVs are rendered in several altitude layers.  A layer gap
+        # of 2 m is treated as vertically clear for horizontal planning; this
+        # prevents a 100-aircraft fleet from being forced into one flat grid.
+        self.airborne_layer_clearance = 2.0
         # Numerical guard band for the projected solver.  The public safety
         # distance stays unchanged; this absorbs the tiny residual created
         # when shoreline projection and pair separation alternate.
@@ -105,6 +111,35 @@ class SceneSafetyFilter:
         if first_air != second_air and abs(first_z - second_z) >= 3.0:
             return 0.0
         return self.radius_for(first) + self.radius_for(second) + self.clearance_margin
+
+    def _horizontal_required_separation(
+        self,
+        first_kind: str,
+        second_kind: str,
+        first_z: float,
+        second_z: float,
+    ) -> float:
+        """Return the horizontal clearance needed after using altitude.
+
+        Surface craft keep the existing 2-D footprint rule.  UAV pairs use
+        their full 3-D clearance budget, so altitude separation reduces the
+        horizontal distance required by the safety solver instead of forcing
+        every aircraft into a flat plane.
+        """
+        required = self.required_separation(
+            first_kind,
+            second_kind,
+            first_z,
+            second_z,
+        )
+        if required <= 0.0:
+            return 0.0
+        if first_kind.upper() == "UAV" and second_kind.upper() == "UAV":
+            vertical = abs(float(first_z) - float(second_z))
+            if vertical >= self.airborne_layer_clearance:
+                return 0.0
+            return (required * required - vertical * vertical) ** 0.5
+        return required
 
     def resolve_group(
         self,
@@ -253,7 +288,7 @@ class SceneSafetyFilter:
                 if right_code not in previous:
                     continue
                 right_previous = tuple(float(value) for value in previous[right_code])
-                required = self.required_separation(
+                required = self._horizontal_required_separation(
                     kinds[left_code],
                     kinds[right_code],
                     positions[left_code][2],
@@ -280,7 +315,7 @@ class SceneSafetyFilter:
                     float(value)
                     for value in previous.get(fixed_code, fixed_point)
                 )
-                required = self.required_separation(
+                required = self._horizontal_required_separation(
                     kinds[left_code],
                     fixed_kind,
                     positions[left_code][2],
@@ -370,7 +405,12 @@ class SceneSafetyFilter:
         move_first: bool,
         move_second: bool,
     ) -> float:
-        required = self.required_separation(first_kind, second_kind, first[2], second[2])
+        required = self._horizontal_required_separation(
+            first_kind,
+            second_kind,
+            first[2],
+            second[2],
+        )
         if required <= 0.0:
             return 0.0
         required += self.solver_guard_band

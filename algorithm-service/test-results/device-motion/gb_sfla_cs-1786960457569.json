@@ -1,0 +1,154 @@
+{
+  "algorithmCode": "GB_SFLA_CS",
+  "runId": 1786960457569,
+  "config": {
+    "uavCount": 100,
+    "usvCount": 100,
+    "targetCount": 1,
+    "seed": 20260814,
+    "threatFrame": 70,
+    "targetBehavior": "MOVING"
+  },
+  "framesRead": 30,
+  "selectedCodes": [
+    "UAV-001",
+    "UAV-050",
+    "UAV-100",
+    "USV-001",
+    "USV-050",
+    "USV-100"
+  ],
+  "summary": {
+    "UAV-001": {
+      "code": "UAV-001",
+      "samples": 30,
+      "movedSamples": 0,
+      "totalDistance": 0.0,
+      "maxStepDistance": 0.0,
+      "first": {
+        "sequence": 1,
+        "x": -54.15,
+        "y": -39.15,
+        "z": 19.227272727272727,
+        "heading": 168.36733672776788
+      },
+      "last": {
+        "sequence": 30,
+        "x": -54.15,
+        "y": -39.15,
+        "z": 19.227272727272727,
+        "heading": 168.36733672776788
+      }
+    },
+    "UAV-050": {
+      "code": "UAV-050",
+      "samples": 30,
+      "movedSamples": 9,
+      "totalDistance": 0.4962811414507202,
+      "maxStepDistance": 0.3552207386910838,
+      "first": {
+        "sequence": 1,
+        "x": 2.139723219046171,
+        "y": -3.9160849726155904,
+        "z": 21.045454545454547,
+        "heading": 354.41203130932576
+      },
+      "last": {
+        "sequence": 30,
+        "x": 2.622427318359556,
+        "y": -3.8390628695601685,
+        "z": 21.106132162384014,
+        "heading": 0.41203130932575505
+      }
+    },
+    "UAV-100": {
+      "code": "UAV-100",
+      "samples": 30,
+      "movedSamples": 3,
+      "totalDistance": 0.37616622354489565,
+      "maxStepDistance": 0.35000166413216477,
+      "first": {
+        "sequence": 1,
+        "x": 4.61064663833629,
+        "y": 38.87034804045726,
+        "z": 24.68181818181818,
+        "heading": 349.082862137509
+      },
+      "last": {
+        "sequence": 30,
+        "x": 4.97298115927637,
+        "y": 38.774336015163534,
+        "z": 24.680738878670503,
+        "heading": 349.082862137509
+      }
+    },
+    "USV-001": {
+      "code": "USV-001",
+      "samples": 30,
+      "movedSamples": 26,
+      "totalDistance": 4.669545852355299,
+      "maxStepDistance": 0.17999999999999972,
+      "first": {
+        "sequence": 1,
+        "x": -45.1804541476447,
+        "y": -34.85,
+        "z": 0.0,
+        "heading": 140.12752450257514
+      },
+      "last": {
+        "sequence": 30,
+        "x": -49.85,
+        "y": -34.85,
+        "z": 0.0,
+        "heading": 179.12752450257514
+      }
+    },
+    "USV-050": {
+      "code": "USV-050",
+      "samples": 30,
+      "movedSamples": 29,
+      "totalDistance": 5.2200000000000015,
+      "maxStepDistance": 0.18000000000000185,
+      "first": {
+        "sequence": 1,
+        "x": 22.918444156440756,
+        "y": -26.018425207245958,
+        "z": 0.0,
+        "heading": 231.8651983782408
+      },
+      "last": {
+        "sequence": 30,
+        "x": 18.162630366061116,
+        "y": -26.770299296615217,
+        "z": 0.0,
+        "heading": 203.3651983782408
+      }
+    },
+    "USV-100": {
+      "code": "USV-100",
+      "samples": 30,
+      "movedSamples": 29,
+      "totalDistance": 5.219999999999993,
+      "maxStepDistance": 0.18000000000000416,
+      "first": {
+        "sequence": 1,
+        "x": 44.1193671974243,
+        "y": 28.735304619619342,
+        "z": 0.0,
+        "heading": 133.13844728999192
+      },
+      "last": {
+        "sequence": 30,
+        "x": 42.219565904023675,
+        "y": 33.49618176480333,
+        "z": 0.0,
+        "heading": 110.63844728999192
+      }
+    }
+  },
+  "missingSelectedCodes": [],
+  "files": {
+    "csv": "C:\\Users\\86188\\Desktop\\mxy\\UAV_USV_Platform\\algorithm-service\\test-results\\device-motion\\gb_sfla_cs-1786960457569.csv",
+    "json": "C:\\Users\\86188\\Desktop\\mxy\\UAV_USV_Platform\\algorithm-service\\test-results\\device-motion\\gb_sfla_cs-1786960457569.json"
+  }
+}

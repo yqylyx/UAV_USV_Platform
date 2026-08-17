@@ -24,6 +24,10 @@ import {
   type EnuOrigin,
   type VirtualPoseStateMap,
 } from '@/utils/virtualAlgorithmFrameAdapter'
+import {
+  buildVirtualFleetGridLayout,
+  type GridScenarioPose,
+} from '@/utils/virtualFleetGridLayout'
 
 type UnityMessage = {
   type: string
@@ -54,6 +58,7 @@ const scenarioLoading = ref(false)
 const algorithmPrepared = ref(false)
 const algorithmPreparing = ref(false)
 const initialScenarioPoses = ref<ScenarioInitialPose[]>([])
+const plannedScenarioPoses = ref<GridScenarioPose[]>([])
 const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
 let previousAlgorithmPoses: VirtualPoseStateMap = new Map()
 let algorithmPollTimer: number | null = null
@@ -108,8 +113,8 @@ function onUnityReady() {
   addLog('platformBridgeReady: Unity WebGL 已连接')
   send('initializePlatform', {
     runtimeMode: 'VIRTUAL_SIMULATION',
-    protocolVersion: '3.0',
-    buildId: 'vue-virtual-fleet-v3',
+    protocolVersion: '2.0',
+    buildId: 'vue-virtual-fleet-v2-compatible',
   })
 }
 
@@ -123,13 +128,26 @@ function onUnityMessage(message: UnityMessage) {
   if (message.type !== 'vueCommandReceived') {
     lastMessage.value = message
   }
+  if (message.type === 'vueCommandReceived' && message.payload?.type === 'loadScenario') {
+    addLog(
+      `bridge loadScenario: sent=${message.payload.bridgeSent === true}`
+      + ` queued=${message.payload.queued === true}`
+      + ` fallback=${String(message.payload.fallback ?? '') || '-'}`,
+    )
+  }
+  if (message.type === 'unityBridgeError') {
+    addLog(
+      `Unity bridge error: ${String(message.payload?.message ?? 'unknown')}`
+      + ` type=${String(message.payload?.requestedType ?? '-')}`,
+    )
+  }
   if (message.type === 'platformBridgeReady') unityReady.value = message.payload?.ready === true
   if (message.type === 'scenarioReady') {
     const readyRunId = Number(message.payload?.runId ?? 0)
     const success = message.payload?.success === true
     scenarioReadyRunId.value = success && readyRunId === state.runId ? readyRunId : null
     if (success && readyRunId === state.runId) {
-      initialScenarioPoses.value = Array.isArray(message.payload?.initialPoses)
+      const returnedPoses = Array.isArray(message.payload?.initialPoses)
         ? message.payload.initialPoses
           .filter((pose): pose is ScenarioInitialPose => (
             typeof pose === 'object'
@@ -154,6 +172,9 @@ function onUnityMessage(message: UnityMessage) {
             && Number.isFinite(pose.headingDeg)
           ))
         : []
+      initialScenarioPoses.value = returnedPoses.length > 0
+        ? returnedPoses
+        : plannedScenarioPoses.value
       addLog(`scenario initial poses: ${initialScenarioPoses.value.length}`)
     }
     if (readyRunId === state.runId) scenarioLoading.value = false
@@ -204,7 +225,14 @@ function generateScenario() {
   algorithmPreparePromise = null
   stopAlgorithmPolling()
   previousAlgorithmPoses = new Map()
-  initialScenarioPoses.value = []
+  plannedScenarioPoses.value = buildVirtualFleetGridLayout({
+    uavCount: state.uavCount,
+    usvCount: state.usvCount,
+    fleetOrigin: fleetOriginEnu,
+    uavSpeedMps: state.uavSpeed,
+    usvSpeedMps: state.usvSpeed,
+  })
+  initialScenarioPoses.value = plannedScenarioPoses.value
   scenarioReadyRunId.value = null
   scenarioLoading.value = true
   addLog(`loadScenario pending: runId=${state.runId}`)
@@ -215,6 +243,9 @@ function generateScenario() {
     uavCount: state.uavCount,
     usvCount: state.usvCount,
     targetCount: 1,
+    layoutVersion: 'ALGORITHM_GRID_V1',
+    initialPosesCoordinateFrame: 'GLOBAL_ENU',
+    initialPoses: plannedScenarioPoses.value,
     initialSpeedMps: state.algorithm === 'GB_SFLA_CS' ? state.uavSpeed : state.usvSpeed,
     seed: state.seed,
   })
@@ -241,6 +272,7 @@ function prepareExternalAlgorithm(): Promise<boolean> {
       fleetOrigin: fleetOriginEnu,
       initialPoses: initialScenarioPoses.value,
       targetBehavior: 'MOVING',
+      threatMinDistanceM: 28,
       standaloneVirtualSimulation: true,
       })
       if (state.runId !== prepareRunId) return false
@@ -349,7 +381,14 @@ async function resetMission() {
   algorithmPrepared.value = false
   algorithmPreparePromise = null
   previousAlgorithmPoses = new Map()
+  plannedScenarioPoses.value = []
+  initialScenarioPoses.value = []
+  scenarioReadyRunId.value = null
+  selectedDevice.value = ''
+  logs.value = []
+  addLog('missionReset: 清理算法、轨迹和 Unity 运行实例')
   send('missionReset', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+  unityPanel.value?.reload()
 }
 
 async function applyAlgorithmFrame(frame: AlgorithmRuntimeFrame) {

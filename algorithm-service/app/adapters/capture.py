@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 from app.adapters.base import AlgorithmAdapter
-from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
+from app.navigation import TASK_CENTER_SCENE_MAP, SafePoint, SceneSafetyFilter
 from app.schemas import AgentFrame, RuntimeFrame, TargetFrame
 
 
@@ -87,13 +87,17 @@ class CaptureAdapter(AlgorithmAdapter):
             for index in range(count):
                 row, column = divmod(index, columns)
                 x = x_min if columns == 1 else x_min + (x_max - x_min) * column / (columns - 1)
-                y = 25.0 if rows == 1 else 25.0 + 250.0 * row / (rows - 1)
+                # Keep the generated fleet inside the Task Center safety
+                # bounds after _to_scene() converts native coordinates by
+                # (value - 150) / 3.  The old 25..275 range became
+                # -41.67..41.67 and pinned edge UAVs to the boundary.
+                y = 45.0 if rows == 1 else 45.0 + 210.0 * row / (rows - 1)
                 positions.append([x, y, z_min + (index % 4) * z_step])
             return positions
 
         positions = np.asarray(
-            grid_positions(self.source.UAV_COUNT, 20.0, 135.0, 45.0, 8.0)
-            + grid_positions(self.source.USV_COUNT, 165.0, 280.0, 0.0, 0.0),
+            grid_positions(self.source.UAV_COUNT, 0.0, 150.0, 45.0, 8.0)
+            + grid_positions(self.source.USV_COUNT, 150.0, 300.0, 0.0, 0.0),
             dtype=float,
         )
         initial_poses = self.initial_pose_map()
@@ -141,6 +145,7 @@ class CaptureAdapter(AlgorithmAdapter):
         self.sequence += 1
         initial_frame = self._initial_frame_pending
         self._initial_frame_pending = False
+        initial_snapshot = initial_frame and bool(self.initial_pose_map())
         if not initial_frame:
             with contextlib.redirect_stdout(sys.stderr):
                 self.env.step()
@@ -150,19 +155,22 @@ class CaptureAdapter(AlgorithmAdapter):
         # an unrelated static hull.
         escort_scene = (45.0, -28.0, 0.0)
         target_scene = self._to_scene(self.env.targets[0, :3], "TARGET")
-        target_previous = self.previous_scene.get("TARGET", target_scene)
-        safe_target = self.safety.constrain(
-            target_previous,
-            target_scene,
-            "TARGET",
-            (escort_scene,),
-            self.safety.required_separation(
-                "CAPTURE_TARGET",
-                "ESCORT_TARGET",
-                0.0,
-                0.0,
-            ),
-        )
+        if initial_snapshot:
+            safe_target = SafePoint(*target_scene, False)
+        else:
+            target_previous = self.previous_scene.get("TARGET", target_scene)
+            safe_target = self.safety.constrain(
+                target_previous,
+                target_scene,
+                "TARGET",
+                (escort_scene,),
+                self.safety.required_separation(
+                    "CAPTURE_TARGET",
+                    "ESCORT_TARGET",
+                    0.0,
+                    0.0,
+                ),
+            )
         self.previous_scene["TARGET"] = (safe_target.x, safe_target.y, safe_target.z)
         self.env.targets[0, :3] = self._to_internal((safe_target.x, safe_target.y, 0.0), "TARGET")
 
@@ -181,7 +189,7 @@ class CaptureAdapter(AlgorithmAdapter):
             proposals[code] = (kind, self._to_scene(raw[:3], kind))
             rows[code] = (index, raw)
 
-        resolved = self.safety.resolve_group(
+        resolved = {} if initial_snapshot else self.safety.resolve_group(
             proposals,
             self.previous_scene,
             {
@@ -191,11 +199,16 @@ class CaptureAdapter(AlgorithmAdapter):
         )
         for code, (index, raw) in rows.items():
             kind = proposals[code][0]
-            safe = resolved[code]
             previous_scene = self.previous_scene.get(code)
-            scene = (safe.x, safe.y, safe.z)
+            if initial_snapshot:
+                scene = proposals[code][1]
+                adjusted = False
+            else:
+                safe = resolved[code]
+                scene = (safe.x, safe.y, safe.z)
+                adjusted = safe.adjusted
             capped = False
-            if previous_scene is not None:
+            if not initial_snapshot and previous_scene is not None:
                 dx = scene[0] - previous_scene[0]
                 dy = scene[1] - previous_scene[1]
                 distance = math.hypot(dx, dy)
@@ -208,17 +221,22 @@ class CaptureAdapter(AlgorithmAdapter):
                         scene[2],
                     )
                     capped = True
-            if safe.adjusted or capped:
+            if adjusted or capped:
                 self.avoidance_count += 1
                 self.env.agents[index, :3] = self._to_internal(scene, kind)
             self.previous_scene[code] = scene
-            heading = self.stabilize_heading(
-                code,
-                previous_scene,
-                scene,
-                math.degrees(float(raw[4])) % 360.0,
-                3.0 if kind == "UAV" else 1.5,
-            )
+            initial_pose = self.initial_pose_map().get(code)
+            if initial_snapshot and initial_pose is not None:
+                heading = float(initial_pose.get("headingDeg", 0.0)) % 360.0
+                self._stable_headings[code] = heading
+            else:
+                heading = self.stabilize_heading(
+                    code,
+                    previous_scene,
+                    scene,
+                    math.degrees(float(raw[4])) % 360.0,
+                    3.0 if kind == "UAV" else 1.5,
+                )
             agents.append(AgentFrame(code, kind, *scene, heading, "ENCIRCLEMENT"))
         captured = 0 in self.env.permanently_captured
         if captured and self.captured_at_sequence is None:
@@ -279,7 +297,18 @@ class CaptureAdapter(AlgorithmAdapter):
             self.run_id, self.code, self.sequence, int(time.time() * 1000), phase,
             agents,
             [
-                TargetFrame("TARGET", "CAPTURE_TARGET", safe_target.x, safe_target.y, 0.0, math.degrees(float(self.env.targets[0, 4])) % 360.0),
+                TargetFrame(
+                    "TARGET",
+                    "CAPTURE_TARGET",
+                    safe_target.x,
+                    safe_target.y,
+                    0.0,
+                    (
+                        float(self.initial_pose_map().get("TARGET-001", {}).get("headingDeg", 0.0)) % 360.0
+                        if initial_snapshot
+                        else math.degrees(float(self.env.targets[0, 4])) % 360.0
+                    ),
+                ),
                 # The protected vessel belongs to the shared scene. It remains
                 # stationary during capture and becomes route-driven only in
                 # the escort algorithm.

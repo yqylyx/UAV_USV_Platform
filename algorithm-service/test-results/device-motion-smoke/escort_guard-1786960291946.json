@@ -1,0 +1,75 @@
+{
+  "algorithmCode": "ESCORT_GUARD",
+  "runId": 1786960291946,
+  "config": {
+    "uavCount": 3,
+    "usvCount": 3,
+    "targetCount": 1,
+    "seed": 20260814,
+    "threatFrame": 70,
+    "targetBehavior": "MOVING"
+  },
+  "framesRead": 5,
+  "selectedCodes": [
+    "UAV-001",
+    "UAV-050",
+    "UAV-100",
+    "USV-001",
+    "USV-050",
+    "USV-100"
+  ],
+  "summary": {
+    "UAV-001": {
+      "code": "UAV-001",
+      "samples": 5,
+      "movedSamples": 4,
+      "totalDistance": 0.8231993061203366,
+      "maxStepDistance": 0.20999999999949429,
+      "first": {
+        "sequence": 1,
+        "x": -10.025913267161407,
+        "y": -11.034491781290418,
+        "z": 0.8237234761248057,
+        "heading": 0.0
+      },
+      "last": {
+        "sequence": 5,
+        "x": -9.8212130026378,
+        "y": -11.825152504846525,
+        "z": 0.8237234761248057,
+        "heading": 348.0
+      }
+    },
+    "USV-001": {
+      "code": "USV-001",
+      "samples": 5,
+      "movedSamples": 4,
+      "totalDistance": 0.4499999999985576,
+      "maxStepDistance": 0.11249999999966005,
+      "first": {
+        "sequence": 1,
+        "x": -19.849111278545863,
+        "y": 4.04876982981785,
+        "z": 0.0,
+        "heading": 0.0
+      },
+      "last": {
+        "sequence": 5,
+        "x": -19.44392353607824,
+        "y": 3.8532217371897777,
+        "z": 0.0,
+        "heading": 354.0
+      }
+    }
+  },
+  "missingSelectedCodes": [
+    "UAV-050",
+    "UAV-100",
+    "USV-050",
+    "USV-100"
+  ],
+  "files": {
+    "csv": "test-results\\device-motion-smoke\\escort_guard-1786960291946.csv",
+    "json": "test-results\\device-motion-smoke\\escort_guard-1786960291946.json"
+  }
+}

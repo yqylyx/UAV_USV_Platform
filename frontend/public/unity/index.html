@@ -339,7 +339,8 @@
             coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
             platform: String(payload.platform || 'vue-webgl'),
             requestId: message.requestId || '',
-            protocolVersion: String(payload.protocolVersion || '2.0'),
+            protocolVersion: '2.0',
+            buildId: String(payload.buildId || 'vue-virtual-fleet-v2-compatible'),
           });
         }
         if (type === 'loadscenario') {
@@ -614,7 +615,8 @@
           runId: String(runId || ''),
           coordinateSystem: 'ROS_ENU',
           platform: 'vue-webgl',
-          protocolVersion: '1.0',
+          protocolVersion: '2.0',
+          buildId: 'vue-virtual-fleet-v2-compatible',
         });
       }
 
