@@ -284,7 +284,29 @@ async function startMission() {
     send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
     startAlgorithmPolling()
   } catch (error) {
-    addLog(`missionStart failed: ${error instanceof Error ? error.message : String(error)}`)
+    const message = error instanceof Error ? error.message : String(error)
+    if (/停止|stop|not found|不存在/i.test(message)) {
+      algorithmPrepared.value = false
+      algorithmPreparePromise = null
+      addLog(`algorithm process unavailable, rebuilding runId=${state.runId}`)
+      if (await prepareExternalAlgorithm()) {
+        try {
+          await controlAlgorithmRun(state.runId, 'start')
+          state.mission = 'RUNNING'
+          send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+          startAlgorithmPolling()
+          return
+        } catch (retryError) {
+          addLog(
+            `missionStart retry failed: ${
+              retryError instanceof Error ? retryError.message : String(retryError)
+            }`,
+          )
+          return
+        }
+      }
+    }
+    addLog(`missionStart failed: ${message}`)
   }
 }
 
@@ -304,6 +326,8 @@ async function stopMission() {
   try {
     if (algorithmPrepared.value) await controlAlgorithmRun(state.runId, 'stop')
     state.mission = 'STOPPED'
+    algorithmPrepared.value = false
+    algorithmPreparePromise = null
     stopAlgorithmPolling()
     send('missionStop', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
   } catch (error) {
