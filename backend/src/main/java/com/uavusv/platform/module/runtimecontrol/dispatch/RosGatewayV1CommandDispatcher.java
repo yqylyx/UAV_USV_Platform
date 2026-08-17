@@ -3,6 +3,8 @@ package com.uavusv.platform.module.runtimecontrol.dispatch;
 import com.google.protobuf.Timestamp;
 import com.uavusv.platform.module.gateway.v1.RosGatewayV1WebSocketClient;
 import com.uavusv.platform.module.gateway.v1.DeviceCodeMapper;
+import com.uavusv.platform.module.mission.entity.MissionRun;
+import com.uavusv.platform.module.mission.repository.MissionRunRepository;
 import com.uavusv.platform.module.runtimecontrol.dto.RuntimeCommandRequest;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
@@ -28,15 +30,25 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
     private final AtomicLong sequence = new AtomicLong();
     private final String controlStreamId;
     private final DeviceCodeMapper deviceCodeMapper;
+    private final MissionRunRepository missionRunRepository;
 
     public RosGatewayV1CommandDispatcher(
             RosGatewayV1WebSocketClient rosGatewayV1WebSocketClient,
-            DeviceCodeMapper deviceCodeMapper
+            DeviceCodeMapper deviceCodeMapper,
+            MissionRunRepository missionRunRepository
     ) {
         this.rosGatewayV1WebSocketClient = rosGatewayV1WebSocketClient;
         this.deviceCodeMapper = deviceCodeMapper;
+        this.missionRunRepository = missionRunRepository;
         this.controlStreamId = "platform.control." + UUID.randomUUID().toString().substring(0, 8);
         log.info("ROS Gateway control stream initialized: {}", controlStreamId);
+    }
+
+    RosGatewayV1CommandDispatcher(
+            RosGatewayV1WebSocketClient rosGatewayV1WebSocketClient,
+            DeviceCodeMapper deviceCodeMapper
+    ) {
+        this(rosGatewayV1WebSocketClient, deviceCodeMapper, null);
     }
 
     @Override
@@ -84,6 +96,10 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
 
         if (request.runId() != null) {
             envelope.setRunId(String.valueOf(request.runId()));
+            Long missionId = resolveMissionId(request.runId());
+            if (missionId != null) {
+                envelope.setMissionId(String.valueOf(missionId));
+            }
         }
         if (request.deviceCode() != null && !request.deviceCode().isBlank()) {
             envelope.setDeviceCode(deviceCodeMapper.toRos(request.deviceCode()));
@@ -121,6 +137,15 @@ public class RosGatewayV1CommandDispatcher implements RuntimeCommandDispatcher {
 
     private boolean isEmergency(CommandType commandType) {
         return commandType.name().contains("EMERGENCY");
+    }
+
+    private Long resolveMissionId(Long runId) {
+        if (missionRunRepository == null || runId == null) {
+            return null;
+        }
+        return missionRunRepository.findById(runId)
+                .map(MissionRun::getMissionId)
+                .orElse(null);
     }
 
     private void putStringParameter(

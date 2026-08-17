@@ -147,7 +147,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     public void onOpen(WebSocket webSocket) {
         socket = webSocket;
         runtimeStateService.observeGatewayConnection(true);
-        log.info("ROS Gateway v1 connected");
+        log.info("ROS Gateway v1 connected endpoint={}", endpoint);
         webSocket.request(1);
     }
 
@@ -289,6 +289,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
 
     private void publishControlAckEvent(GatewayEnvelope envelope) {
         if (envelope.type() != GatewayMessageType.CONTROL_ACK
+                && envelope.type() != GatewayMessageType.CONTROL_FEEDBACK
                 && envelope.type() != GatewayMessageType.CONTROL_RESULT) {
             return;
         }
