@@ -225,7 +225,7 @@ public class AlgorithmRuntimeManager {
                         handle.latestSequence.set(frame.path("sequence").asLong());
                         synchronized (handle.frameBuffer) {
                             handle.frameBuffer.addLast(frame);
-                            while (handle.frameBuffer.size() > 90) handle.frameBuffer.removeFirst();
+                            while (handle.frameBuffer.size() > 300) handle.frameBuffer.removeFirst();
                         }
                     } else if ("stateChanged".equals(eventType) || "runtimeStopped".equals(eventType)) {
                         handle.state.set(event.path("state").asText(handle.state.get()));

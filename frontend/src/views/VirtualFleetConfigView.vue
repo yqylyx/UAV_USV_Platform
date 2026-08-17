@@ -15,7 +15,7 @@ import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
 import {
   controlAlgorithmRun,
-  fetchAlgorithmFrame,
+  fetchAlgorithmFrames,
   prepareAlgorithmRun,
 } from '@/api/algorithm'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
@@ -358,8 +358,10 @@ async function pollAlgorithmFrame() {
   ) return
   algorithmPollInFlight = true
   try {
-    const frame = await fetchAlgorithmFrame(state.runId, state.sequence)
-    if (frame) await applyAlgorithmFrame(frame)
+    const frames = await fetchAlgorithmFrames(state.runId, state.sequence)
+    for (const frame of frames) {
+      await applyAlgorithmFrame(frame)
+    }
   } catch (error) {
     addLog(`algorithm frame failed: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
