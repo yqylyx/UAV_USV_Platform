@@ -99,6 +99,16 @@ class RuntimeControlServiceGatewayStatusTests {
     }
 
     @Test
+    void missionCenterFeedbackWithExecutingUpdatesCommandState() {
+        ControlCommand command = command(123L, RuntimeScope.MISSION_CENTER);
+
+        service.applyGatewayCommandStatus(command.getCommandKey(), "123", "EXECUTING",
+                "executing", null, "ROS_GATEWAY_V1");
+
+        assertEquals(CommandStatus.EXECUTING, command.getStatus());
+    }
+
+    @Test
     void missionCenterResponseWithoutRunIdFailsAsMissing() {
         ControlCommand command = command(123L, RuntimeScope.MISSION_CENTER);
 
