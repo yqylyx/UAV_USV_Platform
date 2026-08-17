@@ -2,6 +2,7 @@ package com.uavusv.platform.module.visualsensor.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -23,6 +24,7 @@ public class VisualSensorFrameStreamHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    @Autowired
     public VisualSensorFrameStreamHandler(ObjectMapper objectMapper) {
         this(objectMapper, Clock.systemUTC());
     }
