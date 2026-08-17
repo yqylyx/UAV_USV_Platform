@@ -60,6 +60,15 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private volatile WebSocket socket;
     private volatile boolean closing;
 
+    record CameraJpegPayload(
+            String cameraId,
+            String jpegBase64,
+            int width,
+            int height,
+            long timestampMs
+    ) {
+    }
+
     public RosGatewayV1WebSocketClient(
             GatewayEnvelopeDecoder gatewayEnvelopeDecoder,
             GatewayProtobufDecoder gatewayProtobufDecoder,
@@ -236,23 +245,19 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
 
     private boolean observeHighVolumeSensor(GatewayEnvelope envelope) {
         if (envelope.type() == GatewayMessageType.MEDIA_CAMERA_JPEG) {
-            JsonNode payload = envelope.payload();
-            String cameraId = text(payload, "cameraId");
-            String jpegBase64 = text(payload, "jpegBase64");
-            int width = payload.path("width").asInt();
-            int height = payload.path("height").asInt();
+            CameraJpegPayload camera = cameraJpegPayload(envelope);
             boolean accepted = visualSensorService.observeJpegFrame(
-                    cameraId,
-                    jpegBase64,
-                    width,
-                    height,
-                    payload.path("timestampMs").asLong(envelope.timestamp().toEpochMilli()),
+                    camera.cameraId(),
+                    camera.jpegBase64(),
+                    camera.width(),
+                    camera.height(),
+                    camera.timestampMs(),
                     -1
             );
             if (accepted) {
                 visualSensorService.observeGateway(true, "ROS Gateway v1 media.camera_jpeg 在线");
             }
-            logCameraFrame(envelope, cameraId, width, height, jpegBase64.length(), accepted);
+            logCameraFrame(envelope, camera.cameraId(), camera.width(), camera.height(), camera.jpegBase64().length(), accepted);
             return true;
         }
         if (envelope.type() == GatewayMessageType.PERCEPTION_RADAR_SCAN) {
@@ -332,12 +337,41 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         };
     }
 
-    private String text(JsonNode payload, String fieldName) {
+    static CameraJpegPayload cameraJpegPayload(GatewayEnvelope envelope) {
+        JsonNode payload = envelope.payload();
+        return new CameraJpegPayload(
+                text(payload, "cameraId", "camera_id"),
+                text(payload, "jpegBase64", "jpeg_base64", "jpegData", "jpeg_data"),
+                number(payload, 0, "width").intValue(),
+                number(payload, 0, "height").intValue(),
+                number(payload, envelope.timestamp().toEpochMilli(), "timestampMs", "timestamp_ms").longValue()
+        );
+    }
+
+    static String text(JsonNode payload, String... fieldNames) {
         if (payload == null) {
             return "";
         }
-        JsonNode value = payload.path(fieldName);
-        return value.isTextual() ? value.asText().trim() : "";
+        for (String fieldName : fieldNames) {
+            JsonNode value = payload.path(fieldName);
+            if (value.isTextual() && !value.asText().isBlank()) {
+                return value.asText().trim();
+            }
+        }
+        return "";
+    }
+
+    static Number number(JsonNode payload, Number fallback, String... fieldNames) {
+        if (payload == null) {
+            return fallback;
+        }
+        for (String fieldName : fieldNames) {
+            JsonNode value = payload.path(fieldName);
+            if (value.isNumber()) {
+                return value.numberValue();
+            }
+        }
+        return fallback;
     }
 
     private List<Double> doubles(JsonNode array) {
