@@ -19,6 +19,7 @@ import type {
 const UNITY_FRAME_FRESH_MS = 15_000
 const UNITY_STREAM_FRESH_MS = 4_000
 const BACKEND_FRAME_FRESH_MS = 4_000
+const FRAME_STREAM_RECONNECT_MS = 2_000
 
 const SENSOR_CATALOG: Array<{
   cameraId: string
@@ -51,7 +52,12 @@ interface VisualSensorState {
   channels: Record<VisualSensorRuntimeScope, VisualSensorChannelState>
   loading: boolean
   error: string
+  frameStreamConnected: boolean
 }
+
+let frameStreamSocket: WebSocket | null = null
+let frameStreamReconnectTimer: number | undefined
+let frameStreamManualClose = false
 
 function fallbackOverview(focusedCameraId = 'uav_01'): VisualSensorOverview {
   return {
@@ -112,6 +118,11 @@ function releaseChannelFrames(channel: VisualSensorChannelState) {
   channel.frameReceivedAtMs = {}
   channel.unityFrames = {}
   channel.streamStats = null
+}
+
+function frameStreamUrl() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/api/visual-sensors/stream`
 }
 
 function contextKey(context: VisualSensorRuntimeContext) {
@@ -223,6 +234,7 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
     },
     loading: false,
     error: '',
+    frameStreamConnected: false,
   }),
   getters: {
     displayOverview: (state) => buildDisplayOverview(state.channels.SYSTEM_OVERVIEW),
@@ -280,6 +292,96 @@ export const useVisualSensorStore = defineStore('visual-sensor', {
       const channel = this.channels[scope]
       channel.unityBridgeReady = ready
       if (ready) this.error = ''
+    },
+    connectFrameStream() {
+      if (typeof window === 'undefined') return
+      if (
+        frameStreamSocket
+        && (
+          frameStreamSocket.readyState === WebSocket.OPEN
+          || frameStreamSocket.readyState === WebSocket.CONNECTING
+        )
+      ) return
+      frameStreamManualClose = false
+      if (frameStreamReconnectTimer) {
+        window.clearTimeout(frameStreamReconnectTimer)
+        frameStreamReconnectTimer = undefined
+      }
+      const socket = new WebSocket(frameStreamUrl())
+      frameStreamSocket = socket
+      socket.onopen = () => {
+        if (frameStreamSocket !== socket) return
+        this.frameStreamConnected = true
+        this.error = ''
+      }
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(String(event.data)) as Record<string, unknown>
+          if (payload.type !== 'visualSensorFrame') return
+          this.ingestBackendFrame(payload)
+        } catch {
+          // Ignore malformed stream frames and keep HTTP fallback available.
+        }
+      }
+      socket.onerror = () => {
+        if (frameStreamSocket === socket) this.frameStreamConnected = false
+      }
+      socket.onclose = () => {
+        if (frameStreamSocket !== socket) return
+        frameStreamSocket = null
+        this.frameStreamConnected = false
+        if (frameStreamManualClose) return
+        frameStreamReconnectTimer = window.setTimeout(() => {
+          frameStreamReconnectTimer = undefined
+          this.connectFrameStream()
+        }, FRAME_STREAM_RECONNECT_MS)
+      }
+    },
+    disconnectFrameStream() {
+      frameStreamManualClose = true
+      if (frameStreamReconnectTimer) {
+        window.clearTimeout(frameStreamReconnectTimer)
+        frameStreamReconnectTimer = undefined
+      }
+      const socket = frameStreamSocket
+      frameStreamSocket = null
+      this.frameStreamConnected = false
+      if (socket && socket.readyState !== WebSocket.CLOSED) {
+        socket.close()
+      }
+    },
+    ingestBackendFrame(payload: Record<string, unknown>) {
+      const channel = this.channels.SYSTEM_OVERVIEW
+      const frame = payload as unknown as UnityVisualSensorFrame
+      if (!SENSOR_CATALOG.some((sensor) => sensor.cameraId === frame.cameraId)) return
+      if (!frame.jpegBase64) return
+      try {
+        const now = Date.now()
+        const previous = channel.unityFrames[frame.cameraId]
+        const interval = previous ? now - previous.receivedAtMs : 0
+        const instantFps = interval > 0 ? 1_000 / interval : 0
+        const fps = previous?.fps
+          ? previous.fps * 0.72 + instantFps * 0.28
+          : instantFps
+        const nextUrl = URL.createObjectURL(decodeJpeg(frame.jpegBase64))
+        const previousUrl = channel.frameUrls[frame.cameraId]
+        channel.frameUrls[frame.cameraId] = nextUrl
+        channel.frameReceivedAtMs[frame.cameraId] = now
+        if (previousUrl) URL.revokeObjectURL(previousUrl)
+        channel.unityFrames[frame.cameraId] = {
+          width: Number(frame.width) || 0,
+          height: Number(frame.height) || 0,
+          fps,
+          timestampMs: Number(frame.timestampMs) || now,
+          receivedAtMs: now,
+          sequence: Number(frame.sequence) || 0,
+          source: frame.source || 'ROS Gateway v1 media.camera_jpeg',
+        }
+        this.frameStreamConnected = true
+        this.error = ''
+      } catch {
+        // Keep the last valid stream or HTTP frame during a malformed update.
+      }
     },
     ingestUnityFrame(
       scope: VisualSensorRuntimeScope,

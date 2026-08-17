@@ -1,8 +1,10 @@
 package com.uavusv.platform.module.visualsensor.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.uavusv.platform.module.visualsensor.integration.VisualSensorFrameStreamHandler;
 import com.uavusv.platform.module.visualsensor.dto.VisualSensorOverviewResponse;
 import com.uavusv.platform.module.visualsensor.dto.VisualSensorResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,7 @@ public class VisualSensorService {
     );
 
     private final Clock clock;
+    private final VisualSensorFrameStreamHandler frameStreamHandler;
     private final Map<String, FrameState> frames = new LinkedHashMap<>();
     private final Map<String, Long> dropLogTimes = new LinkedHashMap<>();
     private volatile boolean gatewayConnected;
@@ -38,11 +41,21 @@ public class VisualSensorService {
     private volatile String focusedCameraId = "uav_01";
 
     public VisualSensorService() {
-        this(Clock.systemUTC());
+        this(Clock.systemUTC(), null);
+    }
+
+    @Autowired
+    public VisualSensorService(VisualSensorFrameStreamHandler frameStreamHandler) {
+        this(Clock.systemUTC(), frameStreamHandler);
     }
 
     VisualSensorService(Clock clock) {
+        this(clock, null);
+    }
+
+    VisualSensorService(Clock clock, VisualSensorFrameStreamHandler frameStreamHandler) {
         this.clock = clock;
+        this.frameStreamHandler = frameStreamHandler;
         for (SensorDefinition definition : DEFINITIONS) {
             frames.put(definition.cameraId(), new FrameState());
         }
@@ -81,6 +94,7 @@ public class VisualSensorService {
         state.timestampMillis = frame.path("timestamp_ms").asLong(now);
         state.receivedAtMillis = now;
         state.source = frame.path("source").asText("ROS / Gazebo");
+        publishFrame(cameraId, encoded, state.width, state.height, state.timestampMillis, state.source);
     }
 
     public synchronized boolean observeJpegFrame(
@@ -126,7 +140,22 @@ public class VisualSensorService {
                 : now - Math.max(0, Math.round(ageSeconds * 1000));
         state.receivedAtMillis = now;
         state.source = "ROS / Gazebo";
+        publishFrame(cameraId, jpegBase64, width, height, state.timestampMillis, state.source);
         return true;
+    }
+
+    private void publishFrame(
+            String cameraId,
+            String jpegBase64,
+            int width,
+            int height,
+            long timestampMillis,
+            String source
+    ) {
+        if (frameStreamHandler == null) {
+            return;
+        }
+        frameStreamHandler.publishFrame(cameraId, jpegBase64, width, height, timestampMillis, source);
     }
 
     public void observeGateway(boolean connected, String detail) {

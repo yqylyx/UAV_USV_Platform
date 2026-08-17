@@ -110,6 +110,7 @@ async function switchFocus(cameraId: string) {
 }
 
 onMounted(async () => {
+  store.connectFrameStream()
   await Promise.all([store.refreshOverview(), radarStore.refresh(true)])
   focusedCameraId.value = overview.value.focusedCameraId || sensors.value[0]?.cameraId || 'uav_01'
   await refreshFocusedStream(focusedCameraId.value)
@@ -144,6 +145,7 @@ onBeforeUnmount(() => {
     })
   }
   if (timer) window.clearInterval(timer)
+  store.disconnectFrameStream()
   store.markUnityBridgeReady('SYSTEM_OVERVIEW', false)
 })
 </script>
