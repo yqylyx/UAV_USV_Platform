@@ -55,8 +55,18 @@ public class AlgorithmRuntimeManager {
     }
 
     public synchronized AlgorithmRuntimeStatusResponse prepare(Long runId, String algorithmCode, Map<String, Object> config) {
-        MissionRun run = requireMatchingRun(runId, algorithmCode);
-        algorithmCatalogService.requireEnabled(run.getAlgorithmCode());
+        Map<String, Object> runtimeConfig = config == null ? Map.of() : config;
+        boolean standaloneVirtualSimulation = Boolean.TRUE.equals(
+                runtimeConfig.get("standaloneVirtualSimulation")
+        ) || "true".equalsIgnoreCase(
+                String.valueOf(runtimeConfig.get("standaloneVirtualSimulation"))
+        );
+        if (!standaloneVirtualSimulation) {
+            MissionRun run = requireMatchingRun(runId, algorithmCode);
+            algorithmCatalogService.requireEnabled(run.getAlgorithmCode());
+        } else {
+            algorithmCatalogService.requireEnabled(algorithmCode);
+        }
         if ("UNITY_SIMPLE_ENCIRCLEMENT".equals(algorithmCode)) {
             return new AlgorithmRuntimeStatusResponse(runId, algorithmCode, "UNITY_NATIVE", 0, null, null);
         }
@@ -84,7 +94,7 @@ public class AlgorithmRuntimeManager {
             command.add(String.valueOf(runId));
             command.add("--config-base64");
             command.add(Base64.getEncoder().encodeToString(
-                    objectMapper.writeValueAsBytes(config == null ? Map.of() : config)
+                    objectMapper.writeValueAsBytes(runtimeConfig)
             ));
             command.add("--fps");
             command.add("10");
@@ -98,7 +108,10 @@ public class AlgorithmRuntimeManager {
                     new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)));
             handles.put(runId, handle);
             startReaders(handle);
-            if (!handle.ready.await(12, TimeUnit.SECONDS)) {
+            // The first Python start may build the Matplotlib font cache and
+            // import the vendor simulation, so 12 seconds is too short on a
+            // cold Windows environment.
+            if (!handle.ready.await(60, TimeUnit.SECONDS)) {
                 stopExisting(runId);
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "算法运行器启动超时");
             }

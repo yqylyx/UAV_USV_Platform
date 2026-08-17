@@ -44,6 +44,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
     private final VisualSensorService visualSensorService;
     private final SensorRuntimeService sensorRuntimeService;
     private final URI endpoint;
+    private final boolean rosEnabled;
     private final HttpClient httpClient;
     private final ScheduledExecutorService reconnectExecutor;
     private final AtomicBoolean connecting = new AtomicBoolean(false);
@@ -59,7 +60,8 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
             ApplicationEventPublisher eventPublisher,
             VisualSensorService visualSensorService,
             SensorRuntimeService sensorRuntimeService,
-            @Value("${app.runtime.ros-websocket-url}") String endpoint
+            @Value("${app.runtime.ros-websocket-url}") String endpoint,
+            @Value("${app.runtime.ros-enabled:false}") boolean rosEnabled
     ) {
         this.objectMapper = objectMapper;
         this.runtimeStateService = runtimeStateService;
@@ -67,6 +69,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
         this.visualSensorService = visualSensorService;
         this.sensorRuntimeService = sensorRuntimeService;
         this.endpoint = URI.create(endpoint);
+        this.rosEnabled = rosEnabled;
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
         this.reconnectExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "ros-websocket-reconnect");
@@ -77,6 +80,11 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
 
     @PostConstruct
     public void start() {
+        if (!rosEnabled) {
+            runtimeStateService.observeRosConnection(false, "ROS disabled for virtual simulation");
+            log.info("ROS WebSocket disabled by app.runtime.ros-enabled=false");
+            return;
+        }
         scheduleConnect(0);
     }
 

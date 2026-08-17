@@ -30,10 +30,10 @@ class CaptureAdapter(AlgorithmAdapter):
             source.SEED = int(self.config.get("seed", 42))
             source.ARENA_SIZE_XY = 300
             source.ARENA_SIZE_Z = 120
-            source.UAV_COUNT = 3
-            source.USV_COUNT = 3
-            source.TARGET_COUNT = 1
-            source.MIN_CAPTURE_AGENTS = 6
+            source.UAV_COUNT = max(1, min(100, int(self.config.get("uavCount", 3))))
+            source.USV_COUNT = max(1, min(100, int(self.config.get("usvCount", 3))))
+            source.TARGET_COUNT = max(1, min(1, int(self.config.get("targetCount", 1))))
+            source.MIN_CAPTURE_AGENTS = min(6, source.UAV_COUNT + source.USV_COUNT)
             # The Task Center maps three native units to one scene metre.
             # Surface craft finish on a 22 m ring; UAVs finish on a 30 m
             # triangle at 26 m altitude.  The two layers remain readable in
@@ -70,13 +70,31 @@ class CaptureAdapter(AlgorithmAdapter):
         ]))
 
     def _reset_positions(self) -> None:
-        # A deliberately wide deployment makes the approach phase observable.
-        # Same-domain craft start at least 31 m apart and travel roughly
-        # 42-68 m before settling into their assigned formation slots.
-        positions = np.asarray([
-            [15, 45, 55], [15, 150, 65], [15, 255, 75],
-            [2, 48, 0], [2, 150, 0], [2, 252, 0],
-        ], dtype=float)
+        # Build a layout matching the configured fleet size. The previous
+        # six-row fixture worked for 3+3 only and caused a broadcasting error
+        # as soon as the algorithm created a larger agent array.
+        def grid_positions(
+            count: int,
+            x_min: float,
+            x_max: float,
+            z_min: float,
+            z_step: float,
+        ) -> List[List[float]]:
+            columns = max(1, int(math.ceil(math.sqrt(count))))
+            rows = max(1, int(math.ceil(count / columns)))
+            positions: List[List[float]] = []
+            for index in range(count):
+                row, column = divmod(index, columns)
+                x = x_min if columns == 1 else x_min + (x_max - x_min) * column / (columns - 1)
+                y = 25.0 if rows == 1 else 25.0 + 250.0 * row / (rows - 1)
+                positions.append([x, y, z_min + (index % 4) * z_step])
+            return positions
+
+        positions = np.asarray(
+            grid_positions(self.source.UAV_COUNT, 20.0, 135.0, 45.0, 8.0)
+            + grid_positions(self.source.USV_COUNT, 165.0, 280.0, 0.0, 0.0),
+            dtype=float,
+        )
         self.env.agents[:, :3] = positions
         self.env.agents[:, 3] = 0
         self.env.targets[0, :5] = np.asarray([180, 150, 0, self.source.TARGET_SPEED, math.pi / 2])

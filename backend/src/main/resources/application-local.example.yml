@@ -18,4 +18,5 @@ app:
     unity-editor: ${UNITY_EDITOR_PATH:F:/Unity/Editors/2022.3.57f1/Editor/Unity.exe}
     unity-project: ${UNITY_PROJECT_PATH:F:/Unity/Projects/unity_ws}
   runtime:
+    ros-enabled: ${ROS_ENABLED:false}
     ros-websocket-url: ${ROS_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv}

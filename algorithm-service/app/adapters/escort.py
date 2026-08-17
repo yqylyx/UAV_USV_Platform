@@ -58,11 +58,14 @@ class EscortAdapter(AlgorithmAdapter):
         # leaves a visible water gap around it and keeps the three same-domain
         # craft roughly 31 m apart.
         scale = self._NATIVE_TO_SCENE_SCALE
+        num_uav = max(1, min(100, int(self.config.get("uavCount", 3))))
+        num_usv = max(1, min(100, int(self.config.get("usvCount", 3))))
+
         self.sim = source.EscortGuardSimulator(
             sensor_radius=26.0 / scale,
             seed=int(self.config.get("seed", 42)),
-            num_uav=3,
-            num_usv=3,
+            num_uav=num_uav,
+            num_usv=num_usv,
             escort_reserve_count=reserve_count,
             ring_radius=18.0 / scale,
             guard_arc_radius=20.0 / scale,
