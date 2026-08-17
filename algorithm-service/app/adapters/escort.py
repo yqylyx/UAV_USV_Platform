@@ -118,11 +118,48 @@ class EscortAdapter(AlgorithmAdapter):
 
         start = np.asarray(self.route[0], dtype=float)
         self._transform_simulation_to_scene(start, scale)
+        self._apply_initial_scenario_poses()
         self._configure_threat_schedule()
 
         self.previous: Dict[str, Tuple[float, float, float]] = {}
         self.avoidance_count = 0
         self.manual_threat: Tuple[float, float] | None = None
+
+    def _apply_initial_scenario_poses(self) -> None:
+        initial_poses = self.initial_pose_map()
+        if not initial_poses:
+            return
+
+        for platform in self.sim.platforms:
+            code = self._platform_code(platform)
+            pose = initial_poses.get(code)
+            if pose is None:
+                continue
+            east, north, _ = self.initial_pose_to_local(pose)
+            platform.position = np.asarray([east, north], dtype=float)
+
+        target_pose = (
+            initial_poses.get("ESCORT_TARGET")
+            or initial_poses.get("TARGET-001")
+            or initial_poses.get("TARGET")
+        )
+        if target_pose is None:
+            return
+        east, north, _ = self.initial_pose_to_local(target_pose)
+        initial_target = np.asarray([east, north], dtype=float)
+        delta = initial_target - self.sim.own_position
+        self.sim.own_position = initial_target
+        self.sim.initial_own_position = initial_target.copy()
+        self.sim.own_goal = initial_target.copy()
+        self.route = [
+            (float(x + delta[0]), float(y + delta[1]))
+            for x, y in self.route
+        ]
+        self._route_lengths = [
+            float(np.linalg.norm(np.asarray(right) - np.asarray(left)))
+            for left, right in zip(self.route, self.route[1:])
+        ]
+        self._route_total_length = max(sum(self._route_lengths), 1e-9)
 
     def _transform_simulation_to_scene(
         self,

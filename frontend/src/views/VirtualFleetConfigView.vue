@@ -32,6 +32,18 @@ type UnityMessage = {
   payload?: Record<string, unknown>
 }
 
+type ScenarioInitialPose = {
+  deviceCode: string
+  deviceType?: string
+  eastM: number
+  northM: number
+  upM: number
+  headingDeg: number
+  speedMps?: number
+  state?: string
+  valid?: boolean
+}
+
 const unityPanel = ref<InstanceType<typeof UnityWebglPanel> | null>(null)
 const unityReady = ref(false)
 const lastMessage = ref<UnityMessage | null>(null)
@@ -40,6 +52,7 @@ const logs = ref<string[]>([])
 const scenarioReadyRunId = ref<number | null>(null)
 const scenarioLoading = ref(false)
 const algorithmPrepared = ref(false)
+const initialScenarioPoses = ref<ScenarioInitialPose[]>([])
 const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
 let previousAlgorithmPoses: VirtualPoseStateMap = new Map()
 let algorithmPollTimer: number | null = null
@@ -113,6 +126,34 @@ function onUnityMessage(message: UnityMessage) {
     const readyRunId = Number(message.payload?.runId ?? 0)
     const success = message.payload?.success === true
     scenarioReadyRunId.value = success && readyRunId === state.runId ? readyRunId : null
+    if (success && readyRunId === state.runId) {
+      initialScenarioPoses.value = Array.isArray(message.payload?.initialPoses)
+        ? message.payload.initialPoses
+          .filter((pose): pose is ScenarioInitialPose => (
+            typeof pose === 'object'
+            && pose !== null
+            && typeof (pose as Record<string, unknown>).deviceCode === 'string'
+          ))
+          .map(pose => ({
+            deviceCode: pose.deviceCode,
+            deviceType: pose.deviceType,
+            eastM: Number(pose.eastM),
+            northM: Number(pose.northM),
+            upM: Number(pose.upM),
+            headingDeg: Number(pose.headingDeg ?? 0),
+            speedMps: Number(pose.speedMps ?? 0),
+            state: pose.state,
+            valid: pose.valid !== false,
+          }))
+          .filter(pose => (
+            Number.isFinite(pose.eastM)
+            && Number.isFinite(pose.northM)
+            && Number.isFinite(pose.upM)
+            && Number.isFinite(pose.headingDeg)
+          ))
+        : []
+      addLog(`scenario initial poses: ${initialScenarioPoses.value.length}`)
+    }
     if (readyRunId === state.runId) scenarioLoading.value = false
     if (success && readyRunId === state.runId) void prepareExternalAlgorithm()
     addLog(
@@ -160,6 +201,7 @@ function generateScenario() {
   algorithmPrepared.value = false
   stopAlgorithmPolling()
   previousAlgorithmPoses = new Map()
+  initialScenarioPoses.value = []
   scenarioReadyRunId.value = null
   scenarioLoading.value = true
   addLog(`loadScenario pending: runId=${state.runId}`)
@@ -186,6 +228,9 @@ async function prepareExternalAlgorithm() {
       uavSpeedMps: state.uavSpeed,
       usvSpeedMps: state.usvSpeed,
       coordinateFrame: 'FLEET_LOCAL_ENU',
+      initialPosesCoordinateFrame: 'GLOBAL_ENU',
+      fleetOrigin: fleetOriginEnu,
+      initialPoses: initialScenarioPoses.value,
       targetBehavior: 'MOVING',
       standaloneVirtualSimulation: true,
     })

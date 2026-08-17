@@ -95,9 +95,34 @@ class CaptureAdapter(AlgorithmAdapter):
             + grid_positions(self.source.USV_COUNT, 165.0, 280.0, 0.0, 0.0),
             dtype=float,
         )
+        initial_poses = self.initial_pose_map()
+        for index in range(self.source.UAV_COUNT + self.source.USV_COUNT):
+            kind = "UAV" if index < self.source.UAV_COUNT else "USV"
+            number = index + 1 if kind == "UAV" else index - self.source.UAV_COUNT + 1
+            code = f"{kind}-{number:03d}"
+            pose = initial_poses.get(code)
+            if pose is None:
+                continue
+            east, north, up = self.initial_pose_to_local(pose)
+            positions[index, 0] = east * 3.0 + 150.0
+            positions[index, 1] = north * 3.0 + 150.0
+            if kind == "UAV":
+                positions[index, 2] = max(18.0, (up - 9.0) * 4.4)
         self.env.agents[:, :3] = positions
         self.env.agents[:, 3] = 0
-        self.env.targets[0, :5] = np.asarray([180, 150, 0, self.source.TARGET_SPEED, math.pi / 2])
+        target_pose = (
+            initial_poses.get("TARGET-001")
+            or initial_poses.get("TARGET")
+        )
+        if target_pose is not None:
+            east, north, _ = self.initial_pose_to_local(target_pose)
+            target_x = east * 3.0 + 150.0
+            target_y = north * 3.0 + 150.0
+        else:
+            target_x, target_y = 180.0, 150.0
+        self.env.targets[0, :5] = np.asarray(
+            [target_x, target_y, 0, self.source.TARGET_SPEED, math.pi / 2]
+        )
 
     def _to_scene(self, position: np.ndarray, kind: str) -> Tuple[float, float, float]:
         # One uniform horizontal scale keeps the algorithm's circular capture
