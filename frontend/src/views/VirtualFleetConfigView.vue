@@ -381,6 +381,7 @@ onBeforeUnmount(() => {
           <div class="vf-unity-stage">
             <UnityWebglPanel
               ref="unityPanel"
+              iframe-src="/unity-algorithm/index.html?embedded=1"
               runtime-scope="VIRTUAL_FLEET"
               runtime-instance-id="virtual-fleet-v3-01"
               @unity-ready="onUnityReady"
