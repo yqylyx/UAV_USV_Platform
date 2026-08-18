@@ -230,8 +230,13 @@ export function adaptVirtualAlgorithmFrame(
   const vehicles = frame.agents.map(
     agent => poseFromAgent(agent, frame, previous, fleetOrigin),
   )
-  const targets = frame.targets
-    .filter(target => target.visible !== false)
+  const visibleTargets = frame.targets.filter(target => target.visible !== false)
+  const hasThreatTarget = visibleTargets.some(target => target.type === 'THREAT_TARGET')
+  const targets = visibleTargets
+    // Unity currently exposes one target device. During escort runs the
+    // threat owns TARGET-001; ESCORT_TARGET remains an internal algorithm
+    // reference and must not overwrite or duplicate the rendered enemy.
+    .filter(target => !hasThreatTarget || target.type !== 'ESCORT_TARGET')
     .map(target => poseFromTarget(target, frame, previous, fleetOrigin))
 
   for (const pose of [...vehicles, ...targets]) rememberPose(nextState, pose, frame.timestamp)

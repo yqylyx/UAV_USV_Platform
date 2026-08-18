@@ -87,12 +87,14 @@ export function buildVirtualFleetGridLayout(
   poses.push({
     deviceCode: 'TARGET-001',
     deviceType: 'TARGET',
-    eastM: options.fleetOrigin.eastM,
+    // The single rendered target is the escort threat. Keep it outside the
+    // fleet ring so Unity and the escort adapter share the same initial pose.
+    eastM: options.fleetOrigin.eastM + 55,
     northM: options.fleetOrigin.northM,
     upM: options.fleetOrigin.upM,
     headingDeg: 0,
     speedMps: 0,
-    state: 'TARGET',
+    state: 'THREAT_TARGET',
     valid: true,
   })
   return poses

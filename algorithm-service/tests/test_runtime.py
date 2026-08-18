@@ -181,7 +181,7 @@ class AlgorithmRuntimeTests(unittest.TestCase):
             {
                 "deviceCode": "TARGET-001",
                 "deviceType": "TARGET",
-                "eastM": -75.0,
+                "eastM": -20.0,
                 "northM": -310.0,
                 "upM": 0.0,
                 "headingDeg": 0.0,
@@ -213,7 +213,9 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                     targets["TARGET"]
                     if adapter_type is CaptureAdapter and code.startswith("TARGET")
                     else targets["ESCORT_TARGET"]
-                    if code.startswith("TARGET")
+                    if adapter_type is EscortAdapter and code.startswith("ESCORT_TARGET")
+                    else targets["TARGET"]
+                    if adapter_type is EscortAdapter and code.startswith("TARGET")
                     else poses[code]
                 )
                 self.assertAlmostEqual(expected_x, current.x, places=3)

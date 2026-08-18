@@ -141,12 +141,25 @@ function onUnityMessage(message: UnityMessage) {
       + ` type=${String(message.payload?.requestedType ?? '-')}`,
     )
   }
-  if (message.type === 'platformBridgeReady') unityReady.value = message.payload?.ready === true
+  if (message.type === 'platformBridgeReady') {
+    unityReady.value = message.payload?.ready === true
+      || (
+        message.payload?.controlsReady === true
+        && message.payload?.cameraReady === true
+        && message.payload?.algorithmReady === true
+      )
+  }
   if (message.type === 'scenarioReady') {
     const readyRunId = Number(message.payload?.runId ?? 0)
     const success = message.payload?.success === true
-    scenarioReadyRunId.value = success && readyRunId === state.runId ? readyRunId : null
-    if (success && readyRunId === state.runId) {
+    // Some compatible Unity builds omit runId from scenarioReady. Accept a
+    // missing id for the currently loading scenario, but never accept a
+    // positive id belonging to an older scenario.
+    const runIdMatches = readyRunId === state.runId || readyRunId === 0
+    scenarioReadyRunId.value = success && runIdMatches
+      ? (readyRunId || state.runId)
+      : null
+    if (success && runIdMatches) {
       const returnedPoses = Array.isArray(message.payload?.initialPoses)
         ? message.payload.initialPoses
           .filter((pose): pose is ScenarioInitialPose => (
@@ -177,8 +190,8 @@ function onUnityMessage(message: UnityMessage) {
         : plannedScenarioPoses.value
       addLog(`scenario initial poses: ${initialScenarioPoses.value.length}`)
     }
-    if (readyRunId === state.runId) scenarioLoading.value = false
-    if (success && readyRunId === state.runId) void prepareExternalAlgorithm()
+    if (runIdMatches) scenarioLoading.value = false
+    if (success && runIdMatches) void prepareExternalAlgorithm()
     addLog(
       `scenarioReady: ${success ? 'success' : 'failed'}`
       + ` runId=${readyRunId || '-'}`,
@@ -272,7 +285,7 @@ function prepareExternalAlgorithm(): Promise<boolean> {
       fleetOrigin: fleetOriginEnu,
       initialPoses: initialScenarioPoses.value,
       targetBehavior: 'MOVING',
-      threatMinDistanceM: 28,
+      threatMinDistanceM: 55,
       standaloneVirtualSimulation: true,
       })
       if (state.runId !== prepareRunId) return false
@@ -549,6 +562,7 @@ onBeforeUnmount(() => {
           <div class="vf-unity-stage">
             <UnityWebglPanel
               ref="unityPanel"
+              iframe-src="/unity-virtual-fleet/index.html?embedded=1"
               runtime-scope="VIRTUAL_FLEET"
               runtime-instance-id="virtual-fleet-v3-01"
               @unity-ready="onUnityReady"

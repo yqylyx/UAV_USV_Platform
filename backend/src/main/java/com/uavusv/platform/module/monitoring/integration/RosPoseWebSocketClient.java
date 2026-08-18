@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -34,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
+@ConditionalOnExpression("'${app.ros.transport:v1}' == 'legacy' || '${app.ros.transport:v1}' == 'dual-test'")
 public class RosPoseWebSocketClient implements WebSocket.Listener {
 
     private static final Logger log = LoggerFactory.getLogger(RosPoseWebSocketClient.class);
@@ -44,7 +46,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
     private final VisualSensorService visualSensorService;
     private final SensorRuntimeService sensorRuntimeService;
     private final URI endpoint;
-    private final boolean rosEnabled;
+    private final boolean stateAuthority;
     private final HttpClient httpClient;
     private final ScheduledExecutorService reconnectExecutor;
     private final AtomicBoolean connecting = new AtomicBoolean(false);
@@ -61,7 +63,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
             VisualSensorService visualSensorService,
             SensorRuntimeService sensorRuntimeService,
             @Value("${app.runtime.ros-websocket-url}") String endpoint,
-            @Value("${app.runtime.ros-enabled:false}") boolean rosEnabled
+            @Value("${app.ros.state-authority:v1}") String stateAuthority
     ) {
         this.objectMapper = objectMapper;
         this.runtimeStateService = runtimeStateService;
@@ -69,7 +71,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
         this.visualSensorService = visualSensorService;
         this.sensorRuntimeService = sensorRuntimeService;
         this.endpoint = URI.create(endpoint);
-        this.rosEnabled = rosEnabled;
+        this.stateAuthority = "legacy".equalsIgnoreCase(stateAuthority);
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
         this.reconnectExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "ros-websocket-reconnect");
@@ -80,11 +82,6 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
 
     @PostConstruct
     public void start() {
-        if (!rosEnabled) {
-            runtimeStateService.observeRosConnection(false, "ROS disabled for virtual simulation");
-            log.info("ROS WebSocket disabled by app.runtime.ros-enabled=false");
-            return;
-        }
         scheduleConnect(0);
     }
 
@@ -99,7 +96,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
                 .whenComplete((webSocket, error) -> {
                     connecting.set(false);
                     if (error != null) {
-                        runtimeStateService.observeRosConnection(false, "无法连接 " + endpoint);
+                        if (stateAuthority) runtimeStateService.observeRosConnection(false, "无法连接 " + endpoint);
                         log.warn("ROS WebSocket connection failed for {}: {}", endpoint, error.getMessage());
                         scheduleConnect(2);
                     }
@@ -109,7 +106,7 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
     @Override
     public void onOpen(WebSocket webSocket) {
         socket = webSocket;
-        runtimeStateService.observeRosConnection(true, "已连接 " + endpoint);
+        if (stateAuthority) runtimeStateService.observeRosConnection(true, "已连接 " + endpoint);
         log.info("Connected to ROS pose WebSocket {}", endpoint);
         webSocket.request(1);
     }
@@ -240,14 +237,14 @@ public class RosPoseWebSocketClient implements WebSocket.Listener {
             JsonNode frameNode = root.has("frame") ? root.path("frame") : root;
             RosPoseFrame frame = objectMapper.treeToValue(frameNode, RosPoseFrame.class);
             if (frame.hasFleetVehicles() || (frame.boat() != null && frame.drone() != null)) {
-                runtimeStateService.observeRosFrame(frame);
+                if (stateAuthority) runtimeStateService.observeRosFrame(frame);
             }
         }
     }
 
     private void handleDisconnect(String detail) {
         socket = null;
-        runtimeStateService.observeRosConnection(false, detail);
+        if (stateAuthority) runtimeStateService.observeRosConnection(false, detail);
         if (!shuttingDown) {
             log.info("ROS pose WebSocket disconnected, retrying: {}", detail);
             scheduleConnect(2);

@@ -136,12 +136,12 @@ class EscortAdapter(AlgorithmAdapter):
         """Keep the randomly spawned threat outside the friendly guard ring."""
         configured = self.config.get(
             "threatMinDistanceM",
-            self.config.get("threat_min_distance_m", 28.0),
+            self.config.get("threat_min_distance_m", 55.0),
         )
         try:
             minimum = max(18.0, float(configured))
         except (TypeError, ValueError):
-            minimum = 28.0
+            minimum = 55.0
         for task in self.sim.threats:
             task.spawn_radius = max(float(task.spawn_radius), minimum)
 
@@ -161,28 +161,41 @@ class EscortAdapter(AlgorithmAdapter):
             platform.altitude = float(up)
             platform.position = self._make_position(east, north, up)
 
-        target_pose = (
-            initial_poses.get("ESCORT_TARGET")
-            or initial_poses.get("TARGET-001")
+        escort_pose = initial_poses.get("ESCORT_TARGET")
+        if escort_pose is not None:
+            east, north, _ = self.initial_pose_to_local(escort_pose)
+            initial_escort = np.asarray([east, north], dtype=float)
+            delta = initial_escort - self._sim_xy()
+            self.sim.own_position = self._make_position(east, north, 0.0)
+            self.sim.initial_own_position = initial_escort.copy()
+            self.sim.own_goal = self._make_position(east, north, 0.0)
+            self.route = [
+                (float(x + delta[0]), float(y + delta[1]))
+                for x, y in self.route
+            ]
+            self._route_lengths = [
+                float(np.linalg.norm(np.asarray(right) - np.asarray(left)))
+                for left, right in zip(self.route, self.route[1:])
+            ]
+            self._route_total_length = max(sum(self._route_lengths), 1e-9)
+
+        # With the current one-target Unity scene, TARGET-001 is the rendered
+        # enemy vessel. Seed the vendor threat from that exact pose and make it
+        # visible in frame 1. Do not reinterpret it as the escort vessel.
+        threat_pose = (
+            initial_poses.get("TARGET-001")
             or initial_poses.get("TARGET")
         )
-        if target_pose is None:
-            return
-        east, north, _ = self.initial_pose_to_local(target_pose)
-        initial_target = np.asarray([east, north], dtype=float)
-        delta = initial_target - self._sim_xy()
-        self.sim.own_position = self._make_position(east, north, 0.0)
-        self.sim.initial_own_position = initial_target.copy()
-        self.sim.own_goal = self._make_position(east, north, 0.0)
-        self.route = [
-            (float(x + delta[0]), float(y + delta[1]))
-            for x, y in self.route
-        ]
-        self._route_lengths = [
-            float(np.linalg.norm(np.asarray(right) - np.asarray(left)))
-            for left, right in zip(self.route, self.route[1:])
-        ]
-        self._route_total_length = max(sum(self._route_lengths), 1e-9)
+        if threat_pose is not None:
+            east, north, _ = self.initial_pose_to_local(threat_pose)
+            task = self.sim.get_threat(1)
+            task.position = self._make_position(east, north, 0.0)
+            task.state = "approaching"
+            task.spawn_frame = 1
+            task.detected_frame = None
+            task.current_speed_limit = self.sim.enemy_approach_speed
+            task.controlled_radius = 0.0
+            task.orbit_segment_remaining = 0.0
 
     def _transform_simulation_to_scene(
         self,
@@ -268,10 +281,19 @@ class EscortAdapter(AlgorithmAdapter):
         for task in self.sim.threats:
             task.spawn_frame = threat_frame
             if self._source_is_3d:
-                task.state = "waiting"
-                task.detected_frame = None
-                task.current_speed_limit = 0.0
+                # Keep the generated threat visible from the scenario's first
+                # frame when an explicit TARGET-001 pose was supplied.
+                has_explicit_pose = bool(
+                    self.initial_pose_map().get("TARGET-001")
+                    or self.initial_pose_map().get("TARGET")
+                )
+                if not has_explicit_pose:
+                    task.state = "waiting"
+                    task.detected_frame = None
+                    task.current_speed_limit = 0.0
             if direction_setting is None:
+                continue
+            if self.initial_pose_map().get("TARGET-001") or self.initial_pose_map().get("TARGET"):
                 continue
             angle = self._DIRECTION_ANGLES.get(str(direction_setting).lower())
             if angle is None:
@@ -502,22 +524,34 @@ class EscortAdapter(AlgorithmAdapter):
                 float(task.position[1]),
                 0.0,
             )
-            threat_safe = self.safety.constrain(
-                self.previous.get("TARGET", threat_raw),
-                threat_raw,
-                "THREAT_TARGET",
-                (),
-                0.0,
+            threat_safe = (
+                SafePoint(*threat_raw, False)
+                if initial_snapshot
+                else self.safety.constrain(
+                    self.previous.get("TARGET", threat_raw),
+                    threat_raw,
+                    "THREAT_TARGET",
+                    (),
+                    0.0,
+                )
             )
             task.position = self._make_position(threat_safe.x, threat_safe.y, 0.0)
             threat_scene = (threat_safe.x, threat_safe.y, 0.0)
             self.previous["TARGET"] = threat_scene
-            threat_heading = math.degrees(
-                math.atan2(
-                    float(task.position[1] - self.sim.own_position[1]),
-                    float(task.position[0] - self.sim.own_position[0]),
-                )
-            ) % 360.0
+            initial_threat_pose = (
+                initial_poses.get("TARGET-001")
+                or initial_poses.get("TARGET")
+            )
+            threat_heading = (
+                float(initial_threat_pose.get("headingDeg", 0.0)) % 360.0
+                if initial_snapshot and initial_threat_pose is not None
+                else math.degrees(
+                    math.atan2(
+                        float(task.position[1] - self.sim.own_position[1]),
+                        float(task.position[0] - self.sim.own_position[0]),
+                    )
+                ) % 360.0
+            )
             targets.append(
                 TargetFrame(
                     "TARGET",
