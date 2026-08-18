@@ -1,0 +1,62 @@
+{
+  "runId": 1787038093531,
+  "algorithmCoordinateFrame": "FLEET_LOCAL_ENU",
+  "scenarioCoordinateFrame": "GLOBAL_ENU",
+  "fleetOrigin": {
+    "eastM": -75.0,
+    "northM": -310.0,
+    "upM": 0.0
+  },
+  "scenarioTargetPose": {
+    "eastM": -216.708251953125,
+    "northM": -414.6741027832031,
+    "upM": 0.1666666567325592,
+    "headingDeg": 329.515625
+  },
+  "expectedAlgorithmPose": {
+    "x": -141.708251953125,
+    "y": -104.67410278320312,
+    "z": 0.1666666567325592,
+    "headingDeg": 329.515625
+  },
+  "algorithmFrames": [
+    {
+      "sequence": 486,
+      "timestamp": 1787038934974,
+      "pose": {
+        "x": -40.24402468132334,
+        "y": -1.7674795046492495,
+        "z": 0.0,
+        "headingDeg": 43.548933307935684
+      },
+      "phase": "TRANSIT"
+    },
+    {
+      "sequence": 487,
+      "timestamp": 1787038935074,
+      "pose": {
+        "x": -40.35144809153334,
+        "y": -1.812991283893363,
+        "z": 0.0,
+        "headingDeg": 202.96078188020778
+      },
+      "phase": "TRANSIT"
+    },
+    {
+      "sequence": 488,
+      "timestamp": 1787038935175,
+      "pose": {
+        "x": -40.45860538472645,
+        "y": -1.8591261473551508,
+        "z": 0.0,
+        "headingDeg": 203.29352378152353
+      },
+      "phase": "TRANSIT"
+    }
+  ],
+  "firstFrameSequence": 486,
+  "initialFrameAvailable": false,
+  "comparison": null,
+  "movedAfterFirstFrame": true,
+  "success": false
+}

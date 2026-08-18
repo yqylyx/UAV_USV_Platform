@@ -668,15 +668,7 @@
         reportFatal('Your browser does not support WebGL or hardware acceleration is disabled. Enable hardware acceleration in Chrome/Edge and verify WebGL/WebGL2 in chrome://gpu or edge://gpu.');
       } else {
         var buildUrl = 'Build';
-        var buildRoot = window.location.pathname.split('/').filter(Boolean);
-        var buildFolder = buildRoot.length > 1
-          ? buildRoot[buildRoot.length - 2]
-          : buildRoot[0] || 'unity';
-        var buildName = buildFolder === 'unity-algorithm'
-          ? 'unity-algorithm'
-          : buildFolder === 'unity-overview'
-            ? 'unity-overview'
-            : 'unity';
+        var buildName = 'unity-overview';
         var loaderUrl = withBuildStamp(buildUrl + '/' + buildName + '.loader.js');
         var config = {
           dataUrl: withBuildStamp(buildUrl + '/' + buildName + '.data'),

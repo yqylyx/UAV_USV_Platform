@@ -23,7 +23,7 @@ const props = withDefaults(
     runId?: number
   }>(),
   {
-    iframeSrc: '/unity/index.html?embedded=1',
+    iframeSrc: '/unity-overview/index.html?embedded=1',
     runtimeScope: 'SYSTEM_OVERVIEW',
     runtimeInstanceId: 'overview-unity-01',
   },
@@ -45,7 +45,7 @@ const ready = ref(false)
 const controlsReady = ref(false)
 const errorMessage = ref('')
 const loadHint = ref('正在加载真实 Unity WebGL 构建包')
-const buildStamp = Date.now()
+const reloadToken = ref(Date.now())
 
 let probeTimer: number | null = null
 let heartbeatTimer: number | null = null
@@ -70,7 +70,7 @@ type UnityFrameWindow = Window & {
 const iframeUrl = computed(() => {
   const separator = props.iframeSrc.includes('?') ? '&' : '?'
   const params = new URLSearchParams({
-    v: String(buildStamp),
+    v: String(reloadToken.value),
     scope: props.runtimeScope,
     instanceId: props.runtimeInstanceId,
   })
@@ -207,20 +207,40 @@ function handleWindowMessage(event: MessageEvent) {
   }
 
   if (message.type === 'platformBridgeReady' && message.payload) {
-    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, message.payload)
-    controlsReady.value = message.payload.controlsReady === true
+    // Visual sensors are optional for command/control pages. Older Unity
+    // builds report ready=false when only that optional capability is absent.
+    // Keep the control bridge usable when command, camera, and algorithm
+    // capabilities are available.
+    const controlsAvailable = message.payload.controlsReady === true
+      || (
+        message.payload.ready === true
+        && message.payload.cameraReady !== false
+        && message.payload.algorithmReady !== false
+      )
+    const platformAvailable = message.payload.ready === true
+      || (
+        controlsAvailable
+        && message.payload.cameraReady === true
+        && message.payload.algorithmReady === true
+      )
+    const capabilities = {
+      ...message.payload,
+      ready: platformAvailable,
+      controlsReady: controlsAvailable,
+    }
+    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, capabilities)
+    controlsReady.value = controlsAvailable
     visualSensorStore.markUnityBridgeReady(
       props.runtimeScope,
       message.payload.visualSensorReady === true,
       visualRuntimeContext.value,
     )
-    if (message.payload.ready !== true) {
+    if (!platformAvailable) {
       const missing = [
         message.payload.cameraReady === true ? '' : '相机控制',
         message.payload.algorithmReady === true ? '' : '算法场景',
-        message.payload.visualSensorReady === true ? '' : '视觉传感器',
       ].filter(Boolean)
-      markError(`Unity 平台桥未完整就绪：${missing.join('、') || '未知能力'}`)
+      markError(`Unity 平台桥未就绪：${missing.join('、') || '未知能力'}`)
     } else {
       markReady()
       flushUnityOutbox()
@@ -245,9 +265,25 @@ function handleWindowMessage(event: MessageEvent) {
   }
 
   if (message.type === 'bridgeReady') {
-    markReady()
-    controlsReady.value = message.payload?.controlsReady === true
-    unityBridgeStore.setControlsReadyFor(props.runtimeScope, controlsReady.value)
+    const bridgeControlsReady = message.payload?.controlsReady === true
+    controlsReady.value = bridgeControlsReady
+    // The original UAV_USV_Unity build predates platformBridgeReady and
+    // reports readiness through bridgeReady. Treat its command bridge as a
+    // complete control runtime while keeping visual sensors optional.
+    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, {
+      ready: bridgeControlsReady,
+      controlsReady: bridgeControlsReady,
+      cameraReady: bridgeControlsReady,
+      algorithmReady: bridgeControlsReady,
+      visualSensorReady: false,
+      buildId: String(message.payload?.buildId ?? 'unity-webgl-bridge'),
+      capabilities: Array.isArray(message.payload?.capabilities)
+        ? message.payload.capabilities
+        : [],
+    })
+    if (bridgeControlsReady) markReady()
+    else unityBridgeStore.setControlsReadyFor(props.runtimeScope, false)
+    flushUnityOutbox()
     reportRuntimeSnapshot(true)
   }
 
@@ -378,16 +414,32 @@ function handleIframeLoad() {
   startIframeProbe()
 }
 
+function reload() {
+  trajectoryStore.clearFor(props.runtimeScope)
+  seenPoseReceiptKeys.clear()
+  unityBridgeStore.setConnectedFor(props.runtimeScope, false)
+  loading.value = true
+  ready.value = false
+  controlsReady.value = false
+  errorMessage.value = ''
+  loadHint.value = '正在重新加载 Unity WebGL 运行实例'
+  readyEmitted = false
+  reloadToken.value += 1
+}
+
 function createRequestId(type: string) {
   return `${type}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
 }
 
 function postToUnity(type: string, payload: Record<string, unknown> = {}) {
+  // Vue reactive arrays/objects cannot cross window.postMessage via the
+  // structured-clone algorithm. Convert scenario poses to plain data first.
+  const plainPayload = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
   const message: UnityMessage = {
     type,
     requestId: createRequestId(type),
     timestamp: Date.now(),
-    payload,
+    payload: plainPayload,
   }
   unityBridgeStore.noteOutgoingFor(props.runtimeScope, {
     type: message.type,
@@ -524,6 +576,7 @@ function reportRuntimeSnapshot(force = false) {
 
 defineExpose({
   postToUnity,
+  reload,
   selectDevice,
   focusDevice,
   switchCamera,
@@ -580,6 +633,7 @@ onBeforeUnmount(() => {
   <div class="unity-webgl-panel">
     <iframe
       ref="iframeRef"
+      :key="reloadToken"
       class="unity-webgl-frame"
       :src="iframeUrl"
       title="UAV-USV Unity WebGL"

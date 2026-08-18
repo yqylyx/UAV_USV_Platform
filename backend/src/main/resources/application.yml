@@ -40,6 +40,7 @@ app:
     v1:
       websocket-url: ${ROS_GATEWAY_V1_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv/v1}
   runtime:
+    ros-enabled: ${ROS_ENABLED:false}
     ros-websocket-url: ${ROS_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv}
     heartbeat-timeout-seconds: 5
     telemetry-stale-seconds: ${TELEMETRY_STALE_SECONDS:10}

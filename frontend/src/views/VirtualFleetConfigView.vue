@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import {
   Camera,
   CheckCircle2,
@@ -13,18 +13,39 @@ import {
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
+import {
+  controlAlgorithmRun,
+  fetchAlgorithmFrames,
+  prepareAlgorithmRun,
+} from '@/api/algorithm'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
 import {
   adaptVirtualAlgorithmFrame,
   type EnuOrigin,
   type VirtualPoseStateMap,
 } from '@/utils/virtualAlgorithmFrameAdapter'
+import {
+  buildVirtualFleetGridLayout,
+  type GridScenarioPose,
+} from '@/utils/virtualFleetGridLayout'
 
 type UnityMessage = {
   type: string
   requestId?: string
   timestamp?: number
   payload?: Record<string, unknown>
+}
+
+type ScenarioInitialPose = {
+  deviceCode: string
+  deviceType?: string
+  eastM: number
+  northM: number
+  upM: number
+  headingDeg: number
+  speedMps?: number
+  state?: string
+  valid?: boolean
 }
 
 const unityPanel = ref<InstanceType<typeof UnityWebglPanel> | null>(null)
@@ -34,8 +55,15 @@ const selectedDevice = ref('')
 const logs = ref<string[]>([])
 const scenarioReadyRunId = ref<number | null>(null)
 const scenarioLoading = ref(false)
+const algorithmPrepared = ref(false)
+const algorithmPreparing = ref(false)
+const initialScenarioPoses = ref<ScenarioInitialPose[]>([])
+const plannedScenarioPoses = ref<GridScenarioPose[]>([])
 const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
 let previousAlgorithmPoses: VirtualPoseStateMap = new Map()
+let algorithmPollTimer: number | null = null
+let algorithmPollInFlight = false
+let algorithmPreparePromise: Promise<boolean> | null = null
 const fleetOriginEnu: EnuOrigin = {
   eastM: -75,
   northM: -310,
@@ -85,8 +113,8 @@ function onUnityReady() {
   addLog('platformBridgeReady: Unity WebGL 已连接')
   send('initializePlatform', {
     runtimeMode: 'VIRTUAL_SIMULATION',
-    protocolVersion: '3.0',
-    buildId: 'vue-virtual-fleet-v3',
+    protocolVersion: '2.0',
+    buildId: 'vue-virtual-fleet-v2-compatible',
   })
 }
 
@@ -100,12 +128,70 @@ function onUnityMessage(message: UnityMessage) {
   if (message.type !== 'vueCommandReceived') {
     lastMessage.value = message
   }
-  if (message.type === 'platformBridgeReady') unityReady.value = message.payload?.ready === true
+  if (message.type === 'vueCommandReceived' && message.payload?.type === 'loadScenario') {
+    addLog(
+      `bridge loadScenario: sent=${message.payload.bridgeSent === true}`
+      + ` queued=${message.payload.queued === true}`
+      + ` fallback=${String(message.payload.fallback ?? '') || '-'}`,
+    )
+  }
+  if (message.type === 'unityBridgeError') {
+    addLog(
+      `Unity bridge error: ${String(message.payload?.message ?? 'unknown')}`
+      + ` type=${String(message.payload?.requestedType ?? '-')}`,
+    )
+  }
+  if (message.type === 'platformBridgeReady') {
+    unityReady.value = message.payload?.ready === true
+      || (
+        message.payload?.controlsReady === true
+        && message.payload?.cameraReady === true
+        && message.payload?.algorithmReady === true
+      )
+  }
   if (message.type === 'scenarioReady') {
     const readyRunId = Number(message.payload?.runId ?? 0)
     const success = message.payload?.success === true
-    scenarioReadyRunId.value = success && readyRunId === state.runId ? readyRunId : null
-    if (readyRunId === state.runId) scenarioLoading.value = false
+    // Some compatible Unity builds omit runId from scenarioReady. Accept a
+    // missing id for the currently loading scenario, but never accept a
+    // positive id belonging to an older scenario.
+    const runIdMatches = readyRunId === state.runId || readyRunId === 0
+    scenarioReadyRunId.value = success && runIdMatches
+      ? (readyRunId || state.runId)
+      : null
+    if (success && runIdMatches) {
+      const returnedPoses = Array.isArray(message.payload?.initialPoses)
+        ? message.payload.initialPoses
+          .filter((pose): pose is ScenarioInitialPose => (
+            typeof pose === 'object'
+            && pose !== null
+            && typeof (pose as Record<string, unknown>).deviceCode === 'string'
+          ))
+          .map(pose => ({
+            deviceCode: pose.deviceCode,
+            deviceType: pose.deviceType,
+            eastM: Number(pose.eastM),
+            northM: Number(pose.northM),
+            upM: Number(pose.upM),
+            headingDeg: Number(pose.headingDeg ?? 0),
+            speedMps: Number(pose.speedMps ?? 0),
+            state: pose.state,
+            valid: pose.valid !== false,
+          }))
+          .filter(pose => (
+            Number.isFinite(pose.eastM)
+            && Number.isFinite(pose.northM)
+            && Number.isFinite(pose.upM)
+            && Number.isFinite(pose.headingDeg)
+          ))
+        : []
+      initialScenarioPoses.value = returnedPoses.length > 0
+        ? returnedPoses
+        : plannedScenarioPoses.value
+      addLog(`scenario initial poses: ${initialScenarioPoses.value.length}`)
+    }
+    if (runIdMatches) scenarioLoading.value = false
+    if (success && runIdMatches) void prepareExternalAlgorithm()
     addLog(
       `scenarioReady: ${success ? 'success' : 'failed'}`
       + ` runId=${readyRunId || '-'}`,
@@ -143,12 +229,23 @@ function generateScenario() {
   if (sceneLocked.value || scenarioLoading.value) return
   state.uavSpeed = validateSpeed(state.uavSpeed, 15)
   state.usvSpeed = validateSpeed(state.usvSpeed, 2)
-  // Each generated scenario needs an isolated run id so delayed pose
-  // messages from an older WebGL instance cannot rewind its sequence.
+  // Standalone virtual simulation uses one isolated ID across Unity and the
+  // algorithm process. It does not require a MissionRun database record.
   state.runId = Date.now()
   state.sequence = 0
   state.mission = 'STOPPED'
+  algorithmPrepared.value = false
+  algorithmPreparePromise = null
+  stopAlgorithmPolling()
   previousAlgorithmPoses = new Map()
+  plannedScenarioPoses.value = buildVirtualFleetGridLayout({
+    uavCount: state.uavCount,
+    usvCount: state.usvCount,
+    fleetOrigin: fleetOriginEnu,
+    uavSpeedMps: state.uavSpeed,
+    usvSpeedMps: state.usvSpeed,
+  })
+  initialScenarioPoses.value = plannedScenarioPoses.value
   scenarioReadyRunId.value = null
   scenarioLoading.value = true
   addLog(`loadScenario pending: runId=${state.runId}`)
@@ -159,119 +256,208 @@ function generateScenario() {
     uavCount: state.uavCount,
     usvCount: state.usvCount,
     targetCount: 1,
+    layoutVersion: 'ALGORITHM_GRID_V1',
+    initialPosesCoordinateFrame: 'GLOBAL_ENU',
+    initialPoses: plannedScenarioPoses.value,
     initialSpeedMps: state.algorithm === 'GB_SFLA_CS' ? state.uavSpeed : state.usvSpeed,
     seed: state.seed,
   })
 }
 
-function startMission() {
+function prepareExternalAlgorithm(): Promise<boolean> {
+  if (algorithmPrepared.value) return Promise.resolve(true)
+  if (scenarioLoading.value) return Promise.resolve(false)
+  if (algorithmPreparePromise) return algorithmPreparePromise
+
+  const prepareRunId = state.runId
+  algorithmPreparing.value = true
+  algorithmPreparePromise = (async () => {
+    try {
+      const status = await prepareAlgorithmRun(prepareRunId, state.algorithm, {
+      uavCount: state.uavCount,
+      usvCount: state.usvCount,
+      targetCount: 1,
+      seed: state.seed,
+      uavSpeedMps: state.uavSpeed,
+      usvSpeedMps: state.usvSpeed,
+      coordinateFrame: 'FLEET_LOCAL_ENU',
+      initialPosesCoordinateFrame: 'GLOBAL_ENU',
+      fleetOrigin: fleetOriginEnu,
+      initialPoses: initialScenarioPoses.value,
+      targetBehavior: 'MOVING',
+      threatMinDistanceM: 55,
+      standaloneVirtualSimulation: true,
+      })
+      if (state.runId !== prepareRunId) return false
+      algorithmPrepared.value = true
+      state.sequence = Number(status.latestSequence ?? 0)
+      addLog(`algorithm prepared: ${state.algorithm} runId=${prepareRunId}`)
+      return true
+    } catch (error) {
+      algorithmPrepared.value = false
+      addLog(`algorithm prepare failed: ${error instanceof Error ? error.message : String(error)}`)
+      return false
+    } finally {
+      algorithmPreparing.value = false
+      algorithmPreparePromise = null
+    }
+  })()
+  return algorithmPreparePromise
+}
+
+async function startMission() {
   if (
     !unityReady.value
     || !speedValid.value
     || scenarioLoading.value
     || scenarioReadyRunId.value !== state.runId
   ) {
-    addLog(`missionStart blocked: waiting for scenarioReady runId=${state.runId}`)
+    addLog(`missionStart blocked: waiting for algorithm preparation runId=${state.runId}`)
     return
   }
-  state.mission = 'RUNNING'
-  addLog(
-    `algorithm coordinates: FLEET_LOCAL_ENU`
-    + ` origin=(${fleetOriginEnu.eastM},${fleetOriginEnu.northM},${fleetOriginEnu.upM})`,
-  )
-  send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
-  sendPoseBatch()
+  if (!algorithmPrepared.value) {
+    addLog(`missionStart: preparing algorithm runId=${state.runId}`)
+    if (!(await prepareExternalAlgorithm())) return
+  }
+  try {
+    await controlAlgorithmRun(state.runId, 'start')
+    state.mission = 'RUNNING'
+    addLog(
+      `algorithm coordinates: FLEET_LOCAL_ENU`
+      + ` origin=(${fleetOriginEnu.eastM},${fleetOriginEnu.northM},${fleetOriginEnu.upM})`,
+    )
+    send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+    startAlgorithmPolling()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/停止|stop|not found|不存在/i.test(message)) {
+      algorithmPrepared.value = false
+      algorithmPreparePromise = null
+      addLog(`algorithm process unavailable, rebuilding runId=${state.runId}`)
+      if (await prepareExternalAlgorithm()) {
+        try {
+          await controlAlgorithmRun(state.runId, 'start')
+          state.mission = 'RUNNING'
+          send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+          startAlgorithmPolling()
+          return
+        } catch (retryError) {
+          addLog(
+            `missionStart retry failed: ${
+              retryError instanceof Error ? retryError.message : String(retryError)
+            }`,
+          )
+          return
+        }
+      }
+    }
+    addLog(`missionStart failed: ${message}`)
+  }
 }
 
-function pauseMission() {
+async function pauseMission() {
   if (state.mission !== 'RUNNING') return
-  state.mission = 'PAUSED'
-  send('missionPause', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+  try {
+    await controlAlgorithmRun(state.runId, 'pause')
+    state.mission = 'PAUSED'
+    stopAlgorithmPolling()
+    send('missionPause', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+  } catch (error) {
+    addLog(`missionPause failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
-function stopMission() {
-  state.mission = 'STOPPED'
-  send('missionStop', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+async function stopMission() {
+  try {
+    if (algorithmPrepared.value) await controlAlgorithmRun(state.runId, 'stop')
+    state.mission = 'STOPPED'
+    algorithmPrepared.value = false
+    algorithmPreparePromise = null
+    stopAlgorithmPolling()
+    send('missionStop', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+  } catch (error) {
+    addLog(`missionStop failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
-function resetMission() {
+async function resetMission() {
+  stopAlgorithmPolling()
+  if (algorithmPrepared.value) {
+    try {
+      await controlAlgorithmRun(state.runId, 'cancel')
+    } catch (error) {
+      addLog(`algorithm reset warning: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
   state.mission = 'STOPPED'
   state.sequence = 0
+  algorithmPrepared.value = false
+  algorithmPreparePromise = null
   previousAlgorithmPoses = new Map()
+  plannedScenarioPoses.value = []
+  initialScenarioPoses.value = []
+  scenarioReadyRunId.value = null
+  selectedDevice.value = ''
+  logs.value = []
+  addLog('missionReset: 清理算法、轨迹和 Unity 运行实例')
   send('missionReset', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+  unityPanel.value?.reload()
 }
 
-function sendPoseBatch() {
-  if (
-    !unityReady.value
-    || state.mission !== 'RUNNING'
-    || scenarioReadyRunId.value !== state.runId
-  ) return
-  state.sequence += 1
-  const timestamp = Date.now()
-  const agents = vehicleCodes.value.map((deviceCode, index) => {
-    const isUav = deviceCode.startsWith('UAV-')
-    const speedMps = isUav ? state.uavSpeed : state.usvSpeed
-    const radiusM = 20
-    // Keep the demo motion tied to the configured physical speed. Unity
-    // converts these metric coordinates to its presentation scale.
-    const phase = index * 0.35 + state.sequence * (speedMps / radiusM)
-    const eastM = Math.sin(phase) * radiusM
-    const northM = Math.cos(phase) * radiusM
-    const headingDeg = (
-      Math.atan2(Math.cos(phase) * speedMps, -Math.sin(phase) * speedMps) * 180 / Math.PI + 360
-    ) % 360
-    return {
-      code: deviceCode,
-      type: isUav ? 'UAV' as const : 'USV' as const,
-      x: eastM,
-      y: northM,
-      z: isUav
-        ? 25 + (index % 4) * 4 + Math.sin(phase * 0.7) * 2
-        : 0,
-      heading: headingDeg,
-      role: state.algorithm === 'GB_SFLA_CS' ? 'capture' : 'escort',
-      status: isUav ? 'AIRBORNE' : 'SAILING',
-    }
-  })
-  const frame: AlgorithmRuntimeFrame = {
-    runId: state.runId,
-    algorithmCode: state.algorithm,
-    coordinateFrame: 'FLEET_LOCAL_ENU',
-    sequence: state.sequence,
-    timestamp,
-    phase: state.algorithm === 'GB_SFLA_CS' ? 'ENCIRCLEMENT' : 'ESCORT',
-    agents,
-    targets: [{
-      code: state.algorithm === 'GB_SFLA_CS' ? 'TARGET' : 'ESCORT_TARGET',
-      type: state.algorithm === 'GB_SFLA_CS' ? 'CAPTURE_TARGET' : 'ESCORT_TARGET',
-      x: 0,
-      y: 0,
-      z: 0,
-      heading: 0,
-      visible: true,
-    }],
-    metrics: {},
-    route: [],
-    obstacles: [],
-    terminalStatus: null,
-  }
+async function applyAlgorithmFrame(frame: AlgorithmRuntimeFrame) {
+  if (frame.sequence <= state.sequence) return
   const adapted = adaptVirtualAlgorithmFrame(
     frame,
     previousAlgorithmPoses,
     { fleetOrigin: fleetOriginEnu },
   )
   previousAlgorithmPoses = adapted.nextState
+  state.sequence = frame.sequence
   const trackedPose = adapted.payload.vehicles.find((pose) => pose.deviceCode === 'UAV-001')
   addLog(
-    `applyPoseBatch: sequence=${state.sequence}`
+    `algorithm frame: sequence=${frame.sequence}`
     + (trackedPose
       ? ` UAV-001 pos=(${trackedPose.eastM.toFixed(2)},`
         + `${trackedPose.northM.toFixed(2)},${trackedPose.upM.toFixed(2)})`
         + ` heading=${trackedPose.headingDeg.toFixed(1)}`
       : ''),
   )
-  send('applyPoseBatch', { ...adapted.payload })
+  send('applyPoseBatch', { ...adapted.payload, runId: state.runId })
+}
+
+async function pollAlgorithmFrame() {
+  if (
+    algorithmPollInFlight
+    || state.mission !== 'RUNNING'
+    || !algorithmPrepared.value
+    || !unityReady.value
+  ) return
+  algorithmPollInFlight = true
+  try {
+    const frames = await fetchAlgorithmFrames(state.runId, state.sequence)
+    for (const frame of frames) {
+      await applyAlgorithmFrame(frame)
+    }
+  } catch (error) {
+    addLog(`algorithm frame failed: ${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    algorithmPollInFlight = false
+  }
+}
+
+function startAlgorithmPolling() {
+  stopAlgorithmPolling()
+  void pollAlgorithmFrame()
+  algorithmPollTimer = window.setInterval(() => {
+    void pollAlgorithmFrame()
+  }, 100)
+}
+
+function stopAlgorithmPolling() {
+  if (algorithmPollTimer !== null) {
+    window.clearInterval(algorithmPollTimer)
+    algorithmPollTimer = null
+  }
 }
 
 function selectDevice(code: string) {
@@ -291,13 +477,8 @@ function setOverviewCamera() {
   send('setCameraMode', { mode: 'overview' })
 }
 
-let poseTimer: number | null = null
-onMounted(() => {
-  poseTimer = window.setInterval(sendPoseBatch, 1000)
-})
-
 onBeforeUnmount(() => {
-  if (poseTimer !== null) window.clearInterval(poseTimer)
+  stopAlgorithmPolling()
 })
 </script>
 
@@ -351,8 +532,8 @@ onBeforeUnmount(() => {
           <section class="vf-panel">
             <div class="vf-panel-head"><h3>任务控制</h3><span>{{ state.mission }}</span></div>
             <div class="vf-actions">
-              <button class="vf-button success" type="button" :disabled="state.mission === 'RUNNING' || !unityReady || !speedValid || scenarioLoading || scenarioReadyRunId !== state.runId" @click="startMission">
-                <Play :size="15" /> 开始
+              <button class="vf-button success" type="button" :disabled="state.mission === 'RUNNING' || !unityReady || !speedValid || scenarioLoading || algorithmPreparing || scenarioReadyRunId !== state.runId" @click="startMission">
+                <Play :size="15" /> {{ algorithmPreparing ? '准备中' : '开始' }}
               </button>
               <button class="vf-button" type="button" :disabled="state.mission !== 'RUNNING'" @click="pauseMission">
                 <Pause :size="15" /> 暂停
@@ -381,7 +562,7 @@ onBeforeUnmount(() => {
           <div class="vf-unity-stage">
             <UnityWebglPanel
               ref="unityPanel"
-              iframe-src="/unity-algorithm/index.html?embedded=1"
+              iframe-src="/unity-virtual-fleet/index.html?embedded=1"
               runtime-scope="VIRTUAL_FLEET"
               runtime-instance-id="virtual-fleet-v3-01"
               @unity-ready="onUnityReady"

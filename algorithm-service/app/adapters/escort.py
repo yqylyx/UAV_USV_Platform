@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 from app.adapters.base import AlgorithmAdapter
-from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
+from app.navigation import TASK_CENTER_SCENE_MAP, SafePoint, SceneSafetyFilter
 from app.schemas import AgentFrame, RuntimeFrame, TargetFrame
 
 
@@ -40,6 +40,7 @@ class EscortAdapter(AlgorithmAdapter):
         super().__init__(run_id, config)
         source = importlib.import_module("app.vendor.escort_guard_source")
         self.source = source
+        self._source_is_3d = hasattr(source, "horizontal")
         self.safety = SceneSafetyFilter(TASK_CENTER_SCENE_MAP)
 
         speed_setting = self.config.get("escort_speed", self.config.get("escortSpeed", "LOW"))
@@ -58,11 +59,14 @@ class EscortAdapter(AlgorithmAdapter):
         # leaves a visible water gap around it and keeps the three same-domain
         # craft roughly 31 m apart.
         scale = self._NATIVE_TO_SCENE_SCALE
+        num_uav = max(1, min(100, int(self.config.get("uavCount", 3))))
+        num_usv = max(1, min(100, int(self.config.get("usvCount", 3))))
+
         self.sim = source.EscortGuardSimulator(
             sensor_radius=26.0 / scale,
             seed=int(self.config.get("seed", 42)),
-            num_uav=3,
-            num_usv=3,
+            num_uav=num_uav,
+            num_usv=num_usv,
             escort_reserve_count=reserve_count,
             ring_radius=18.0 / scale,
             guard_arc_radius=20.0 / scale,
@@ -92,6 +96,10 @@ class EscortAdapter(AlgorithmAdapter):
             own_target_avoid_radius=14.0 / scale,
             dt=1.0,
         )
+        if self._source_is_3d and hasattr(self.sim, "reset"):
+            # The new three-dimensional source starts without a threat and
+            # creates its single threat through reset().
+            self.sim.reset()
 
         # A roughly 157 m open-water patrol route gives the escort experiment a
         # meaningful cruise phase.  Every waypoint leaves room for the complete
@@ -115,11 +123,79 @@ class EscortAdapter(AlgorithmAdapter):
 
         start = np.asarray(self.route[0], dtype=float)
         self._transform_simulation_to_scene(start, scale)
+        self._apply_initial_scenario_poses()
         self._configure_threat_schedule()
+        self._configure_enemy_spawn_distance()
 
         self.previous: Dict[str, Tuple[float, float, float]] = {}
         self.avoidance_count = 0
         self.manual_threat: Tuple[float, float] | None = None
+        self._initial_frame_pending = True
+
+    def _configure_enemy_spawn_distance(self) -> None:
+        """Keep the randomly spawned threat outside the friendly guard ring."""
+        configured = self.config.get(
+            "threatMinDistanceM",
+            self.config.get("threat_min_distance_m", 55.0),
+        )
+        try:
+            minimum = max(18.0, float(configured))
+        except (TypeError, ValueError):
+            minimum = 55.0
+        for task in self.sim.threats:
+            task.spawn_radius = max(float(task.spawn_radius), minimum)
+
+    def _apply_initial_scenario_poses(self) -> None:
+        initial_poses = self.initial_pose_map()
+        if not initial_poses:
+            return
+
+        for platform in self.sim.platforms:
+            code = self._platform_code(platform)
+            pose = initial_poses.get(code)
+            if pose is None:
+                continue
+            east, north, up = self.initial_pose_to_local(pose)
+            if platform.kind == "USV":
+                up = 0.0
+            platform.altitude = float(up)
+            platform.position = self._make_position(east, north, up)
+
+        escort_pose = initial_poses.get("ESCORT_TARGET")
+        if escort_pose is not None:
+            east, north, _ = self.initial_pose_to_local(escort_pose)
+            initial_escort = np.asarray([east, north], dtype=float)
+            delta = initial_escort - self._sim_xy()
+            self.sim.own_position = self._make_position(east, north, 0.0)
+            self.sim.initial_own_position = initial_escort.copy()
+            self.sim.own_goal = self._make_position(east, north, 0.0)
+            self.route = [
+                (float(x + delta[0]), float(y + delta[1]))
+                for x, y in self.route
+            ]
+            self._route_lengths = [
+                float(np.linalg.norm(np.asarray(right) - np.asarray(left)))
+                for left, right in zip(self.route, self.route[1:])
+            ]
+            self._route_total_length = max(sum(self._route_lengths), 1e-9)
+
+        # With the current one-target Unity scene, TARGET-001 is the rendered
+        # enemy vessel. Seed the vendor threat from that exact pose and make it
+        # visible in frame 1. Do not reinterpret it as the escort vessel.
+        threat_pose = (
+            initial_poses.get("TARGET-001")
+            or initial_poses.get("TARGET")
+        )
+        if threat_pose is not None:
+            east, north, _ = self.initial_pose_to_local(threat_pose)
+            task = self.sim.get_threat(1)
+            task.position = self._make_position(east, north, 0.0)
+            task.state = "approaching"
+            task.spawn_frame = 1
+            task.detected_frame = None
+            task.current_speed_limit = self.sim.enemy_approach_speed
+            task.controlled_radius = 0.0
+            task.orbit_segment_remaining = 0.0
 
     def _transform_simulation_to_scene(
         self,
@@ -130,6 +206,8 @@ class EscortAdapter(AlgorithmAdapter):
 
         native_origin = self.sim.own_position.copy()
         scene_origin = np.asarray(scene_origin, dtype=float)
+        if self._source_is_3d:
+            scene_origin = self._make_position(scene_origin[0], scene_origin[1], 0.0)
 
         def transform(point: np.ndarray) -> np.ndarray:
             return scene_origin + scale * (np.asarray(point, dtype=float) - native_origin)
@@ -184,6 +262,14 @@ class EscortAdapter(AlgorithmAdapter):
         self.sim.world_y_min = min_y
         self.sim.world_y_max = max_y
 
+    def _sim_xy(self) -> np.ndarray:
+        return np.asarray(self.sim.own_position, dtype=float)[:2].copy()
+
+    def _make_position(self, east: float, north: float, up: float = 0.0) -> np.ndarray:
+        if self._source_is_3d:
+            return np.asarray([east, north, up], dtype=float)
+        return np.asarray([east, north], dtype=float)
+
     def _configure_threat_schedule(self) -> None:
         threat_frame = max(
             1,
@@ -194,15 +280,29 @@ class EscortAdapter(AlgorithmAdapter):
         )
         for task in self.sim.threats:
             task.spawn_frame = threat_frame
+            if self._source_is_3d:
+                # Keep the generated threat visible from the scenario's first
+                # frame when an explicit TARGET-001 pose was supplied.
+                has_explicit_pose = bool(
+                    self.initial_pose_map().get("TARGET-001")
+                    or self.initial_pose_map().get("TARGET")
+                )
+                if not has_explicit_pose:
+                    task.state = "waiting"
+                    task.detected_frame = None
+                    task.current_speed_limit = 0.0
             if direction_setting is None:
+                continue
+            if self.initial_pose_map().get("TARGET-001") or self.initial_pose_map().get("TARGET"):
                 continue
             angle = self._DIRECTION_ANGLES.get(str(direction_setting).lower())
             if angle is None:
                 continue
             task.spawn_angle = angle
-            task.position = self.sim.own_position + task.spawn_radius * np.asarray(
+            xy = self._sim_xy() + task.spawn_radius * np.asarray(
                 [math.cos(angle), math.sin(angle)], dtype=float
             )
+            task.position = self._make_position(float(xy[0]), float(xy[1]), 0.0)
 
     def place_threat(self, x: float, y: float) -> None:
         requested = np.asarray([float(x), float(y)], dtype=float)
@@ -211,7 +311,7 @@ class EscortAdapter(AlgorithmAdapter):
 
         task = self.sim.get_threat(1)
         direction = self.source.normalize(
-            requested - self.sim.own_position,
+            requested - self._sim_xy(),
             self.sim.forward,
         )
         minimum_radius = max(
@@ -221,8 +321,8 @@ class EscortAdapter(AlgorithmAdapter):
             )
             + 0.5,
         )
-        if float(np.linalg.norm(requested - self.sim.own_position)) < minimum_radius:
-            requested = self.sim.own_position + direction * minimum_radius
+        if float(np.linalg.norm(requested - self._sim_xy())) < minimum_radius:
+            requested = self._sim_xy() + direction * minimum_radius
         requested = self.sim._clip_position_to_world(requested, margin=0.2)
         safe = self.safety.constrain(
             (float(requested[0]), float(requested[1]), 0.0),
@@ -232,7 +332,7 @@ class EscortAdapter(AlgorithmAdapter):
             0.0,
         )
 
-        task.position = np.asarray([safe.x, safe.y], dtype=float)
+        task.position = self._make_position(safe.x, safe.y, 0.0)
         task.spawn_frame = self.sim.frame
         task.state = "detected"
         task.detected_frame = self.sim.frame
@@ -246,7 +346,7 @@ class EscortAdapter(AlgorithmAdapter):
 
     def _advance_route(self) -> None:
         waypoint = np.asarray(self.route[self.route_index], dtype=float)
-        distance = float(np.linalg.norm(waypoint - self.sim.own_position))
+        distance = float(np.linalg.norm(waypoint - self._sim_xy()))
         if distance < 0.9:
             self.route_index = (
                 self.route_index + 1
@@ -255,10 +355,10 @@ class EscortAdapter(AlgorithmAdapter):
             )
             waypoint = np.asarray(self.route[self.route_index], dtype=float)
         self.sim.forward = self.source.normalize(
-            waypoint - self.sim.own_position,
+            waypoint - self._sim_xy(),
             self.sim.forward,
         )
-        self.sim.own_goal = waypoint
+        self.sim.own_goal = self._make_position(float(waypoint[0]), float(waypoint[1]), 0.0)
 
     def _route_progress(self) -> float:
         if self.route_index >= len(self.route):
@@ -268,7 +368,7 @@ class EscortAdapter(AlgorithmAdapter):
         remaining = float(
             np.linalg.norm(
                 np.asarray(self.route[self.route_index], dtype=float)
-                - self.sim.own_position
+                - self._sim_xy()
             )
         )
         completed += max(0.0, min(segment_length, segment_length - remaining))
@@ -277,13 +377,13 @@ class EscortAdapter(AlgorithmAdapter):
     @staticmethod
     def _platform_code(platform: object) -> str:
         code_no = int(platform.identifier[1:])
-        return f"{platform.kind}-{code_no:02d}"
+        return f"{platform.kind}-{code_no:03d}"
 
     @staticmethod
     def _platform_altitude(platform: object) -> float:
         if platform.kind != "UAV":
             return 0.0
-        return 18.0 + int(platform.identifier[1:]) * 2.0
+        return float(getattr(platform, "altitude", 0.0))
 
     def _apply_safety(
         self,
@@ -329,7 +429,7 @@ class EscortAdapter(AlgorithmAdapter):
             # Always feed the executed position back into the planner.  Keeping
             # an unprojected hidden state is the main cause of repeated
             # algorithm/safety oscillation.
-            platform.position = np.asarray([scene[0], scene[1]], dtype=float)
+            platform.position = self._make_position(scene[0], scene[1], scene[2])
             heading = self.stabilize_heading(
                 code,
                 previous,
@@ -354,8 +454,12 @@ class EscortAdapter(AlgorithmAdapter):
 
     def step(self) -> RuntimeFrame:
         self.sequence += 1
-        self._advance_route()
-        self.sim.step()
+        initial_frame = self._initial_frame_pending
+        self._initial_frame_pending = False
+        initial_snapshot = initial_frame and bool(self.initial_pose_map())
+        if not initial_frame:
+            self._advance_route()
+            self.sim.step()
 
         own_raw = (
             float(self.sim.own_position[0]),
@@ -363,26 +467,40 @@ class EscortAdapter(AlgorithmAdapter):
             0.0,
         )
         own_previous = self.previous.get("ESCORT_TARGET", own_raw)
-        own_safe = self.safety.constrain(
-            own_previous,
-            own_raw,
-            "ESCORT_TARGET",
-            (),
-            0.0,
+        own_safe = (
+            SafePoint(*own_raw, False)
+            if initial_snapshot
+            else self.safety.constrain(
+                own_previous,
+                own_raw,
+                "ESCORT_TARGET",
+                (),
+                0.0,
+            )
         )
-        self.sim.own_position = np.asarray([own_safe.x, own_safe.y], dtype=float)
+        self.sim.own_position = self._make_position(own_safe.x, own_safe.y, 0.0)
         own_scene = (own_safe.x, own_safe.y, 0.0)
         self.previous["ESCORT_TARGET"] = own_scene
-        escort_heading = self.stabilize_heading(
-            "ESCORT_TARGET",
-            own_previous,
-            own_scene,
-            math.degrees(
-                math.atan2(float(self.sim.forward[1]), float(self.sim.forward[0]))
-            )
-            % 360.0,
-            3.0,
+        initial_poses = self.initial_pose_map()
+        initial_target_pose = (
+            initial_poses.get("ESCORT_TARGET")
+            or initial_poses.get("TARGET-001")
+            or initial_poses.get("TARGET")
         )
+        if initial_snapshot and initial_target_pose is not None:
+            escort_heading = float(initial_target_pose.get("headingDeg", 0.0)) % 360.0
+            self._stable_headings["ESCORT_TARGET"] = escort_heading
+        else:
+            escort_heading = self.stabilize_heading(
+                "ESCORT_TARGET",
+                own_previous,
+                own_scene,
+                math.degrees(
+                    math.atan2(float(self.sim.forward[1]), float(self.sim.forward[0]))
+                )
+                % 360.0,
+                3.0,
+            )
 
         targets = [
             TargetFrame(
@@ -406,22 +524,34 @@ class EscortAdapter(AlgorithmAdapter):
                 float(task.position[1]),
                 0.0,
             )
-            threat_safe = self.safety.constrain(
-                self.previous.get("TARGET", threat_raw),
-                threat_raw,
-                "THREAT_TARGET",
-                (),
-                0.0,
+            threat_safe = (
+                SafePoint(*threat_raw, False)
+                if initial_snapshot
+                else self.safety.constrain(
+                    self.previous.get("TARGET", threat_raw),
+                    threat_raw,
+                    "THREAT_TARGET",
+                    (),
+                    0.0,
+                )
             )
-            task.position = np.asarray([threat_safe.x, threat_safe.y], dtype=float)
+            task.position = self._make_position(threat_safe.x, threat_safe.y, 0.0)
             threat_scene = (threat_safe.x, threat_safe.y, 0.0)
             self.previous["TARGET"] = threat_scene
-            threat_heading = math.degrees(
-                math.atan2(
-                    float(task.position[1] - self.sim.own_position[1]),
-                    float(task.position[0] - self.sim.own_position[0]),
-                )
-            ) % 360.0
+            initial_threat_pose = (
+                initial_poses.get("TARGET-001")
+                or initial_poses.get("TARGET")
+            )
+            threat_heading = (
+                float(initial_threat_pose.get("headingDeg", 0.0)) % 360.0
+                if initial_snapshot and initial_threat_pose is not None
+                else math.degrees(
+                    math.atan2(
+                        float(task.position[1] - self.sim.own_position[1]),
+                        float(task.position[0] - self.sim.own_position[0]),
+                    )
+                ) % 360.0
+            )
             targets.append(
                 TargetFrame(
                     "TARGET",
@@ -432,9 +562,38 @@ class EscortAdapter(AlgorithmAdapter):
             )
             fixed["TARGET"] = ("THREAT_TARGET", threat_scene)
 
-        self.sim._refresh_all_blockers()
-        agents = self._apply_safety(fixed)
-        self.sim._refresh_all_blockers()
+        if initial_snapshot:
+            agents: List[AgentFrame] = []
+            for platform in self.sim.platforms:
+                code = self._platform_code(platform)
+                scene = (
+                    float(platform.position[0]),
+                    float(platform.position[1]),
+                    self._platform_altitude(platform),
+                )
+                self.previous[code] = scene
+                pose = initial_poses.get(code)
+                if pose is not None:
+                    heading = float(pose.get("headingDeg", 0.0)) % 360.0
+                    self._stable_headings[code] = heading
+                else:
+                    heading = math.degrees(
+                        math.atan2(float(self.sim.forward[1]), float(self.sim.forward[0]))
+                    ) % 360.0
+                    self._stable_headings[code] = heading
+                agents.append(
+                    AgentFrame(
+                        code,
+                        platform.kind,
+                        *scene,
+                        heading,
+                        platform.role.upper(),
+                    )
+                )
+        else:
+            self.sim._refresh_all_blockers()
+            agents = self._apply_safety(fixed)
+            self.sim._refresh_all_blockers()
 
         detected = task.state in self.source.DETECTED_STATES
         formation_ready = (

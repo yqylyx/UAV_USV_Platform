@@ -38,10 +38,14 @@ def main() -> int:
     parser.add_argument("--run-id", type=int, required=True)
     parser.add_argument("--config", default="{}")
     parser.add_argument("--config-base64", default="")
+    parser.add_argument("--config-file", default="")
     parser.add_argument("--fps", type=float, default=6.0)
     parser.add_argument("--autostart", action="store_true")
     args = parser.parse_args()
-    config_text = base64.b64decode(args.config_base64).decode("utf-8") if args.config_base64 else args.config
+    if args.config_file:
+        config_text = Path(args.config_file).read_text(encoding="utf-8")
+    else:
+        config_text = base64.b64decode(args.config_base64).decode("utf-8") if args.config_base64 else args.config
     config = json.loads(config_text)
     adapter = CaptureAdapter(args.run_id, config) if args.algorithm == "GB_SFLA_CS" else EscortAdapter(args.run_id, config)
     commands: queue.Queue = queue.Queue()
