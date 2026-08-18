@@ -51,7 +51,7 @@ namespace UavUsv.PlatformTools
             public T payload;
         }
 
-        public const string BuildId = "unity-f24959c-platform-v3";
+        public const string BuildId = "unity-f24959c-platform-v6-overview";
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [DllImport("__Internal")]
@@ -59,6 +59,7 @@ namespace UavUsv.PlatformTools
 #endif
 
         private UavUsv.GazeboComparisonCamera comparisonCamera;
+        private UavUsv.ChaseCamera chaseCamera;
         private bool readyPosted;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -79,7 +80,18 @@ namespace UavUsv.PlatformTools
             // makes the capability report authoritative instead of optimistic.
             for (int frame = 0; frame < 120 && !DependenciesReady(); frame++)
                 yield return null;
+            ApplyEmbeddedPresentationPolicy();
             PostReady();
+        }
+
+        private void LateUpdate()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // ChaseCamera and the algorithm bridge can restore their inspector
+            // defaults while switching modes.  Browser presentations never use
+            // world-space nameplates because they obscure the vehicle models.
+            ApplyEmbeddedPresentationPolicy();
+#endif
         }
 
         [Preserve]
@@ -121,7 +133,18 @@ namespace UavUsv.PlatformTools
                 type == "poseframe")
             {
                 SetComparisonActive(false);
+                ApplyEmbeddedPresentationPolicy();
             }
+        }
+
+        private void ApplyEmbeddedPresentationPolicy()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            if (!chaseCamera && Camera.main)
+                chaseCamera = Camera.main.GetComponent<UavUsv.ChaseCamera>();
+            if (chaseCamera)
+                chaseCamera.showAgentLabels = false;
+#endif
         }
 
         public void SetComparisonActive(bool active)
@@ -138,6 +161,7 @@ namespace UavUsv.PlatformTools
                 return false;
             if (!comparisonCamera)
                 comparisonCamera = Camera.main.GetComponent<UavUsv.GazeboComparisonCamera>();
+            ApplyEmbeddedPresentationPolicy();
             UavUsv.SensorViewPip sensorView =
                 FindObjectOfType<UavUsv.SensorViewPip>(true);
             if (sensorView)
@@ -190,7 +214,7 @@ namespace UavUsv.PlatformTools
             });
         }
 
-        private static void Post<T>(string type, T payload)
+        internal static void Post<T>(string type, T payload)
         {
             var envelope = new BridgeEnvelope<T>
             {

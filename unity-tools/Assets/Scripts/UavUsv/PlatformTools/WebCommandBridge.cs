@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.Scripting;
@@ -58,6 +59,9 @@ namespace UavUsv.PlatformTools
 
         private WebDeviceObserverCamera observer;
         private WebVehicleCommandController vehicleController;
+        private readonly Dictionary<LineRenderer, bool> trajectoryLineStates =
+            new Dictionary<LineRenderer, bool>();
+        private bool trajectoryVisible = false;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         [DllImport("__Internal")]
@@ -84,8 +88,15 @@ namespace UavUsv.PlatformTools
 
         private IEnumerator Start()
         {
+            ApplyTrajectoryVisibility(false);
             while (!EnsureObserver())
                 yield return null;
+        }
+
+        private void LateUpdate()
+        {
+            if (!trajectoryVisible)
+                ApplyTrajectoryVisibility(false);
         }
 
         [Preserve]
@@ -391,9 +402,9 @@ namespace UavUsv.PlatformTools
         {
             UavUsv.MultiAgentCaptureDefenseScenario scenario =
                 FindObjectOfType<UavUsv.MultiAgentCaptureDefenseScenario>(true);
-            bool success = scenario;
             if (scenario)
                 scenario.showDebugOverlays = visible;
+            ApplyTrajectoryVisibility(visible);
 
             var response = new ResponseEnvelope
             {
@@ -402,17 +413,68 @@ namespace UavUsv.PlatformTools
                 timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 payload = new ResponsePayload
                 {
-                    success = success,
+                    // This command is a persistent presentation preference. It is
+                    // valid before the scenario object exists: LateUpdate applies
+                    // it to renderers created later, so startup must not be treated
+                    // as a command failure.
+                    success = true,
                     deviceCode = observer ? observer.CurrentDeviceCode : string.Empty,
                     mode = observer ? observer.CurrentModeName : string.Empty,
                     profile = observer ? observer.CurrentProfileName : string.Empty,
                     visible = visible,
-                    status = success
-                        ? (visible ? "Trajectory overlays visible" : "Trajectory overlays hidden")
-                        : "Unity scenario is not ready"
+                    status = visible
+                        ? "Trajectory overlays visible"
+                        : "Trajectory overlays hidden"
                 }
             };
             Emit(JsonUtility.ToJson(response));
+        }
+
+        private void ApplyTrajectoryVisibility(bool visible)
+        {
+            trajectoryVisible = visible;
+            UavUsv.AgentSensorSuite[] sensors =
+                FindObjectsOfType<UavUsv.AgentSensorSuite>(true);
+            for (int i = 0; i < sensors.Length; i++)
+            {
+                if (sensors[i]) sensors[i].drawDebugRays = visible;
+            }
+
+            LineRenderer[] lines = FindObjectsOfType<LineRenderer>(true);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                LineRenderer line = lines[i];
+                if (!line || !IsTrajectoryPresentation(line)) continue;
+                if (!visible)
+                {
+                    if (!trajectoryLineStates.ContainsKey(line))
+                        trajectoryLineStates[line] = line.enabled;
+                    line.enabled = false;
+                }
+                else if (trajectoryLineStates.TryGetValue(line, out bool wasEnabled))
+                {
+                    line.enabled = wasEnabled;
+                }
+            }
+
+            if (visible)
+                trajectoryLineStates.Clear();
+        }
+
+        private static bool IsTrajectoryPresentation(LineRenderer line)
+        {
+            string name = line.gameObject.name ?? string.Empty;
+            return name.StartsWith("Base Command Link", StringComparison.OrdinalIgnoreCase) ||
+                   name.StartsWith("Sensor Coverage", StringComparison.OrdinalIgnoreCase) ||
+                   name.StartsWith("Agent Track", StringComparison.OrdinalIgnoreCase) ||
+                   name.StartsWith("Scan Cue", StringComparison.OrdinalIgnoreCase) ||
+                   name.Equals("USV Capture Ring", StringComparison.OrdinalIgnoreCase) ||
+                   name.Equals("UAV Escort Ring", StringComparison.OrdinalIgnoreCase) ||
+                   name.Equals("USV Guard Arc", StringComparison.OrdinalIgnoreCase) ||
+                   name.Equals("Blocker Point", StringComparison.OrdinalIgnoreCase) ||
+                   name.Equals("Detection Lock Beam", StringComparison.OrdinalIgnoreCase) ||
+                   name.Equals("Unity AStar Planned Path", StringComparison.OrdinalIgnoreCase) ||
+                   name.Equals("EscortRoute", StringComparison.OrdinalIgnoreCase);
         }
 
         private static void Emit(string json)

@@ -4,6 +4,14 @@ spring:
     username: ${MYSQL_USERNAME:root}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-timeout: 10000
+      validation-timeout: 3000
+      maximum-pool-size: 10
+      minimum-idle: 0
+      idle-timeout: 300000
+      max-lifetime: 600000
+      keepalive-time: 30000
 
 app:
   ros:
@@ -19,6 +27,9 @@ app:
       username: ${BOOTSTRAP_ADMIN_USERNAME:admin}
       password: ${BOOTSTRAP_ADMIN_PASSWORD}
   control:
+    mission-dispatch-mode: ${MISSION_DISPATCH_MODE:ros-websocket}
+    vehicle-dispatch-mode: ${VEHICLE_DISPATCH_MODE:browser-unity}
+    command-ack-timeout-seconds: ${COMMAND_ACK_TIMEOUT_SECONDS:15}
     wsl-distribution: ${WSL_DISTRIBUTION:Ubuntu22}
     ros-script: ${ROS_RUNTIME_SCRIPT:F:/UAV_USV_Platform/scripts/uav-usv-runtime.sh}
     unity-editor: ${UNITY_EDITOR_PATH:F:/Unity/Editors/2022.3.57f1/Editor/Unity.exe}

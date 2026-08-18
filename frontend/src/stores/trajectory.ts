@@ -87,7 +87,7 @@ export const useTrajectoryStore = defineStore('trajectory', {
           state: String(item.state ?? 'UNKNOWN'),
         }))
         .filter((item) => item.code)
-      if (!normalizedAgents.some((item) => item.type === 'TARGET')) return
+      if (!normalizedAgents.some((item) => item.type === 'TARGET') && normalizedAgents.length < 1) return
 
       channel.lastSequence = sequence
       channel.frame = {

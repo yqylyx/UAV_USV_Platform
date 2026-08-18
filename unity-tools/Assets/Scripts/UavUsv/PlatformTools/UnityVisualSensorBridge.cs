@@ -177,6 +177,12 @@ namespace UavUsv.PlatformTools
             if (gpuDirect && displayMode != "off")
             {
                 RenderDirectViewsIfDue();
+                // GPU direct owns the single WebGL canvas.  The remaining
+                // camera cards still need individually-addressed frames, so
+                // publish low-rate JPEG thumbnails alongside the focused
+                // canvas instead of returning before legacy capture runs.
+                if (jpegFallback)
+                    CaptureLegacyFrameIfDue();
                 return;
             }
 
@@ -236,6 +242,8 @@ namespace UavUsv.PlatformTools
                 {
                     ApplyDirectDisplaySettings();
                     EnsureLiveResources();
+                    if (jpegFallback)
+                        EnsureLegacyCaptureResources();
                 }
                 else
                 {
@@ -538,12 +546,16 @@ namespace UavUsv.PlatformTools
         {
             EnsureLegacyCaptureResources();
             float now = Time.realtimeSinceStartup;
-            bool prioritizeFocused = focusedFps > thumbnailFps + .1f;
+            int activeFocusedIndex = Array.IndexOf(CameraIds, focusedCameraId);
+            bool prioritizeFocused = !gpuDirect && focusedFps > thumbnailFps + .1f;
             int focusedIndex = prioritizeFocused
-                ? Array.IndexOf(CameraIds, focusedCameraId)
+                ? activeFocusedIndex
                 : -1;
             bool focusedDue = focusedIndex >= 0 && now >= nextCaptureTimes[focusedIndex];
-            int thumbnailIndex = FindDueThumbnail(now, focusedIndex);
+            // The selected camera is already presented by the GPU-direct
+            // canvas. Excluding it from JPEG capture keeps the readback budget
+            // available for the five visible thumbnail channels.
+            int thumbnailIndex = FindDueThumbnail(now, activeFocusedIndex);
 
             if (focusedDue && (focusedTurn || thumbnailIndex < 0))
             {
@@ -653,7 +665,7 @@ namespace UavUsv.PlatformTools
                     forward = Vector3.ProjectOnPlane(uav.right, Vector3.up);
                 if (forward.sqrMagnitude < .001f)
                     forward = Vector3.forward;
-                position = uav.position + Vector3.down * Mathf.Max(1.4f, sensorSuite.uavCameraDrop);
+                position = uav.position + Vector3.down * Mathf.Max(.9f, sensorSuite.uavCameraHeight);
                 rotation = Quaternion.LookRotation(Vector3.down, forward.normalized);
                 fov = 70f;
                 return true;

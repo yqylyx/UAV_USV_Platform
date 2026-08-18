@@ -66,7 +66,7 @@ function createChannel(): UnityBridgeChannel {
     lastMessage: null,
     lastOutgoing: null,
     error: '',
-    trajectoryVisible: true,
+    trajectoryVisible: false,
     trajectoryTogglePending: false,
     outbox: [],
     commandKeys: {},
