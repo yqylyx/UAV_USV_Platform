@@ -40,6 +40,9 @@ message GatewayEnvelope {
     DetectionBatch radar_detections = 31;
     DetectionBatch fused_tracks = 32;
     SystemError system_error = 33;
+    LidarPointCloud lidar_pointcloud = 34;
+    RadarScan radar_scan = 35;
+    CameraFrame camera_frame = 36;
   }
 }
 message GatewayHello {
@@ -187,6 +190,44 @@ message DetectionBatch {
   uint64 sensor_frame_sequence = 2;
   google.protobuf.Timestamp source_timestamp = 3;
   repeated Detection detections = 4;
+}
+
+// Raw LiDAR point cloud.
+// Mid360 and LV-DOT are treated as LiDAR sensors.
+// xyz is packed as [x0, y0, z0, x1, y1, z1, ...] in meters.
+message LidarPointCloud {
+  string sensor_id = 1;
+  uint64 sensor_frame_sequence = 2;
+  google.protobuf.Timestamp source_timestamp = 3;
+  uint32 point_count = 4;
+  repeated float xyz = 5 [packed = true];
+}
+
+// Raw radar scan corresponding to ROS sensor_msgs/LaserScan.
+// Detection results are transmitted separately using radar_detections.
+message RadarScan {
+  string sensor_id = 1;
+  uint64 sensor_frame_sequence = 2;
+  google.protobuf.Timestamp source_timestamp = 3;
+  float angle_min_rad = 4;
+  float angle_max_rad = 5;
+  float angle_increment_rad = 6;
+  float range_min_m = 7;
+  float range_max_m = 8;
+  repeated float ranges_m = 9 [packed = true];
+  repeated float intensities = 10 [packed = true];
+}
+
+// JPEG camera frame used for the first-stage backend integration.
+// Formal low-latency multi-camera video will migrate to WebRTC.
+message CameraFrame {
+  string camera_id = 1;
+  uint64 frame_sequence = 2;
+  google.protobuf.Timestamp source_timestamp = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  string encoding = 6;
+  bytes jpeg_data = 7;
 }
 
 message SystemError {

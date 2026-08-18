@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import uavusv.gateway.v1.UavUsvGatewayV1;
 
 import java.time.Instant;
+import java.util.Base64;
 
 @Component
 public class GatewayProtobufDecoder {
@@ -53,6 +54,8 @@ public class GatewayProtobufDecoder {
             case CONTROL_ACK -> controlAck(envelope.getControlAck());
             case CONTROL_FEEDBACK -> controlFeedback(envelope.getControlFeedback());
             case CONTROL_RESULT -> controlResult(envelope.getControlResult());
+            case CAMERA_FRAME -> cameraFrame(envelope.getCameraFrame());
+            case RADAR_SCAN -> radarScan(envelope.getRadarScan());
             default -> objectMapper.createObjectNode();
         };
     }
@@ -195,6 +198,45 @@ public class GatewayProtobufDecoder {
         return node;
     }
 
+    private ObjectNode cameraFrame(UavUsvGatewayV1.CameraFrame message) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("cameraId", message.getCameraId());
+        node.put("frameSequence", message.getFrameSequence());
+        if (message.hasSourceTimestamp()) {
+            node.put("sourceTimestamp", readTimestamp(message.getSourceTimestamp()).toString());
+            node.put("timestampMs", timestampMillis(message.getSourceTimestamp()));
+        }
+        node.put("width", message.getWidth());
+        node.put("height", message.getHeight());
+        node.put("encoding", message.getEncoding());
+        node.put("jpegBase64", Base64.getEncoder().encodeToString(message.getJpegData().toByteArray()));
+        return node;
+    }
+
+    private ObjectNode radarScan(UavUsvGatewayV1.RadarScan message) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("sensorId", message.getSensorId());
+        node.put("sensorFrameSequence", message.getSensorFrameSequence());
+        if (message.hasSourceTimestamp()) {
+            node.put("sourceTimestamp", readTimestamp(message.getSourceTimestamp()).toString());
+            node.put("timestampMs", timestampMillis(message.getSourceTimestamp()));
+        }
+        node.put("angleMinRad", message.getAngleMinRad());
+        node.put("angleMaxRad", message.getAngleMaxRad());
+        node.put("angleIncrementRad", message.getAngleIncrementRad());
+        node.put("rangeMinM", message.getRangeMinM());
+        node.put("rangeMaxM", message.getRangeMaxM());
+        ArrayNode ranges = objectMapper.createArrayNode();
+        message.getRangesMList().forEach(ranges::add);
+        node.set("rangesM", ranges);
+        ArrayNode intensities = objectMapper.createArrayNode();
+        message.getIntensitiesList().forEach(intensities::add);
+        node.set("intensities", intensities);
+        node.put("rangeCount", message.getRangesMCount());
+        node.put("intensityCount", message.getIntensitiesCount());
+        return node;
+    }
+
     private JsonNode parameterValue(UavUsvGatewayV1.ParameterValue value) {
         return switch (value.getValueCase()) {
             case STRING_VALUE -> objectMapper.getNodeFactory().textNode(value.getStringValue());
@@ -224,6 +266,10 @@ public class GatewayProtobufDecoder {
             return Instant.now();
         }
         return Instant.ofEpochSecond(timestamp.getSeconds(), timestamp.getNanos());
+    }
+
+    private long timestampMillis(Timestamp timestamp) {
+        return timestamp.getSeconds() * 1000L + timestamp.getNanos() / 1_000_000L;
     }
 
     private String streamId(UavUsvGatewayV1.GatewayEnvelope envelope, GatewayMessageType type) {

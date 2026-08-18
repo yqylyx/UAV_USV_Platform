@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uavusv.platform.module.visualsensor.service.VisualSensorService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
+@ConditionalOnProperty(name = "app.visual-sensor.websocket-enabled", havingValue = "true")
 public class VisualSensorWebSocketClient implements WebSocket.Listener {
 
     private static final Logger log = LoggerFactory.getLogger(VisualSensorWebSocketClient.class);

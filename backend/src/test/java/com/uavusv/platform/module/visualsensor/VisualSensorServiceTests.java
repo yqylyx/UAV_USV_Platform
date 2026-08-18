@@ -28,7 +28,7 @@ class VisualSensorServiceTests {
         VisualSensorService service = new VisualSensorService();
         byte[] jpeg = {(byte) 0xff, (byte) 0xd8, 1, 2, (byte) 0xff, (byte) 0xd9};
 
-        service.observeJpegFrame(
+        boolean accepted = service.observeJpegFrame(
                 "uav_01",
                 Base64.getEncoder().encodeToString(jpeg),
                 640,
@@ -38,11 +38,107 @@ class VisualSensorServiceTests {
         );
 
         var overview = service.overview();
+        assertThat(accepted).isTrue();
         assertThat(overview.onlineCount()).isEqualTo(1);
         assertThat(overview.sensors().get(0).status()).isEqualTo("ONLINE");
         assertThat(overview.sensors().get(0).width()).isEqualTo(640);
         assertThat(service.latestFrame("uav_01")).hasValueSatisfying(
                 stored -> assertThat(stored).isEqualTo(jpeg)
         );
+    }
+
+    @Test
+    void normalizesGatewayCameraIdsBeforeCaching() {
+        VisualSensorService service = new VisualSensorService();
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, 3, 4, (byte) 0xff, (byte) 0xd9};
+
+        boolean accepted = service.observeJpegFrame(
+                "usv_01_front",
+                Base64.getEncoder().encodeToString(jpeg),
+                240,
+                135,
+                System.currentTimeMillis(),
+                0.02
+        );
+
+        var overview = service.overview();
+        assertThat(accepted).isTrue();
+        assertThat(overview.onlineCount()).isEqualTo(1);
+        assertThat(overview.sensors().get(3).cameraId()).isEqualTo("usv_01");
+        assertThat(overview.sensors().get(3).status()).isEqualTo("ONLINE");
+        assertThat(service.latestFrame("usv_01")).hasValueSatisfying(
+                stored -> assertThat(stored).isEqualTo(jpeg)
+        );
+        assertThat(service.latestFrame("usv_01_front")).isEmpty();
+    }
+
+    @Test
+    void rejectsUnknownCameraId() {
+        VisualSensorService service = new VisualSensorService();
+        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, 1, 2, (byte) 0xff, (byte) 0xd9};
+
+        boolean accepted = service.observeJpegFrame(
+                "unknown_camera",
+                Base64.getEncoder().encodeToString(jpeg),
+                640,
+                360,
+                System.currentTimeMillis(),
+                0.02
+        );
+
+        assertThat(accepted).isFalse();
+        assertThat(service.overview().onlineCount()).isZero();
+    }
+
+    @Test
+    void rejectsEmptyJpeg() {
+        VisualSensorService service = new VisualSensorService();
+
+        boolean accepted = service.observeJpegFrame(
+                "uav_01",
+                "",
+                640,
+                360,
+                System.currentTimeMillis(),
+                0.02
+        );
+
+        assertThat(accepted).isFalse();
+        assertThat(service.latestFrame("uav_01")).isEmpty();
+    }
+
+    @Test
+    void rejectsInvalidBase64Jpeg() {
+        VisualSensorService service = new VisualSensorService();
+
+        boolean accepted = service.observeJpegFrame(
+                "uav_01",
+                "not-base64",
+                640,
+                360,
+                System.currentTimeMillis(),
+                0.02
+        );
+
+        assertThat(accepted).isFalse();
+        assertThat(service.latestFrame("uav_01")).isEmpty();
+    }
+
+    @Test
+    void rejectsTooShortJpeg() {
+        VisualSensorService service = new VisualSensorService();
+        byte[] tooShort = {(byte) 0xff, (byte) 0xd8, (byte) 0xff};
+
+        boolean accepted = service.observeJpegFrame(
+                "uav_01",
+                Base64.getEncoder().encodeToString(tooShort),
+                640,
+                360,
+                System.currentTimeMillis(),
+                0.02
+        );
+
+        assertThat(accepted).isFalse();
+        assertThat(service.latestFrame("uav_01")).isEmpty();
     }
 }

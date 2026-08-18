@@ -10,6 +10,8 @@ public enum GatewayMessageType {
     DEVICE_STATUS("device.status"),
     TELEMETRY_POSE_BATCH("telemetry.pose_batch"),
     MISSION_STATUS("mission.status"),
+    MEDIA_CAMERA_JPEG("media.camera_jpeg"),
+    PERCEPTION_RADAR_SCAN("perception.radar_scan"),
     CONTROL_COMMAND("control.command"),
     CONTROL_ACK("control.ack"),
     CONTROL_FEEDBACK("control.feedback"),

@@ -54,6 +54,13 @@ public class SensorRuntimeService {
         radars.put(deviceId, new RadarState(now, timestampMs, List.of(), points));
     }
 
+    public synchronized void observeRadarScan(RadarScanInput scan) {
+        long now = clock.millis();
+        long timestampMs = scan.timestampMs() > 0 ? scan.timestampMs() : now;
+        List<RadarItemResponse> points = radarScanPoints(scan, timestampMs);
+        radars.put(scan.sensorId(), new RadarState(now, timestampMs, List.of(), points));
+    }
+
     public synchronized RadarOverviewResponse radarOverview() {
         long now = clock.millis();
         List<RadarState> freshStates = radars.values().stream()
@@ -138,6 +145,36 @@ public class SensorRuntimeService {
         List<Double> values = new ArrayList<>(pointCount * 3);
         while (buffer.hasRemaining()) values.add((double) buffer.getFloat());
         return pointCloudItems(values, streamId, deviceId, timestampMs);
+    }
+
+    private List<RadarItemResponse> radarScanPoints(RadarScanInput scan, long timestampMs) {
+        if (!Double.isFinite(scan.angleMinRad()) || !Double.isFinite(scan.angleIncrementRad())) {
+            return List.of();
+        }
+        List<RadarItemResponse> points = new ArrayList<>();
+        List<Double> ranges = scan.rangesM();
+        for (int index = 0; index < ranges.size(); index++) {
+            double range = ranges.get(index);
+            if (!Double.isFinite(range) || range < scan.rangeMinM() || range > scan.rangeMaxM()) {
+                continue;
+            }
+            double angle = scan.angleMinRad() + index * scan.angleIncrementRad();
+            double x = range * Math.cos(angle);
+            double y = range * Math.sin(angle);
+            points.add(new RadarItemResponse(
+                    scan.sensorId() + "-scan-" + (index + 1),
+                    scan.sensorId(),
+                    "POINTCLOUD",
+                    range,
+                    Math.toDegrees(angle),
+                    x,
+                    y,
+                    0.0,
+                    null,
+                    timestampMs
+            ));
+        }
+        return points;
     }
 
     private List<RadarItemResponse> pointCloudItems(

@@ -906,7 +906,7 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
         throw new Error('请先点击“编组部署”，确认三机三艇加入围捕编组')
       }
       sendVirtualScenario()
-      await runOverviewDemoCommand('start')
+      await runOverviewMissionAction('start')
       ElMessage.success(`${overviewMissionName.value}已启动`)
       return
     }

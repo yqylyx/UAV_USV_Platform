@@ -10,12 +10,16 @@ let sweepAngle = 0
 let lastTime = 0
 let projected: Array<{ item: RadarItem; x: number; y: number }> = []
 
+function displayBearing(bearing: number) {
+  return (360 - bearing) % 360
+}
+
 function polar(item: RadarItem) {
   if (item.range != null && item.bearing != null) {
-    const angle = item.bearing * Math.PI / 180
+    const angle = displayBearing(item.bearing) * Math.PI / 180
     return { x: Math.sin(angle) * item.range, y: Math.cos(angle) * item.range }
   }
-  if (item.x != null && item.y != null) return { x: item.y, y: item.x }
+  if (item.x != null && item.y != null) return { x: -item.y, y: item.x }
   return null
 }
 
