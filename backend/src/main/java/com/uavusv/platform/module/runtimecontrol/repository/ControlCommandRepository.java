@@ -2,6 +2,7 @@ package com.uavusv.platform.module.runtimecontrol.repository;
 
 import com.uavusv.platform.module.runtimecontrol.entity.ControlCommand;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandStatus;
+import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -19,9 +20,14 @@ public interface ControlCommandRepository extends JpaRepository<ControlCommand, 
 
     Optional<ControlCommand> findByCommandKey(String commandKey);
 
-    List<ControlCommand> findAllByStatusAndDispatchedAtBefore(CommandStatus status, LocalDateTime cutoff);
-
+    List<ControlCommand> findAllByStatusInAndDispatchedAtBefore(Collection<CommandStatus> statuses, LocalDateTime cutoff);
+    
+    List<ControlCommand> findAllByStatusInAndAcknowledgedAtBefore(Collection<CommandStatus> statuses, LocalDateTime cutoff);
+    
     boolean existsByRunIdAndDeviceIdAndStatusIn(Long runId, Long deviceId, Collection<CommandStatus> statuses);
 
     boolean existsByRunIdAndDeviceIdIsNullAndStatusIn(Long runId, Collection<CommandStatus> statuses);
+
+    boolean existsByDeviceIdAndCommandTypeAndStatusIn(
+            Long deviceId, CommandType commandType, Collection<CommandStatus> statuses);
 }

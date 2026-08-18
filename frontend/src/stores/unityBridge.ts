@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { acknowledgeRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus } from '@/api/runtimeControl'
 
-export type UnityRuntimeScope = 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
+export type UnityRuntimeScope = 'SYSTEM_OVERVIEW' | 'MISSION_CENTER' | 'VIRTUAL_FLEET'
 
 export interface UnityBridgeMessage {
   type: string
@@ -24,6 +24,12 @@ export interface UnityCommandAckResult {
 interface UnityBridgeChannel {
   connected: boolean
   controlsReady: boolean
+  platformReady: boolean
+  cameraReady: boolean
+  algorithmReady: boolean
+  visualSensorReady: boolean
+  buildId: string
+  capabilities: string[]
   lastMessage: UnityBridgeMessage | null
   lastOutgoing: UnityBridgeMessage | null
   error: string
@@ -31,6 +37,12 @@ interface UnityBridgeChannel {
   trajectoryTogglePending: boolean
   outbox: UnityBridgeMessage[]
   commandKeys: Record<string, string>
+  scenarioRunId: number | null
+  scenarioAlgorithmCode: string
+  scenarioReadyRunId: number | null
+  scenarioReadyAlgorithmCode: string
+  appliedRunId: number | null
+  appliedSequence: number
 }
 
 type PendingCommandAck = {
@@ -45,13 +57,25 @@ function createChannel(): UnityBridgeChannel {
   return {
     connected: false,
     controlsReady: false,
+    platformReady: false,
+    cameraReady: false,
+    algorithmReady: false,
+    visualSensorReady: false,
+    buildId: '',
+    capabilities: [],
     lastMessage: null,
     lastOutgoing: null,
     error: '',
-    trajectoryVisible: true,
+    trajectoryVisible: false,
     trajectoryTogglePending: false,
     outbox: [],
     commandKeys: {},
+    scenarioRunId: null,
+    scenarioAlgorithmCode: '',
+    scenarioReadyRunId: null,
+    scenarioReadyAlgorithmCode: '',
+    appliedRunId: null,
+    appliedSequence: 0,
   }
 }
 
@@ -83,6 +107,7 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
     channels: {
       SYSTEM_OVERVIEW: createChannel(),
       MISSION_CENTER: createChannel(),
+      VIRTUAL_FLEET: createChannel(),
     } as Record<UnityRuntimeScope, UnityBridgeChannel>,
   }),
   getters: {
@@ -102,6 +127,20 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       if (connected) channel.error = ''
       else {
         channel.controlsReady = false
+        channel.platformReady = false
+        channel.cameraReady = false
+        channel.algorithmReady = false
+        channel.visualSensorReady = false
+        channel.buildId = ''
+        channel.capabilities = []
+        channel.outbox = []
+        channel.commandKeys = {}
+        channel.scenarioRunId = null
+        channel.scenarioAlgorithmCode = ''
+        channel.scenarioReadyRunId = null
+        channel.scenarioReadyAlgorithmCode = ''
+        channel.appliedRunId = null
+        channel.appliedSequence = 0
         rejectPendingCommandAcks(scope, 'Unity WebGL 连接已断开')
       }
     },
@@ -113,10 +152,38 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       channel.error = message
       channel.connected = false
       channel.controlsReady = false
+      channel.platformReady = false
+      channel.cameraReady = false
+      channel.outbox = []
+      channel.commandKeys = {}
+      channel.scenarioRunId = null
+      channel.scenarioAlgorithmCode = ''
+      channel.scenarioReadyRunId = null
+      channel.scenarioReadyAlgorithmCode = ''
+      channel.appliedRunId = null
+      channel.appliedSequence = 0
       rejectPendingCommandAcks(scope, message)
     },
     setControlsReadyFor(scope: UnityRuntimeScope, ready: boolean) {
       this.channels[scope].controlsReady = ready
+    },
+    setPlatformCapabilitiesFor(scope: UnityRuntimeScope, payload: Record<string, unknown>) {
+      const channel = this.channels[scope]
+      channel.platformReady = payload.ready === true
+      channel.controlsReady = payload.controlsReady === true
+      channel.cameraReady = payload.cameraReady === true
+      channel.algorithmReady = payload.algorithmReady === true
+      channel.visualSensorReady = payload.visualSensorReady === true
+      channel.buildId = String(payload.buildId ?? '')
+      channel.capabilities = Array.isArray(payload.capabilities)
+        ? payload.capabilities.map(item => String(item))
+        : []
+      const reportedError = String(payload.error ?? '').trim()
+      if (channel.platformReady) {
+        channel.error = ''
+      } else if (reportedError) {
+        channel.error = reportedError
+      }
     },
     setError(message: string) {
       this.setErrorFor('SYSTEM_OVERVIEW', message)
@@ -147,6 +214,38 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
     setTrajectoryTogglePending(pending: boolean) {
       this.setTrajectoryTogglePendingFor('SYSTEM_OVERVIEW', pending)
     },
+    markScenarioReadyFor(
+      scope: UnityRuntimeScope,
+      payload: Record<string, unknown>,
+    ) {
+      const channel = this.channels[scope]
+      const runId = Number(payload.runId)
+      if (Number.isFinite(runId)) {
+        channel.scenarioRunId = runId
+        channel.scenarioReadyRunId = runId
+      }
+      channel.scenarioReadyAlgorithmCode = String(
+        payload.algorithmCode ?? channel.scenarioAlgorithmCode,
+      )
+      channel.appliedRunId = null
+      channel.appliedSequence = 0
+    },
+    markPoseAppliedFor(
+      scope: UnityRuntimeScope,
+      payload: Record<string, unknown>,
+    ) {
+      const channel = this.channels[scope]
+      const runId = Number(payload.runId)
+      const sequence = Number(payload.sequence)
+      if (!Number.isFinite(runId) || !Number.isFinite(sequence)) return
+      if (channel.scenarioRunId !== null && runId !== channel.scenarioRunId) return
+      channel.appliedRunId = runId
+      channel.appliedSequence = Math.max(channel.appliedSequence, sequence)
+    },
+    clearPoseFramesFor(scope: UnityRuntimeScope) {
+      const channel = this.channels[scope]
+      channel.outbox = channel.outbox.filter(message => message.type !== 'poseFrame')
+    },
     sendFor(
       scope: UnityRuntimeScope,
       type: string,
@@ -156,7 +255,40 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       const requestId = `${type}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
       const channel = this.channels[scope]
       if (commandKey) channel.commandKeys[requestId] = commandKey
-      channel.outbox.push({ type, requestId, timestamp: Date.now(), payload })
+      const message = { type, requestId, timestamp: Date.now(), payload }
+      if (type === 'loadScenario') {
+        const runId = Number(payload.runId)
+        channel.scenarioRunId = Number.isFinite(runId) ? runId : null
+        channel.scenarioAlgorithmCode = String(payload.algorithmCode ?? '')
+        channel.scenarioReadyRunId = null
+        channel.scenarioReadyAlgorithmCode = ''
+        channel.appliedRunId = null
+        channel.appliedSequence = 0
+        channel.outbox = channel.outbox.filter(
+          queued => queued.type !== 'loadScenario' && queued.type !== 'poseFrame',
+        )
+        // Scenario selection must reach Unity before any command retained in
+        // the channel from the previous view state.
+        channel.outbox.unshift(message)
+        return requestId
+      }
+      if (type === 'poseFrame') {
+        const runId = Number(payload.runId)
+        if (
+          channel.scenarioRunId !== null
+          && Number.isFinite(runId)
+          && runId !== channel.scenarioRunId
+        ) {
+          return requestId
+        }
+        // A disconnected/hidden WebGL instance only needs the newest pose.
+        // Keeping every 10 Hz sample caused a synchronous burst and the
+        // apparent "teleport then freeze" behaviour after returning to 3-D.
+        channel.outbox = channel.outbox.filter(
+          queued => queued.type !== 'poseFrame',
+        )
+      }
+      channel.outbox.push(message)
       return requestId
     },
     send(type: string, payload: Record<string, unknown> = {}, commandKey = '') {
@@ -238,7 +370,7 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
         const command = await acknowledgeRuntimeCommand(commandKey, success, detail)
         removePendingCommandAck(scope, requestId)?.resolve({
           requestId,
-          success: success && command.status === 'ACKNOWLEDGED',
+          success: success && command.status === 'SUCCEEDED',
           status: detail,
           deviceCode: String(payload.deviceCode ?? ''),
           commandType: String(payload.commandType ?? ''),

@@ -14,5 +14,7 @@ npm-debug.log*
 
 .logs/
 *.log
+__pycache__/
+*.py[cod]
 
 .local-tools/

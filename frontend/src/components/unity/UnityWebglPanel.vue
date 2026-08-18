@@ -3,7 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { sendIntegrationHeartbeat } from '@/api/integration'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
+import { useVisualSensorStore } from '@/stores/visualSensor'
 import type { UnityBridgeMessage, UnityRuntimeScope } from '@/stores/unityBridge'
+import type { VisualSensorRuntimeContext } from '@/types/visualSensor'
 
 type UnityMessage = {
   type: string
@@ -21,7 +23,7 @@ const props = withDefaults(
     runId?: number
   }>(),
   {
-    iframeSrc: '/unity/index.html?embedded=1',
+    iframeSrc: '/unity-overview/index.html?embedded=1',
     runtimeScope: 'SYSTEM_OVERVIEW',
     runtimeInstanceId: 'overview-unity-01',
   },
@@ -37,28 +39,51 @@ const emit = defineEmits<{
 const iframeRef = ref<HTMLIFrameElement | null>(null)
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
+const visualSensorStore = useVisualSensorStore()
 const loading = ref(true)
 const ready = ref(false)
 const controlsReady = ref(false)
 const errorMessage = ref('')
 const loadHint = ref('正在加载真实 Unity WebGL 构建包')
-const buildStamp = Date.now()
+const reloadToken = ref(Date.now())
 
 let probeTimer: number | null = null
 let heartbeatTimer: number | null = null
 let readyEmitted = false
 let lastRuntimeReportAt = 0
+const seenPoseReceiptKeys = new Set<string>()
+let heartbeatInFlight = false
+
+type HeartbeatReport = {
+  state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED'
+  detail: string
+}
+
+let pendingHeartbeat: HeartbeatReport | null = null
+
+type UnityFrameWindow = Window & {
+  uavUsvUnityInstance?: {
+    Quit?: () => Promise<void>
+  }
+}
 
 const iframeUrl = computed(() => {
   const separator = props.iframeSrc.includes('?') ? '&' : '?'
   const params = new URLSearchParams({
-    v: String(buildStamp),
+    v: String(reloadToken.value),
     scope: props.runtimeScope,
     instanceId: props.runtimeInstanceId,
   })
   if (props.missionId) params.set('missionId', String(props.missionId))
+  if (props.runId) params.set('runId', String(props.runId))
   return `${props.iframeSrc}${separator}${params.toString()}`
 })
+const visualRuntimeContext = computed<VisualSensorRuntimeContext>(() => ({
+  runtimeScope: props.runtimeScope,
+  runtimeInstanceId: props.runtimeInstanceId,
+  missionId: props.missionId ?? null,
+  runId: props.runId ?? null,
+}))
 const statusText = computed(() => (ready.value ? 'UNITY WEBGL ONLINE' : 'WAITING FOR WEBGL'))
 
 function markReady() {
@@ -107,7 +132,31 @@ function handleWindowMessage(event: MessageEvent) {
   const message = parseUnityMessage(event.data)
   if (!message) return
 
-  if (message.type === 'sceneLoaded' || message.type === 'unityReady') {
+  if (message.type === 'poseFrameApplied') {
+    const runId = String(message.payload?.runId ?? '')
+    const sequence = String(message.payload?.sequence ?? '')
+    const receiptKey = `${props.runtimeScope}:${runId}:${sequence}`
+    if (seenPoseReceiptKeys.has(receiptKey)) {
+      console.warn('[UnityWebglPanel] Duplicate poseFrameApplied ignored', {
+        requestId: message.requestId,
+        runId,
+        sequence,
+      })
+      return
+    }
+    seenPoseReceiptKeys.add(receiptKey)
+    if (seenPoseReceiptKeys.size > 4096) {
+      const firstKey = seenPoseReceiptKeys.values().next().value
+      if (firstKey) seenPoseReceiptKeys.delete(firstKey)
+    }
+  }
+
+  if (
+    message.type === 'sceneLoaded'
+    || message.type === 'unityReady'
+    || message.type === 'platformBridgeReady'
+    || message.type === 'platformInitialized'
+  ) {
     markReady()
   }
 
@@ -127,10 +176,137 @@ function handleWindowMessage(event: MessageEvent) {
     reportRuntimeSnapshot()
   }
 
+  if (message.type === 'visualSensorBridgeReady') {
+    visualSensorStore.markUnityBridgeReady(
+      props.runtimeScope,
+      message.payload?.ready === true,
+      visualRuntimeContext.value,
+    )
+  }
+
+  if (
+    message.type === 'visualSensorFrame'
+    && message.payload
+  ) {
+    visualSensorStore.ingestUnityFrame(
+      props.runtimeScope,
+      message.payload,
+      visualRuntimeContext.value,
+    )
+  }
+
+  if (
+    message.type === 'visualSensorStreamStats'
+    && message.payload
+  ) {
+    visualSensorStore.ingestUnityStreamStats(
+      props.runtimeScope,
+      message.payload,
+      visualRuntimeContext.value,
+    )
+  }
+
+  if (message.type === 'platformBridgeReady' && message.payload) {
+    // Visual sensors are optional for command/control pages. Older Unity
+    // builds report ready=false when only that optional capability is absent.
+    // Keep the control bridge usable when command, camera, and algorithm
+    // capabilities are available.
+    const controlsAvailable = message.payload.controlsReady === true
+      || (
+        message.payload.ready === true
+        && message.payload.cameraReady !== false
+        && message.payload.algorithmReady !== false
+      )
+    const platformAvailable = message.payload.ready === true
+      || (
+        controlsAvailable
+        && message.payload.cameraReady === true
+        && message.payload.algorithmReady === true
+      )
+    const capabilities = {
+      ...message.payload,
+      ready: platformAvailable,
+      controlsReady: controlsAvailable,
+    }
+    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, capabilities)
+    controlsReady.value = controlsAvailable
+    visualSensorStore.markUnityBridgeReady(
+      props.runtimeScope,
+      message.payload.visualSensorReady === true,
+      visualRuntimeContext.value,
+    )
+    if (!platformAvailable) {
+      const missing = [
+        message.payload.cameraReady === true ? '' : '相机控制',
+        message.payload.algorithmReady === true ? '' : '算法场景',
+      ].filter(Boolean)
+      markError(`Unity 平台桥未就绪：${missing.join('、') || '未知能力'}`)
+    } else {
+      markReady()
+      flushUnityOutbox()
+      reportRuntimeSnapshot(true)
+    }
+  }
+
+  if (message.type === 'platformInitialized' && message.payload) {
+    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, {
+      ready: message.payload.success !== false,
+      controlsReady: true,
+      cameraReady: true,
+      algorithmReady: true,
+      visualSensorReady: false,
+      buildId: String(message.payload.buildId ?? 'unity-webgl-platform-bridge'),
+      capabilities: Array.isArray(message.payload.capabilities)
+        ? message.payload.capabilities
+        : [],
+    })
+    controlsReady.value = true
+    flushUnityOutbox()
+  }
+
   if (message.type === 'bridgeReady') {
-    controlsReady.value = message.payload?.controlsReady === true
-    unityBridgeStore.setControlsReadyFor(props.runtimeScope, controlsReady.value)
+    const bridgeControlsReady = message.payload?.controlsReady === true
+    controlsReady.value = bridgeControlsReady
+    // The original UAV_USV_Unity build predates platformBridgeReady and
+    // reports readiness through bridgeReady. Treat its command bridge as a
+    // complete control runtime while keeping visual sensors optional.
+    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, {
+      ready: bridgeControlsReady,
+      controlsReady: bridgeControlsReady,
+      cameraReady: bridgeControlsReady,
+      algorithmReady: bridgeControlsReady,
+      visualSensorReady: false,
+      buildId: String(message.payload?.buildId ?? 'unity-webgl-bridge'),
+      capabilities: Array.isArray(message.payload?.capabilities)
+        ? message.payload.capabilities
+        : [],
+    })
+    if (bridgeControlsReady) markReady()
+    else unityBridgeStore.setControlsReadyFor(props.runtimeScope, false)
+    flushUnityOutbox()
     reportRuntimeSnapshot(true)
+  }
+
+  if (message.type === 'trajectoryVisibilityChanged' && message.payload) {
+    unityBridgeStore.setTrajectoryVisibilityFor(
+      props.runtimeScope,
+      message.payload.visible === true,
+    )
+  }
+
+  if (message.type === 'scenarioReady' && message.payload) {
+    unityBridgeStore.markScenarioReadyFor(props.runtimeScope, message.payload)
+  }
+
+  if (message.type === 'scenarioLoaded' && message.payload) {
+    unityBridgeStore.markScenarioReadyFor(props.runtimeScope, {
+      ...message.payload,
+      algorithmCode: message.payload.algorithmCode ?? message.payload.scenarioId,
+    })
+  }
+
+  if (message.type === 'poseFrameApplied' && message.payload) {
+    unityBridgeStore.markPoseAppliedFor(props.runtimeScope, message.payload)
   }
 
   if (
@@ -140,11 +316,18 @@ function handleWindowMessage(event: MessageEvent) {
     void unityBridgeStore.handleCommandAckFor(props.runtimeScope, message.requestId ?? '', message.payload)
   }
 
+  const auditedPayload = message.type === 'visualSensorFrame'
+    ? {
+        ...message.payload,
+        jpegBase64: '',
+      }
+    : (message.payload ?? {})
+
   unityBridgeStore.noteMessageFor(props.runtimeScope, {
     type: message.type,
     requestId: message.requestId ?? '',
     timestamp: message.timestamp ?? Date.now(),
-    payload: message.payload ?? {},
+    payload: auditedPayload,
   })
 
   emit('unityMessage', message)
@@ -211,14 +394,37 @@ function startIframeProbe() {
 
 function handleIframeLoad() {
   trajectoryStore.clearFor(props.runtimeScope)
+  seenPoseReceiptKeys.clear()
   loading.value = true
   ready.value = false
   readyEmitted = false
   controlsReady.value = false
   unityBridgeStore.setControlsReadyFor(props.runtimeScope, false)
+  unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, {
+    ready: false,
+    controlsReady: false,
+    cameraReady: false,
+    algorithmReady: false,
+    visualSensorReady: false,
+    buildId: '',
+    capabilities: [],
+  })
   errorMessage.value = ''
   loadHint.value = '正在加载真实 Unity WebGL 构建包'
   startIframeProbe()
+}
+
+function reload() {
+  trajectoryStore.clearFor(props.runtimeScope)
+  seenPoseReceiptKeys.clear()
+  unityBridgeStore.setConnectedFor(props.runtimeScope, false)
+  loading.value = true
+  ready.value = false
+  controlsReady.value = false
+  errorMessage.value = ''
+  loadHint.value = '正在重新加载 Unity WebGL 运行实例'
+  readyEmitted = false
+  reloadToken.value += 1
 }
 
 function createRequestId(type: string) {
@@ -226,11 +432,14 @@ function createRequestId(type: string) {
 }
 
 function postToUnity(type: string, payload: Record<string, unknown> = {}) {
+  // Vue reactive arrays/objects cannot cross window.postMessage via the
+  // structured-clone algorithm. Convert scenario poses to plain data first.
+  const plainPayload = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
   const message: UnityMessage = {
     type,
     requestId: createRequestId(type),
     timestamp: Date.now(),
-    payload,
+    payload: plainPayload,
   }
   unityBridgeStore.noteOutgoingFor(props.runtimeScope, {
     type: message.type,
@@ -275,7 +484,7 @@ function postEnvelope(message: UnityBridgeMessage) {
 
 function flushUnityOutbox() {
   const channel = unityBridgeStore.channels[props.runtimeScope]
-  if (!channel.connected || !iframeRef.value?.contentWindow) return
+  if (!channel.connected || !channel.platformReady || !iframeRef.value?.contentWindow) return
   let message = unityBridgeStore.peekNextFor(props.runtimeScope)
   while (message) {
     try {
@@ -317,27 +526,44 @@ function sendPoseFrame(payload: Record<string, unknown>) {
 }
 
 async function reportHeartbeat(
-  state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED',
+  state: HeartbeatReport['state'],
   detail: string,
 ) {
+  // The standalone virtual-fleet integration channel is intentionally local
+  // to the WebGL bridge until the backend accepts its runtime scope.
+  if (props.runtimeScope === 'VIRTUAL_FLEET') return
+  if (heartbeatInFlight) {
+    pendingHeartbeat = { state, detail }
+    return
+  }
+  heartbeatInFlight = true
+  let current: HeartbeatReport | null = { state, detail }
   try {
-    await sendIntegrationHeartbeat({
-      componentCode: 'unity-client-01',
-      instanceId: props.runtimeInstanceId,
-      state,
-      detail,
-      rosConnectionStatus: 'UNKNOWN',
-      runtimeScope: props.runtimeScope,
-      missionId: props.missionId,
-      runId: props.runId,
-      controlsReady: controlsReady.value,
-      deviceCodes: trajectoryStore.channels[props.runtimeScope].frame?.agents
-        .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
-        .map(agent => agent.code.toLowerCase()) ?? [],
-      trajectorySequence: trajectoryStore.channels[props.runtimeScope].frame?.sequence,
-    })
-  } catch {
-    // Heartbeat failure must not interrupt the local WebGL runtime.
+    while (current) {
+      try {
+        await sendIntegrationHeartbeat({
+          componentCode: 'unity-client-01',
+          instanceId: props.runtimeInstanceId,
+          state: current.state,
+          detail: current.detail,
+          rosConnectionStatus: 'UNKNOWN',
+          runtimeScope: props.runtimeScope,
+          missionId: props.missionId,
+          runId: props.runId,
+          controlsReady: controlsReady.value,
+          deviceCodes: trajectoryStore.channels[props.runtimeScope].frame?.agents
+            .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
+            .map(agent => agent.code.toLowerCase()) ?? [],
+          trajectorySequence: trajectoryStore.channels[props.runtimeScope].frame?.sequence,
+        })
+      } catch {
+        // Heartbeat failure must not interrupt the local WebGL runtime.
+      }
+      current = pendingHeartbeat
+      pendingHeartbeat = null
+    }
+  } finally {
+    heartbeatInFlight = false
   }
 }
 
@@ -350,6 +576,7 @@ function reportRuntimeSnapshot(force = false) {
 
 defineExpose({
   postToUnity,
+  reload,
   selectDevice,
   focusDevice,
   switchCamera,
@@ -369,9 +596,16 @@ onMounted(() => {
 watch(
   () => [
     unityBridgeStore.channels[props.runtimeScope].connected,
+    unityBridgeStore.channels[props.runtimeScope].platformReady,
     unityBridgeStore.channels[props.runtimeScope].outbox.length,
   ],
   flushUnityOutbox,
+)
+
+watch(
+  visualRuntimeContext,
+  context => visualSensorStore.bindRuntime(context),
+  { immediate: true },
 )
 
 onBeforeUnmount(() => {
@@ -380,6 +614,18 @@ onBeforeUnmount(() => {
   window.removeEventListener('message', handleWindowMessage)
   if (probeTimer !== null) window.clearInterval(probeTimer)
   if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer)
+  try {
+    const frame = iframeRef.value
+    const frameWindow = frame?.contentWindow as UnityFrameWindow | null | undefined
+    const unityInstance = frameWindow?.uavUsvUnityInstance
+    if (unityInstance?.Quit) {
+      void unityInstance.Quit().catch(() => undefined)
+    }
+    if (frame) frame.src = 'about:blank'
+    iframeRef.value = null
+  } catch {
+    iframeRef.value = null
+  }
 })
 </script>
 
@@ -387,6 +633,7 @@ onBeforeUnmount(() => {
   <div class="unity-webgl-panel">
     <iframe
       ref="iframeRef"
+      :key="reloadToken"
       class="unity-webgl-frame"
       :src="iframeUrl"
       title="UAV-USV Unity WebGL"

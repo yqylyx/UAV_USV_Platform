@@ -22,7 +22,9 @@ export const useUnityViewportStore = defineStore('unityViewport', {
       if (instanceId) this.missionInstanceId = instanceId
     },
     createMissionInstance(missionId: number) {
-      this.missionInstanceId = `mission-unity-${Date.now()}`
+      // Task Center owns one persistent WebGL runtime. Reusing its instance id
+      // avoids reloading the large Unity build (and racing its heartbeat) every
+      // time a new algorithm run is created. Runs remain isolated by runId.
       this.missionId = missionId
       this.runId = null
       this.target = null

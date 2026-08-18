@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { Activity, Beaker, CalendarClock, Copy, FilePenLine, Play, ScrollText, Trash2 } from '@lucide/vue'
+import { Activity, Beaker, CalendarClock, Camera, Copy, FilePenLine, Play, ScrollText, Trash2 } from '@lucide/vue'
 import type { Mission, MissionStatus } from '@/types/mission'
 
 defineProps<{ missions: Mission[]; loading?: boolean }>()
 const emit = defineEmits<{
-  action: [action: 'configure' | 'view' | 'start' | 'execute' | 'events' | 'copy' | 'delete' | 'retry' | 'result', mission: Mission]
+  action: [action: 'configure' | 'view' | 'start' | 'execute' | 'visual' | 'events' | 'copy' | 'delete' | 'retry' | 'result', mission: Mission]
 }>()
 
 function actions(mission: Mission) {
   if (mission.status === 'DRAFT') return [['configure', '继续配置'], ['copy', '复制'], ['delete', '删除']] as const
   if (mission.status === 'READY') return [['view', '查看配置'], ['configure', '编辑配置'], ['start', '执行任务']] as const
-  if (mission.status === 'RUNNING' || mission.status === 'PAUSED') return [['execute', '查看执行'], ['events', '运行事件']] as const
+  if (mission.status === 'RUNNING' || mission.status === 'PAUSED') return [['execute', '查看执行'], ['visual', '设备视觉'], ['events', '运行事件']] as const
   if (mission.status === 'FAILED') return [['events', '异常记录'], ['retry', '再次执行']] as const
   return [['events', '执行记录'], ['retry', '再次执行']] as const
 }
@@ -27,10 +27,17 @@ const statusLabels: Record<MissionStatus, string> = {
 
 const typeLabels = {
   COOPERATIVE_ENCIRCLEMENT: '协同围捕',
+  COOPERATIVE_ESCORT: '协同护航',
   TARGET_INSPECTION: '目标巡检',
   PATH_TRACKING: '路径跟踪',
   COMMUNICATION_RELAY: '通信中继',
   CUSTOM: '自定义实验',
+}
+
+const algorithmLabels: Record<string,string> = {
+  GB_SFLA_CS: 'GB-SFLA-CS 协同围捕',
+  ESCORT_GUARD: '混合 UAV/USV 护航守卫',
+  UNITY_SIMPLE_ENCIRCLEMENT: 'Unity 默认简单围捕',
 }
 
 const modeLabels = {
@@ -45,6 +52,7 @@ function actionIcon(action: string) {
     view: ScrollText,
     start: Play,
     execute: Activity,
+    visual: Camera,
     events: ScrollText,
     copy: Copy,
     delete: Trash2,
@@ -65,7 +73,7 @@ function actionIcon(action: string) {
         <b>{{ statusLabels[mission.status] }}</b>
       </header>
       <div class="mission-list-meta">
-        <div><span>算法版本</span><strong>Unity 默认简单围捕 v1.0</strong></div>
+        <div><span>算法版本</span><strong>{{ algorithmLabels[mission.algorithmCode] || mission.algorithmCode }} · v{{ mission.algorithmVersion }}</strong></div>
         <div><span>运行环境</span><strong>{{ modeLabels[mission.executionMode] }}</strong></div>
         <div><span>设备编组</span><strong>{{ mission.deviceCount || 0 }} 台载具</strong></div>
         <div><span>任务类型</span><strong>{{ typeLabels[mission.type] }}</strong></div>

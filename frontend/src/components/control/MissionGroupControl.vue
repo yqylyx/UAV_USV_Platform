@@ -59,7 +59,7 @@ function statusLabel(status: string) {
       </button>
 
       <button
-        v-if="status === 'DRAFT' || status === 'READY'"
+        v-if="status !== 'RUNNING' && status !== 'PAUSED'"
         type="button"
         class="primary"
         :disabled="busy || !canStart"

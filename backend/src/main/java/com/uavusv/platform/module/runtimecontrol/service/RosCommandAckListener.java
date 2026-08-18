@@ -17,10 +17,10 @@ public class RosCommandAckListener {
     @EventListener
     public void handle(RosCommandAckReceivedEvent event) {
         if (event.commandKey() == null || event.commandKey().isBlank()) return;
-        if (event.status() == 1 || event.status() == 3) {
+        if (event.status() >= 4 && event.status() <= 6) {
             runtimeControlService.acknowledgeCommand(event.commandKey(),
                     new RuntimeCommandAckRequest(true, event.message(), null, "ROS"));
-        } else if (event.status() == 4 || event.status() == 5 || event.status() == 6) {
+        } else if (event.status() >= 7) {
             runtimeControlService.acknowledgeCommand(event.commandKey(),
                     new RuntimeCommandAckRequest(false, event.message(), "ROS_COMMAND_REJECTED", "ROS"));
         }

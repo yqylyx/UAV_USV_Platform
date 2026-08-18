@@ -3,6 +3,7 @@ import type { DeviceStatus, DeviceType } from './device'
 export type MissionType =
   | 'TARGET_INSPECTION'
   | 'COOPERATIVE_ENCIRCLEMENT'
+  | 'COOPERATIVE_ESCORT'
   | 'PATH_TRACKING'
   | 'COMMUNICATION_RELAY'
   | 'CUSTOM'
@@ -46,6 +47,8 @@ export interface Mission {
   name: string
   type: MissionType
   executionMode: MissionExecutionMode
+  algorithmCode: string
+  algorithmVersion: string
   status: MissionStatus
   stage: MissionStage
   priority: number
@@ -140,6 +143,8 @@ export interface MissionSavePayload {
   name: string
   type: MissionType
   executionMode: MissionExecutionMode
+  algorithmCode: string
+  algorithmVersion: string
   status: MissionStatus
   stage: MissionStage
   priority: number
@@ -167,6 +172,64 @@ export interface MissionSummary {
   ready: number
   running: number
   abnormal: number
+}
+
+export interface AlgorithmDefinition {
+  id: number
+  code: string
+  name: string
+  version: string
+  missionType: MissionType
+  adapterType: 'PYTHON_PROCESS' | 'UNITY_NATIVE' | string
+  deviceScale: string
+  enabled: boolean
+  defaultForType: boolean
+  description: string
+}
+
+export interface AlgorithmAgentFrame {
+  code: string
+  type: 'UAV' | 'USV'
+  x: number
+  y: number
+  z: number
+  heading: number
+  role: string
+  status: string
+}
+
+export interface AlgorithmTargetFrame {
+  code: string
+  type: 'CAPTURE_TARGET' | 'ESCORT_TARGET' | 'THREAT_TARGET'
+  x: number
+  y: number
+  z: number
+  heading: number
+  visible: boolean
+}
+
+export interface AlgorithmRuntimeFrame {
+  runId: number
+  algorithmCode: string
+  coordinateFrame?: 'FLEET_LOCAL_ENU' | 'GLOBAL_ENU'
+  sequence: number
+  timestamp: number
+  phase: string
+  agents: AlgorithmAgentFrame[]
+  targets: AlgorithmTargetFrame[]
+  metrics: Record<string, unknown>
+  route: number[][]
+  obstacles: Array<Record<string, unknown>>
+  terminalStatus: string | null
+}
+
+export interface AlgorithmRuntimeStatus {
+  runId: number
+  algorithmCode: string
+  state: string
+  latestSequence: number
+  error: string | null
+  latestFrame: AlgorithmRuntimeFrame | null
 }
 
 export interface MissionPreflightIssue {

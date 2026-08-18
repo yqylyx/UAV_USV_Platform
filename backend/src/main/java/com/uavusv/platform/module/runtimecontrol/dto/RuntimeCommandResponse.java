@@ -14,6 +14,7 @@ public record RuntimeCommandResponse(
         String runtimeInstanceId,
         CommandStatus status,
         String detail,
+        String errorCode,
         LocalDateTime acceptedAt
 ) {
     public static RuntimeCommandResponse from(com.uavusv.platform.module.runtimecontrol.entity.ControlCommand command) {
@@ -25,6 +26,7 @@ public record RuntimeCommandResponse(
                 command.getRuntimeInstanceId(),
                 command.getStatus(),
                 command.getDetail(),
+                command.getErrorCode(),
                 command.getRequestedAt()
         );
     }

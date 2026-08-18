@@ -4,8 +4,22 @@ spring:
     username: ${MYSQL_USERNAME:root}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-timeout: 10000
+      validation-timeout: 3000
+      maximum-pool-size: 10
+      minimum-idle: 0
+      idle-timeout: 300000
+      max-lifetime: 600000
+      keepalive-time: 30000
 
 app:
+  ros:
+    transport: ${ROS_TRANSPORT:v1}
+    state-authority: ${ROS_STATE_AUTHORITY:v1}
+  gateway:
+    v1:
+      websocket-url: ${ROS_GATEWAY_V1_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv/v1}
   integration:
     token: ${PLATFORM_INTEGRATION_TOKEN:uav-usv-local-agent}
   security:
@@ -13,9 +27,13 @@ app:
       username: ${BOOTSTRAP_ADMIN_USERNAME:admin}
       password: ${BOOTSTRAP_ADMIN_PASSWORD}
   control:
+    mission-dispatch-mode: ${MISSION_DISPATCH_MODE:ros-websocket}
+    vehicle-dispatch-mode: ${VEHICLE_DISPATCH_MODE:browser-unity}
+    command-ack-timeout-seconds: ${COMMAND_ACK_TIMEOUT_SECONDS:15}
     wsl-distribution: ${WSL_DISTRIBUTION:Ubuntu22}
     ros-script: ${ROS_RUNTIME_SCRIPT:F:/UAV_USV_Platform/scripts/uav-usv-runtime.sh}
     unity-editor: ${UNITY_EDITOR_PATH:F:/Unity/Editors/2022.3.57f1/Editor/Unity.exe}
     unity-project: ${UNITY_PROJECT_PATH:F:/Unity/Projects/unity_ws}
   runtime:
+    ros-enabled: ${ROS_ENABLED:false}
     ros-websocket-url: ${ROS_WEBSOCKET_URL:ws://127.0.0.1:8765/uav_usv}

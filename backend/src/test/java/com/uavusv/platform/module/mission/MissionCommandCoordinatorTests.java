@@ -32,7 +32,7 @@ class MissionCommandCoordinatorTests {
 
         fixture.coordinator.handleCommandStatus(new ControlCommandStatusChangedEvent(
                 30L, "command-30", 20L, CommandType.START_MISSION,
-                CommandStatus.ACKNOWLEDGED, "mock acknowledged", null
+                CommandStatus.SUCCEEDED, "mock succeeded", null
         ));
 
         assertEquals(MissionStatus.RUNNING, fixture.mission.getStatus());
@@ -52,6 +52,22 @@ class MissionCommandCoordinatorTests {
         assertEquals(MissionStatus.READY, fixture.mission.getStatus());
         assertEquals(MissionRunStatus.FAILED, fixture.run.getStatus());
         assertEquals("ack timeout", fixture.run.getFailureReason());
+        assertNotNull(fixture.run.getEndedAt());
+        verify(fixture.eventRepository).save(any());
+    }
+
+    @Test
+    void shouldKeepMissionReadyWhenStartCommandRejected() {
+        Fixture fixture = fixture();
+
+        fixture.coordinator.handleCommandStatus(new ControlCommandStatusChangedEvent(
+                32L, "command-32", 20L, CommandType.START_MISSION,
+                CommandStatus.REJECTED, "ros rejected", "ROS_REJECTED"
+        ));
+
+        assertEquals(MissionStatus.READY, fixture.mission.getStatus());
+        assertEquals(MissionRunStatus.FAILED, fixture.run.getStatus());
+        assertEquals("ros rejected", fixture.run.getFailureReason());
         assertNotNull(fixture.run.getEndedAt());
         verify(fixture.eventRepository).save(any());
     }

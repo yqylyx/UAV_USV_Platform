@@ -6,30 +6,36 @@ import type { RuntimeCommandResult } from '@/api/runtimeControl'
 
 export async function fetchMissions(query: MissionQuery): Promise<PageResponse<Mission>> {
   const response = await http.get<ApiResponse<PageResponse<Mission>>>('/missions', {
-    params: query,
+    params: { ...query, _ts: Date.now() },
   })
   return response.data.data
 }
 
 export async function fetchMission(id: number): Promise<MissionDetail> {
-  const response = await http.get<ApiResponse<MissionDetail>>(`/missions/${id}`)
+  const response = await http.get<ApiResponse<MissionDetail>>(`/missions/${id}`, {
+    params: { _ts: Date.now() },
+  })
   return response.data.data
 }
 
 export async function fetchMissionSummary(): Promise<MissionSummary> {
-  const response = await http.get<ApiResponse<MissionSummary>>('/missions/summary')
+  const response = await http.get<ApiResponse<MissionSummary>>('/missions/summary', {
+    params: { _ts: Date.now() },
+  })
   return response.data.data
 }
 
 export async function fetchMissionPreflight(id: number, runtimeInstanceId?: string): Promise<MissionPreflight> {
   const response = await http.get<ApiResponse<MissionPreflight>>(`/missions/${id}/preflight`, {
-    params: { runtimeInstanceId },
+    params: { runtimeInstanceId, _ts: Date.now() },
   })
   return response.data.data
 }
 
 export async function fetchMissionEvents(id: number, params: { runId?: number; level?: MissionEventLevel; limit?: number } = {}): Promise<MissionEvent[]> {
-  const response = await http.get<ApiResponse<MissionEvent[]>>(`/missions/${id}/events`, { params })
+  const response = await http.get<ApiResponse<MissionEvent[]>>(`/missions/${id}/events`, {
+    params: { ...params, _ts: Date.now() },
+  })
   return response.data.data
 }
 

@@ -4,18 +4,36 @@ import { useAuthStore } from '@/stores/auth'
 import DashboardView from '@/views/DashboardView.vue'
 import DeviceManagementView from '@/views/DeviceManagementView.vue'
 import LoginView from '@/views/LoginView.vue'
-import MissionControlView from '@/views/MissionControlView.vue'
-import MissionExecutionView from '@/views/MissionExecutionView.vue'
-import RuntimeMonitorView from '@/views/RuntimeMonitorView.vue'
+import MissionWorkspaceView from '@/views/MissionWorkspaceView.vue'
+import RadarSituationView from '@/views/RadarHudView.vue'
+import VisualSensorView from '@/views/OpticalVisionView.vue'
+import VirtualFleetConfigView from '@/views/VirtualFleetConfigView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
     { path: '/devices', name: 'devices', component: DeviceManagementView, meta: { requiresAuth: true } },
-    { path: '/missions', name: 'missions', component: MissionControlView, meta: { requiresAuth: true } },
-    { path: '/missions/:missionId/runs/:runId', name: 'mission-run', component: MissionExecutionView, meta: { requiresAuth: true } },
-    { path: '/monitoring', name: 'monitoring', component: RuntimeMonitorView, meta: { requiresAuth: true } },
+    { path: '/situation', name: 'situation', component: MissionWorkspaceView, meta: { requiresAuth: true } },
+    { path: '/missions', redirect: '/situation' },
+    {
+      path: '/missions/:missionId/runs/:runId',
+      name: 'mission-run',
+      redirect: to => ({
+        name: 'situation',
+        query: {
+          missionId: String(to.params.missionId),
+          runId: String(to.params.runId),
+          ...(to.query.view ? { view: String(to.query.view) } : {}),
+        },
+      }),
+      meta: { requiresAuth: true },
+    },
+    { path: '/vision', name: 'optical-vision', component: VisualSensorView, meta: { requiresAuth: true } },
+    { path: '/visual-sensors', redirect: '/vision' },
+    { path: '/radar', name: 'radar-situation', component: RadarSituationView, meta: { requiresAuth: true } },
+    { path: '/virtual-fleet', name: 'virtual-fleet-config', component: VirtualFleetConfigView, meta: { requiresAuth: true } },
+    { path: '/monitoring', redirect: '/situation' },
     { path: '/login', name: 'login', component: LoginView },
   ],
 })

@@ -73,4 +73,32 @@ public class DeviceTelemetry extends BaseEntity {
         this.orientationW = pose.orientationW();
         this.source = source;
     }
+
+    public Long getDeviceId() {
+        return deviceId;
+    }
+
+    public LocalDateTime getRecordedAt() {
+        return recordedAt;
+    }
+
+    public double getPositionX() {
+        return positionX;
+    }
+
+    public double getPositionY() {
+        return positionY;
+    }
+
+    public double getPositionZ() {
+        return positionZ;
+    }
+
+    public Double getBatteryLevel() {
+        return batteryLevel;
+    }
+
+    public String getSource() {
+        return source;
+    }
 }

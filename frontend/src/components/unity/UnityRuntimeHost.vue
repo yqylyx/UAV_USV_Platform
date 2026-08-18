@@ -7,6 +7,7 @@ import type { UnityRuntimeScope } from '@/stores/unityBridge'
 const props = withDefaults(
   defineProps<{
     viewport: string
+    iframeSrc?: string
     runtimeScope?: UnityRuntimeScope
     runtimeInstanceId?: string
     missionId?: number
@@ -15,6 +16,7 @@ const props = withDefaults(
     layer?: number
   }>(),
   {
+    iframeSrc: '/unity-overview/index.html?embedded=1',
     runtimeScope: 'SYSTEM_OVERVIEW',
     runtimeInstanceId: 'overview-unity-01',
     active: true,
@@ -26,9 +28,20 @@ const frameStyle = reactive<Record<string, string>>({})
 let viewportElement: HTMLElement | null = null
 let resizeObserver: ResizeObserver | null = null
 let animationFrame = 0
+let alignmentUntil = 0
+let lastWidth = 1280
+let lastHeight = 720
 
 function parkRuntime() {
-  Object.assign(frameStyle, { left: '0px', top: '0px', width: '2px', height: '2px' })
+  // Keep a real render target while the persistent WebGL instance is parked.
+  // Collapsing it to 2x2 forced Unity to recreate a low-resolution backbuffer
+  // and caused a blurred, stuttering first second when returning to 3-D.
+  Object.assign(frameStyle, {
+    left: '-10000px',
+    top: '0px',
+    width: `${lastWidth}px`,
+    height: `${lastHeight}px`,
+  })
 }
 
 function alignRuntime() {
@@ -48,22 +61,37 @@ function alignRuntime() {
     return
   }
   const rect = viewportElement.getBoundingClientRect()
+  // Active runtime must match the viewport exactly. The previous 640×360
+  // minimum made a short camera card render a taller fixed layer, so the
+  // Unity canvas leaked out below the card as a visible strip.
+  lastWidth = Math.max(1, Math.round(rect.width))
+  lastHeight = Math.max(1, Math.round(rect.height))
   Object.assign(frameStyle, {
     left: `${Math.round(rect.left)}px`,
     top: `${Math.round(rect.top)}px`,
-    width: `${Math.max(2, Math.round(rect.width))}px`,
-    height: `${Math.max(2, Math.round(rect.height))}px`,
+    width: `${lastWidth}px`,
+    height: `${lastHeight}px`,
   })
 }
 
 function scheduleAlignment() {
   window.cancelAnimationFrame(animationFrame)
   void nextTick(() => {
-    animationFrame = window.requestAnimationFrame(() => {
+    alignmentUntil = Math.max(alignmentUntil, performance.now() + 100)
+    const track = () => {
       alignRuntime()
-      animationFrame = window.requestAnimationFrame(alignRuntime)
-    })
+      if (performance.now() < alignmentUntil) animationFrame = window.requestAnimationFrame(track)
+    }
+    animationFrame = window.requestAnimationFrame(track)
   })
+}
+
+function trackRuntime(event: Event) {
+  const duration = event instanceof CustomEvent
+    ? Number(event.detail?.duration ?? 500)
+    : 500
+  alignmentUntil = Math.max(alignmentUntil, performance.now() + Math.max(100, duration))
+  scheduleAlignment()
 }
 
 watch(() => [props.viewport, props.active], scheduleAlignment, { immediate: true })
@@ -71,6 +99,7 @@ watch(() => [props.viewport, props.active], scheduleAlignment, { immediate: true
 onMounted(() => {
   window.addEventListener('resize', scheduleAlignment)
   window.addEventListener('scroll', alignRuntime, true)
+  window.addEventListener('unity-runtime-track', trackRuntime)
   scheduleAlignment()
 })
 
@@ -79,6 +108,7 @@ onBeforeUnmount(() => {
   window.cancelAnimationFrame(animationFrame)
   window.removeEventListener('resize', scheduleAlignment)
   window.removeEventListener('scroll', alignRuntime, true)
+  window.removeEventListener('unity-runtime-track', trackRuntime)
 })
 </script>
 
@@ -90,6 +120,7 @@ onBeforeUnmount(() => {
     :aria-label="`${runtimeScope} Unity WebGL 运行实例`"
   >
     <UnityWebglPanel
+      :iframe-src="iframeSrc"
       :runtime-scope="runtimeScope"
       :runtime-instance-id="runtimeInstanceId"
       :mission-id="missionId"

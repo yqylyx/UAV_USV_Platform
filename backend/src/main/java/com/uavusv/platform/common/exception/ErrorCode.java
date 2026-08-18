@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
     BAD_REQUEST("COMMON_400", "请求参数不正确", HttpStatus.BAD_REQUEST),
+    INVALID_COMMAND_SCOPE("INVALID_COMMAND_SCOPE", "命令不属于 ROS 控制范围", HttpStatus.BAD_REQUEST),
     UNAUTHORIZED("AUTH_401", "用户名或密码错误", HttpStatus.UNAUTHORIZED),
     CSRF_INVALID("AUTH_403_CSRF", "安全令牌已失效，请刷新页面后重试", HttpStatus.FORBIDDEN),
     FORBIDDEN("AUTH_403", "没有权限执行此操作", HttpStatus.FORBIDDEN),

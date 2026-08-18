@@ -18,17 +18,22 @@ import com.uavusv.platform.module.monitoring.entity.RuntimePose;
 import com.uavusv.platform.module.monitoring.repository.DeviceStatusEventRepository;
 import com.uavusv.platform.module.monitoring.repository.DeviceTelemetryRepository;
 import com.uavusv.platform.module.monitoring.repository.RuntimeDeviceStatusRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.uavusv.platform.module.gateway.v1.DeviceCodeMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.net.URI;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -41,6 +46,7 @@ public class RuntimeStateService {
     public static final String ROS_CODE = "ros-bridge-01";
     public static final String UNITY_CODE = "unity-client-01";
 
+    private static final String ROS_POSE_DETAIL_PREFIX = "Gazebo pose sequence ";
     private static final EnumSet<DeviceType> RUNTIME_TYPES = EnumSet.of(
             DeviceType.UAV, DeviceType.USV, DeviceType.ROS_NODE, DeviceType.UNITY_NODE
     );
@@ -53,7 +59,10 @@ public class RuntimeStateService {
     private final MissionRunRepository missionRunRepository;
     private final SimulationSessionRepository simulationSessionRepository;
     private final Map<String, Observation> observations = new ConcurrentHashMap<>();
+    private final DeviceCodeMapper deviceCodeMapper = new DeviceCodeMapper();
     private final Map<String, UnityRuntimeSnapshot> unityRuntimeSnapshots = new ConcurrentHashMap<>();
+    private final Map<String, DeviceStatusSnapshot> deviceStatusSnapshots = new ConcurrentHashMap<>();
+    private volatile boolean gatewayConnected;
     private final int heartbeatTimeoutSeconds;
     private final int telemetryRetentionDays;
     private final String rosHost;
@@ -95,8 +104,122 @@ public class RuntimeStateService {
         LocalDateTime now = LocalDateTime.now();
         observations.put(ROS_CODE, new Observation(now, true, "ROS_WEBSOCKET", "ros-websocket",
                 frame.sequence(), rosHost, rosPort, null, "正在接收 Gazebo 位姿数据"));
+        if (frame.hasFleetVehicles()) {
+            observeFleetPoses(frame, now);
+            return;
+        }
         observePose(USV_CODE, frame.boat(), frame.sequence(), now);
         observePose(UAV_CODE, frame.drone(), frame.sequence(), now);
+    }
+
+    public void observeGatewayHeartbeat(String instanceId, long sequence) {
+        LocalDateTime now = LocalDateTime.now();
+        observations.put(ROS_CODE, new Observation(now, true, "ROS_GATEWAY_V1", instanceId,
+                sequence, rosHost, rosPort, null, "ROS Gateway v1 heartbeat sequence " + sequence));
+    }
+
+    public void observeGatewayConnection(boolean connected) {
+        gatewayConnected = connected;
+    }
+
+    public void observeGatewayDeviceStatus(JsonNode payload, String source, String streamId, long sequence) {
+        if (payload == null) return;
+        String deviceCode = normalizeGatewayDeviceCode(payload.path("deviceCode").asText(""));
+        if (deviceCode == null) return;
+        deviceStatusSnapshots.put(deviceCode, new DeviceStatusSnapshot(
+                deviceCode,
+                payload.path("connectionState").asText("UNKNOWN").trim().toUpperCase(),
+                payload.path("flightState").asText("UNKNOWN").trim().toUpperCase(),
+                payload.path("armed").asBoolean(false),
+                payload.path("activeCommandId").asText(""),
+                LocalDateTime.now(),
+                sequence,
+                source,
+                streamId
+        ));
+    }
+
+    public ControlOperationalSnapshot getControlOperationalSnapshot(String deviceCode) {
+        String normalized = deviceCode == null ? "" : deviceCode.trim().toLowerCase().replace('_', '-');
+        if (!normalized.startsWith("uav-")) {
+            return new ControlOperationalSnapshot("UNKNOWN", false, null, "UNKNOWN");
+        }
+        DeviceStatusSnapshot snapshot = deviceStatusSnapshots.get(normalized);
+        if (snapshot == null) {
+            return new ControlOperationalSnapshot("UNKNOWN", false, null, "UNKNOWN");
+        }
+        boolean fresh = gatewayConnected
+                && Duration.between(snapshot.receivedAt(), LocalDateTime.now()).compareTo(Duration.ofSeconds(2)) <= 0;
+        boolean online = "ONLINE".equals(snapshot.connectionState());
+        boolean knownFlightState = "GROUNDED".equals(snapshot.flightState())
+                || "AIRBORNE".equals(snapshot.flightState());
+        return new ControlOperationalSnapshot(
+                fresh && online && knownFlightState ? snapshot.flightState() : "UNKNOWN",
+                fresh,
+                snapshot.receivedAt(),
+                snapshot.connectionState()
+        );
+    }
+
+    public TakeoffReadiness getUavTakeoffReadiness(String deviceCode) {
+        String normalized = deviceCode == null ? "" : deviceCode.trim().toLowerCase().replace('_', '-');
+        if (!normalized.startsWith("uav-")) {
+            return new TakeoffReadiness(false, "TARGET_IS_NOT_UAV", "target is not a UAV", "UNKNOWN", null);
+        }
+        Observation observation = observations.get(normalized);
+        boolean poseFresh = observation != null
+                && observation.online()
+                && Duration.between(observation.observedAt(), LocalDateTime.now()).getSeconds() <= heartbeatTimeoutSeconds;
+        Double altitude = poseFresh && observation.pose() != null ? observation.pose().positionY() : null;
+        if (altitude != null && altitude > 1.0) {
+            return new TakeoffReadiness(
+                    false,
+                    "UAV_ALREADY_AIRBORNE",
+                    "UAV takeoff rejected because current altitude is " + String.format("%.2f", altitude) + " m",
+                    "AIRBORNE",
+                    altitude
+            );
+        }
+
+        ControlOperationalSnapshot control = getControlOperationalSnapshot(normalized);
+        if (!control.fresh()) {
+            return new TakeoffReadiness(
+                    false,
+                    "UAV_CONTROL_STATE_STALE",
+                    "UAV takeoff requires a fresh ROS Gateway device.status frame",
+                    control.state(),
+                    altitude
+            );
+        }
+        if (!"ONLINE".equals(control.connectionState())) {
+            return new TakeoffReadiness(
+                    false,
+                    "UAV_CONTROL_OFFLINE",
+                    "UAV takeoff requires an online control connection",
+                    control.state(),
+                    altitude
+            );
+        }
+        if (!"GROUNDED".equals(control.state())) {
+            return new TakeoffReadiness(
+                    false,
+                    "UAV_NOT_GROUNDED",
+                    "UAV takeoff requires GROUNDED state, current state is " + control.state(),
+                    control.state(),
+                    altitude
+            );
+        }
+        return new TakeoffReadiness(true, null, "UAV is grounded and ready for takeoff", control.state(), altitude);
+    }
+
+    public void observeGatewayPoseBatch(JsonNode payload, long sequence) {
+        if (payload == null || !payload.path("vehicles").isArray()) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        observations.put(ROS_CODE, new Observation(now, true, "ROS_GATEWAY_V1", "ros-gateway-v1",
+                sequence, rosHost, rosPort, null, "ROS Gateway v1 pose batch sequence " + sequence));
+        payload.path("vehicles").forEach(vehicle -> observeGatewayVehiclePose(vehicle, sequence, now));
     }
 
     public void observeUnityHeartbeat(IntegrationHeartbeatRequest request, String host) {
@@ -170,6 +293,8 @@ public class RuntimeStateService {
         LocalDateTime now = LocalDateTime.now();
         observations.clear();
         unityRuntimeSnapshots.clear();
+        deviceStatusSnapshots.clear();
+        gatewayConnected = false;
         for (Device device : deviceRepository.findAllByDeletedFalse(Sort.by(Sort.Direction.ASC, "id"))) {
             if (!RUNTIME_TYPES.contains(device.getType())) {
                 continue;
@@ -227,9 +352,6 @@ public class RuntimeStateService {
             }
 
             runtimeStatusRepository.save(runtime);
-            if (device.getStatus() != runtime.getStatus()) {
-                device.updateRuntimeStatus(runtime.getStatus());
-            }
             if (previous != runtime.getStatus()) {
                 statusEventRepository.save(new DeviceStatusEvent(device.getId(), previous, runtime.getStatus(),
                         runtime.getSource(), runtime.getDetail(), now));
@@ -247,7 +369,20 @@ public class RuntimeStateService {
                 ));
             }
         }
-        eventPublisher.publishRuntimeChange();
+        publishRuntimeChangeAfterCommit();
+    }
+
+    private void publishRuntimeChangeAfterCommit() {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            eventPublisher.publishRuntimeChange();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                eventPublisher.publishRuntimeChange();
+            }
+        });
     }
 
     @Scheduled(cron = "0 15 3 * * *")
@@ -265,6 +400,71 @@ public class RuntimeStateService {
         RuntimePose pose = new RuntimePose(p[0], p[1], p[2], q[0], q[1], q[2], q[3]);
         observations.put(code, new Observation(observedAt, true, "ROS_WEBSOCKET", "gazebo",
                 sequence, rosHost, rosPort, pose, "Gazebo 位姿序号 " + sequence));
+    }
+
+    private void observeFleetPoses(RosPoseFrame frame, LocalDateTime observedAt) {
+        if (frame.usvs() != null) {
+            frame.usvs().forEach(vehicle -> observeVehiclePose(vehicle, frame.sequence(), observedAt));
+        }
+        if (frame.uavs() != null) {
+            frame.uavs().forEach(vehicle -> observeVehiclePose(vehicle, frame.sequence(), observedAt));
+        }
+    }
+
+    private void observeVehiclePose(RosPoseFrame.VehiclePoseData vehicle, long sequence, LocalDateTime observedAt) {
+        if (vehicle == null || vehicle.id() == null || vehicle.id().isBlank()) {
+            return;
+        }
+        String code = vehicle.id().trim().toLowerCase().replace('_', '-');
+        if (!code.matches("(uav|usv)-0[1-3]")) {
+            return;
+        }
+        observePose(code, vehicle.poseData(), sequence, observedAt);
+    }
+
+    private void observeGatewayVehiclePose(JsonNode vehicle, long sequence, LocalDateTime observedAt) {
+        if (!vehicle.path("fresh").asBoolean(false) || !vehicle.path("positionValid").asBoolean(false)) {
+            return;
+        }
+        String code = normalizeGatewayDeviceCode(vehicle.path("deviceCode").asText(""));
+        if (code == null) {
+            return;
+        }
+        Optional<RuntimePose> pose = gatewayPose(vehicle);
+        observations.put(code, new Observation(observedAt, true, "ROS_GATEWAY_V1", "ros-gateway-v1",
+                sequence, rosHost, rosPort, pose.orElse(null), "ROS Gateway v1 pose batch sequence " + sequence));
+    }
+
+    private String normalizeGatewayDeviceCode(String code) {
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+        try {
+            return deviceCodeMapper.toPlatform(code);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private Optional<RuntimePose> gatewayPose(JsonNode vehicle) {
+        JsonNode position = vehicle.path("localPositionEnuM");
+        if (!position.path("x").isNumber() || !position.path("y").isNumber() || !position.path("z").isNumber()) {
+            return Optional.empty();
+        }
+        JsonNode orientation = vehicle.path("orientation");
+        double orientationX = orientation.path("x").isNumber() ? orientation.path("x").asDouble() : 0.0;
+        double orientationY = orientation.path("y").isNumber() ? orientation.path("y").asDouble() : 0.0;
+        double orientationZ = orientation.path("z").isNumber() ? orientation.path("z").asDouble() : 0.0;
+        double orientationW = orientation.path("w").isNumber() ? orientation.path("w").asDouble() : 1.0;
+        return Optional.of(new RuntimePose(
+                position.path("x").asDouble(),
+                position.path("y").asDouble(),
+                position.path("z").asDouble(),
+                orientationX,
+                orientationY,
+                orientationZ,
+                orientationW
+        ));
     }
 
     private record Observation(
@@ -286,6 +486,36 @@ public class RuntimeStateService {
             Set<String> deviceCodes,
             Long trajectorySequence,
             LocalDateTime observedAt
+    ) {
+    }
+
+    private record DeviceStatusSnapshot(
+            String deviceCode,
+            String connectionState,
+            String flightState,
+            boolean armed,
+            String activeCommandId,
+            LocalDateTime receivedAt,
+            long sequence,
+            String source,
+            String streamId
+    ) {
+    }
+
+    public record ControlOperationalSnapshot(
+            String state,
+            boolean fresh,
+            LocalDateTime receivedAt,
+            String connectionState
+    ) {
+    }
+
+    public record TakeoffReadiness(
+            boolean allowed,
+            String errorCode,
+            String detail,
+            String state,
+            Double altitude
     ) {
     }
 }

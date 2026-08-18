@@ -50,6 +50,7 @@ export interface RuntimeCommandResult {
   runtimeInstanceId: string | null
   status: RuntimeCommandStatus
   detail: string
+  errorCode: string | null
   acceptedAt: string
 }
 
@@ -72,7 +73,9 @@ export interface RuntimeCommandLog {
   errorCode: string | null
 }
 
-export type RuntimeCommandStatus = 'PENDING' | 'DISPATCHED' | 'ACKNOWLEDGED' | 'FAILED' | 'TIMEOUT'
+export type RuntimeCommandStatus =
+  | 'PENDING' | 'DISPATCHED' | 'ACCEPTED' | 'EXECUTING'
+  | 'SUCCEEDED' | 'REJECTED' | 'FAILED' | 'TIMEOUT' | 'CANCELLED' | 'EXPIRED'
 
 export async function fetchRuntimeControlStatus(): Promise<RuntimeControlState> {
   const response = await http.get<ApiResponse<RuntimeControlState>>('/runtime-control/status')
@@ -101,7 +104,7 @@ export async function stopRuntime(): Promise<RuntimeControlState> {
 }
 
 export async function issueRuntimeCommand(payload: RuntimeCommandPayload): Promise<RuntimeCommandResult> {
-  await fetchCsrfToken()
+  console.debug('[runtime-control] issue command payload', payload)
   const response = await http.post<ApiResponse<RuntimeCommandResult>>('/runtime-control/commands', payload)
   return response.data.data
 }

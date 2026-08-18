@@ -6,6 +6,8 @@ import type { RuntimeNode, RuntimeNodeQuery, RuntimeSummary } from '@/types/moni
 
 let runtimeEvents: EventSource | null = null
 let refreshTimer: number | null = null
+let refreshInFlight = false
+let pendingRefresh: { overrides: RuntimeNodeQuery; silent: boolean } | null = null
 
 interface MonitoringState {
   summary: RuntimeSummary | null
@@ -27,6 +29,11 @@ export const useMonitoringStore = defineStore('monitoring', {
   }),
   actions: {
     async refresh(overrides: RuntimeNodeQuery = {}, silent = false) {
+      if (refreshInFlight) {
+        pendingRefresh = { overrides, silent }
+        return
+      }
+      refreshInFlight = true
       const query: RuntimeNodeQuery = {
         type: overrides.type ?? this.type,
         status: overrides.status ?? this.status,
@@ -43,14 +50,21 @@ export const useMonitoringStore = defineStore('monitoring', {
         this.error = error instanceof Error ? error.message : '运行监控数据加载失败'
       } finally {
         if (!silent) this.loading = false
+        refreshInFlight = false
+        const pending = pendingRefresh
+        pendingRefresh = null
+        if (pending) void this.refresh(pending.overrides, pending.silent)
       }
     },
     connectEvents() {
       if (runtimeEvents) return
       runtimeEvents = new EventSource('/api/monitoring/events')
       runtimeEvents.addEventListener('runtime-change', () => {
-        if (refreshTimer !== null) window.clearTimeout(refreshTimer)
-        refreshTimer = window.setTimeout(() => this.refresh({}, true), 1000)
+        if (refreshTimer !== null) return
+        refreshTimer = window.setTimeout(() => {
+          refreshTimer = null
+          void this.refresh({}, true)
+        }, 3000)
       })
       runtimeEvents.onerror = () => {
         this.error = '实时状态连接中断，正在自动重连'
