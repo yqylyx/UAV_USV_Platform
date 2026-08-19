@@ -52,6 +52,12 @@ def main() -> int:
     threading.Thread(target=command_reader, args=(commands,), daemon=True).start()
     state = "RUNNING" if args.autostart else "PREPARED"
     emit({"event": "runtimeReady", "runId": args.run_id, "algorithmCode": args.algorithm, "state": state})
+    # Publish the authoritative initial pose while the run is still prepared.
+    # The UI uses this frame to align Unity's generated scene before START;
+    # advancing only after START caused the target and fleet to jump on the
+    # first visible mission frame.
+    initial_frame = adapter.step().to_dict()
+    emit({"event": "frame", "payload": initial_frame})
     frame_interval = 1.0 / max(1.0, args.fps)
 
     while state not in {"CANCELLED", "STOPPED"}:

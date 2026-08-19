@@ -171,6 +171,25 @@ class CaptureAdapter(AlgorithmAdapter):
                     0.0,
                 ),
             )
+            # The vendor target update can propose a large correction when a
+            # Unity pose is outside the vendor arena. Keep the executed target
+            # continuous at the render frame rate instead of teleporting from
+            # sequence 1 to sequence 2.
+            max_target_step = max(
+                0.05,
+                abs(float(self.source.TARGET_SPEED)) / 3.0,
+            )
+            target_dx = safe_target.x - target_previous[0]
+            target_dy = safe_target.y - target_previous[1]
+            target_distance = math.hypot(target_dx, target_dy)
+            if target_distance > max_target_step:
+                scale = max_target_step / target_distance
+                safe_target = SafePoint(
+                    target_previous[0] + target_dx * scale,
+                    target_previous[1] + target_dy * scale,
+                    safe_target.z,
+                    True,
+                )
         self.previous_scene["TARGET"] = (safe_target.x, safe_target.y, safe_target.z)
         self.env.targets[0, :3] = self._to_internal((safe_target.x, safe_target.y, 0.0), "TARGET")
 
@@ -302,7 +321,11 @@ class CaptureAdapter(AlgorithmAdapter):
                     "CAPTURE_TARGET",
                     safe_target.x,
                     safe_target.y,
-                    0.0,
+                    float(
+                        self.initial_pose_map()
+                        .get("TARGET-001", {})
+                        .get("upM", 0.0)
+                    ),
                     (
                         float(self.initial_pose_map().get("TARGET-001", {}).get("headingDeg", 0.0)) % 360.0
                         if initial_snapshot

@@ -319,6 +319,11 @@ async function startMission() {
     addLog(`missionStart: preparing algorithm runId=${state.runId}`)
     if (!(await prepareExternalAlgorithm())) return
   }
+  const initialFrameSynced = await synchronizeInitialAlgorithmFrame()
+  if (!initialFrameSynced) {
+    addLog(`missionStart blocked: algorithm sequence=1 is not available`)
+    return
+  }
   try {
     await controlAlgorithmRun(state.runId, 'start')
     state.mission = 'RUNNING'
@@ -335,6 +340,11 @@ async function startMission() {
       algorithmPreparePromise = null
       addLog(`algorithm process unavailable, rebuilding runId=${state.runId}`)
       if (await prepareExternalAlgorithm()) {
+        const retryInitialFrameSynced = await synchronizeInitialAlgorithmFrame()
+        if (!retryInitialFrameSynced) {
+          addLog(`missionStart retry blocked: algorithm sequence=1 is not available`)
+          return
+        }
         try {
           await controlAlgorithmRun(state.runId, 'start')
           state.mission = 'RUNNING'
@@ -404,8 +414,11 @@ async function resetMission() {
   unityPanel.value?.reload()
 }
 
-async function applyAlgorithmFrame(frame: AlgorithmRuntimeFrame) {
-  if (frame.sequence <= state.sequence) return
+async function applyAlgorithmFrame(
+  frame: AlgorithmRuntimeFrame,
+  force = false,
+) {
+  if (!force && frame.sequence <= state.sequence) return
   const adapted = adaptVirtualAlgorithmFrame(
     frame,
     previousAlgorithmPoses,
@@ -414,15 +427,55 @@ async function applyAlgorithmFrame(frame: AlgorithmRuntimeFrame) {
   previousAlgorithmPoses = adapted.nextState
   state.sequence = frame.sequence
   const trackedPose = adapted.payload.vehicles.find((pose) => pose.deviceCode === 'UAV-001')
+  const targetPose = adapted.payload.targets.find((pose) => pose.deviceCode === 'TARGET-001')
   addLog(
     `algorithm frame: sequence=${frame.sequence}`
     + (trackedPose
       ? ` UAV-001 pos=(${trackedPose.eastM.toFixed(2)},`
         + `${trackedPose.northM.toFixed(2)},${trackedPose.upM.toFixed(2)})`
         + ` heading=${trackedPose.headingDeg.toFixed(1)}`
+      : '')
+    + (targetPose
+      ? ` TARGET-001 pos=(${targetPose.eastM.toFixed(2)},`
+        + `${targetPose.northM.toFixed(2)},${targetPose.upM.toFixed(2)})`
       : ''),
   )
   send('applyPoseBatch', { ...adapted.payload, runId: state.runId })
+}
+
+async function synchronizeInitialAlgorithmFrame(): Promise<boolean> {
+  try {
+    const frames = await fetchAlgorithmFrames(state.runId, 0)
+    const firstFrame = [...frames]
+      .filter(frame => frame.sequence > 0)
+      .sort((left, right) => left.sequence - right.sequence)[0]
+
+    if (!firstFrame) {
+      addLog(`algorithm initial frame unavailable: runId=${state.runId}`)
+      return false
+    }
+
+    await applyAlgorithmFrame(firstFrame, true)
+    const targetPose = adaptVirtualAlgorithmFrame(
+      firstFrame,
+      new Map(),
+      { fleetOrigin: fleetOriginEnu },
+    ).payload.targets.find(pose => pose.deviceCode === 'TARGET-001')
+    addLog(
+      `initial pose synchronized before missionStart`
+      + (targetPose
+        ? ` TARGET-001=(${targetPose.eastM.toFixed(2)},${targetPose.northM.toFixed(2)},${targetPose.upM.toFixed(2)})`
+        : ' TARGET-001=missing'),
+    )
+    return true
+  } catch (error) {
+    addLog(
+      `algorithm initial frame failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+    return false
+  }
 }
 
 async function pollAlgorithmFrame() {

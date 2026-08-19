@@ -1,0 +1,43 @@
+{
+  "runId": 1787105018274,
+  "algorithmCoordinateFrame": "FLEET_LOCAL_ENU",
+  "fleetOrigin": {
+    "eastM": -75.0,
+    "northM": -310.0,
+    "upM": 0.0
+  },
+  "beforeStart": {
+    "source": "Unity scenarioReady.initialPoses",
+    "eastM": -216.708251953125,
+    "northM": -414.6741027832031,
+    "upM": 0.1666666567325592,
+    "headingDeg": 329.515625
+  },
+  "expectedSequenceOneLocal": {
+    "x": -141.708251953125,
+    "y": -104.67410278320312,
+    "z": 0.1666666567325592,
+    "headingDeg": 329.515625
+  },
+  "sequenceOne": {
+    "source": "algorithm sequence=1",
+    "sequence": 1,
+    "eastM": -216.708251953125,
+    "northM": -414.6741027832031,
+    "upM": 0.1666666567325592,
+    "headingDeg": 329.515625
+  },
+  "afterStart": {
+    "source": "algorithm sequence=2",
+    "sequence": 2,
+    "eastM": -216.61131733172542,
+    "northM": -414.6091813669737,
+    "upM": 0.1666666567325592,
+    "headingDeg": 94.19443719212013
+  },
+  "scenarioToSequenceOneErrorM": 0.0,
+  "sequenceOneToTwoDistanceM": 0.11666666666668217,
+  "initialPoseMatched": true,
+  "startTransitionContinuous": true,
+  "success": true
+}

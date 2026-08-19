@@ -115,6 +115,10 @@ public class AlgorithmRuntimeManager {
                 stopExisting(runId);
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "算法运行器启动超时");
             }
+            if (!handle.initialFrameReady.await(60, TimeUnit.SECONDS)) {
+                stopExisting(runId);
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "Algorithm initial frame timeout");
+            }
             if (handle.error.get() != null) {
                 stopExisting(runId);
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "算法运行器启动失败：" + handle.error.get());
@@ -222,11 +226,13 @@ public class AlgorithmRuntimeManager {
                     } else if ("frame".equals(eventType)) {
                         JsonNode frame = event.path("payload");
                         handle.latestFrame.set(frame);
-                        handle.latestSequence.set(frame.path("sequence").asLong());
+                        long sequence = frame.path("sequence").asLong();
+                        handle.latestSequence.set(sequence);
                         synchronized (handle.frameBuffer) {
                             handle.frameBuffer.addLast(frame);
                             while (handle.frameBuffer.size() > 300) handle.frameBuffer.removeFirst();
                         }
+                        if (sequence >= 1) handle.initialFrameReady.countDown();
                     } else if ("stateChanged".equals(eventType) || "runtimeStopped".equals(eventType)) {
                         handle.state.set(event.path("state").asText(handle.state.get()));
                     }
@@ -320,6 +326,7 @@ public class AlgorithmRuntimeManager {
         final Process process;
         final BufferedWriter writer;
         final CountDownLatch ready = new CountDownLatch(1);
+        final CountDownLatch initialFrameReady = new CountDownLatch(1);
         final CountDownLatch stderrDone = new CountDownLatch(1);
         final AtomicReference<String> state = new AtomicReference<>("STARTING");
         final AtomicReference<String> error = new AtomicReference<>();
