@@ -494,7 +494,7 @@ onBeforeUnmount(() => {
       <div class="mission-health">
         <span><i :class="{ online: rosOnline }" />ROS {{ rosOnline ? '在线' : '离线' }}</span>
         <span><i :class="{ online: !!displayAlgorithmFrame }" />轨迹数据 {{ displayAlgorithmFrame ? '实时' : '等待中' }}</span>
-        <span><i :class="{ online: onlineVehicleCount >= 6 }" />设备 {{ onlineVehicleCount }}/6</span>
+        <span><i :class="{ online: onlineVehicleCount >= 6 }" />真实设备 {{ onlineVehicleCount }}/6</span>
       </div>
     </template>
 
@@ -505,7 +505,7 @@ onBeforeUnmount(() => {
             <small>{{ activeMission?.code ?? 'MISSION' }} · RUN {{ detail?.currentRun?.runNo ?? '--' }}</small>
             <strong>{{ activeMission?.name ?? '任务中心运行工作台' }}</strong>
           </div>
-          <div class="situation-view-label"><Layers3 :size="16" />二维轨迹 · 同一RUN实时数据</div>
+          <div class="situation-view-label"><Layers3 :size="16" />二维轨迹 · 真实任务RUN实时数据</div>
           <span class="run-sync"><i />{{ runSyncText }}</span>
           <em class="read-only-badge" :class="activeMission?.status.toLowerCase()">{{ statusLabel }}</em>
         </header>

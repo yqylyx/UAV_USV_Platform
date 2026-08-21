@@ -251,7 +251,7 @@ onMounted(() => load(0))
       <article class="console-stat-card">
         <span>在线设备</span>
         <strong>{{ onlineCount }}</strong>
-        <small>当前页在线</small>
+        <small>登记状态在线</small>
       </article>
       <article class="console-stat-card warning">
         <span>待检查</span>
@@ -269,7 +269,7 @@ onMounted(() => load(0))
       <div class="panel-heading">
         <div>
           <h2>设备列表</h2>
-          <p>统一维护无人机、无人艇、灯塔、ROS 和 Unity 节点。</p>
+          <p>统一维护真实/登记设备状态；Unity 虚拟场景设备不计入在线数量。</p>
         </div>
         <el-tag effect="plain">共 {{ deviceStore.total }} 个</el-tag>
       </div>
