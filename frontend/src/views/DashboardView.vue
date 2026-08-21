@@ -71,7 +71,7 @@ const overviewAlgorithmFallbacks: AlgorithmDefinition[] = [
 ]
 const overviewAlgorithms = ref<AlgorithmDefinition[]>([...overviewAlgorithmFallbacks])
 const selectedOverviewAlgorithm = ref('GB_SFLA_CS')
-const overviewRuntimeMode = ref<OverviewRuntimeMode>('VIRTUAL_SIMULATION')
+const overviewRuntimeMode = ref<OverviewRuntimeMode>('REAL')
 const virtualUavCount = ref(3)
 const virtualUsvCount = ref(3)
 const virtualScenarioRunId = ref(Date.now())
@@ -344,6 +344,11 @@ const overviewMissionButtonLabel = computed(() =>
 const overviewRuntimeModeLabel = computed(() =>
   overviewRuntimeMode.value === 'VIRTUAL_SIMULATION' ? '虚拟仿真' : '真实任务',
 )
+const realValidationReady = computed(() =>
+  rosBridgeOnline.value
+  && unityControlReady.value
+  && realtimePoseCount.value >= 6,
+)
 
 function sendVirtualScenario(algorithmCode = selectedOverviewAlgorithm.value) {
   virtualScenarioRunId.value = Date.now()
@@ -593,14 +598,21 @@ async function runOverviewMissionAction(action: MissionAction) {
     if (result.command.status === 'FAILED' || result.command.status === 'TIMEOUT') {
       throw new Error(result.command.detail || '任务指令未能下发')
     }
-    if (!unityBridgeStore.connected) throw new Error('Unity WebGL 尚未连接，无法确认任务指令')
-    const acknowledgement = await unityBridgeStore.sendControlCommandAndWait(
-      missionUnityCommand(action),
-      '',
-      result.command.commandKey,
-    )
-    if (!acknowledgement.success) {
-      throw new Error(acknowledgement.status || 'Unity 未确认任务指令')
+    if (overviewRuntimeMode.value === 'REAL') {
+      const rosStatus = await realtimeStore.waitForCommandResult(result.command.commandKey, 90000)
+      if (rosStatus !== 'SUCCEEDED') {
+        throw new Error(`真实任务指令未收到成功结果：${rosStatus}`)
+      }
+    } else {
+      if (!unityBridgeStore.connected) throw new Error('Unity WebGL 尚未连接，无法确认任务指令')
+      const acknowledgement = await unityBridgeStore.sendControlCommandAndWait(
+        missionUnityCommand(action),
+        '',
+        result.command.commandKey,
+      )
+      if (!acknowledgement.success) {
+        throw new Error(acknowledgement.status || 'Unity 未确认任务指令')
+      }
     }
   }
 
@@ -890,6 +902,9 @@ async function runOverviewDemoCommand(action: 'start' | 'pause' | 'resume' | 'ca
 
 async function startOverviewMission() {
   if (overviewRuntimeMode.value === 'REAL') {
+    if (!realValidationReady.value) {
+      throw new Error('真实验证链路未就绪：等待 ROS Gateway、Unity 控制桥和 6 路真实位姿数据')
+    }
     if (!overviewMissionId.value) await loadOverviewMission()
     if (!overviewMissionId.value) throw new Error('未找到真实任务')
     unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', {
@@ -1228,7 +1243,7 @@ watch(
         <div class="overview-link-status">
           <b :class="{ online: rosBridgeOnline }"><i></i>ROS {{ rosBridgeOnline ? '在线' : '离线' }}</b>
           <b :class="{ online: unityReady }"><i></i>Unity {{ unityReady ? '在线' : '等待' }}</b>
-          <b class="pose"><i></i>{{ onlineVehicleCount }}/6 设备在线</b>
+          <b class="pose"><i></i>{{ onlineVehicleCount }}/6 实时位姿</b>
           <b><i></i>{{ onlineNodeCount }}/{{ displayedNodes.length }} 节点正常</b>
         </div>
       </header>
@@ -1246,14 +1261,13 @@ watch(
             </select>
           </label>
           <label class="overview-algorithm-select">
-            <span>运行模式</span>
+            <span>验证层面</span>
             <select
               :value="overviewRuntimeMode"
               :disabled="overviewMissionRunning || commandBusy"
               @change="selectOverviewRuntimeMode(($event.target as HTMLSelectElement).value as OverviewRuntimeMode)"
             >
-              <option value="VIRTUAL_SIMULATION">虚拟仿真</option>
-              <option value="REAL">真实任务</option>
+              <option value="REAL">真实设备验证</option>
             </select>
           </label>
           <div class="overview-camera-tabs" aria-label="Unity 视角切换">
