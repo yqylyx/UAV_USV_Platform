@@ -15,7 +15,16 @@ class AlgorithmAdapter(ABC):
         self.run_id = int(run_id)
         self.config = config or {}
         self.sequence = 0
+        self.mission_active = True
         self._stable_headings: Dict[str, float] = {}
+
+    def set_mission_active(self, active: bool) -> None:
+        """Switch between ambient preview and the scored mission.
+
+        Adapters that support preview can override this hook to preserve the
+        current poses while resetting only mission counters at START.
+        """
+        self.mission_active = bool(active)
 
     def stabilize_heading(
         self,
@@ -84,3 +93,6 @@ class AlgorithmAdapter(ABC):
 
     def place_threat(self, x: float, y: float) -> None:
         raise ValueError(f"{self.code} does not support interactive threat placement")
+
+    def activate_capture(self, threat_code: str | None = None) -> str:
+        raise ValueError(f"{self.code} does not support active capture")

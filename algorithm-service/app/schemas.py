@@ -14,6 +14,8 @@ class AgentFrame:
     heading: float
     role: str
     status: str = "ACTIVE"
+    groupId: str = ""
+    assignedTargetCode: str = ""
 
 
 @dataclass
@@ -25,6 +27,9 @@ class TargetFrame:
     z: float
     heading: float = 0.0
     visible: bool = True
+    groupId: str = ""
+    state: str = ""
+    threatLevel: int = 0
 
 
 @dataclass

@@ -13,6 +13,8 @@ import com.uavusv.platform.module.mission.service.AlgorithmCatalogService;
 import com.uavusv.platform.module.mission.service.AlgorithmRuntimeManager;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
@@ -53,7 +55,9 @@ class AlgorithmRuntimeManagerTests {
             assertNotNull(frame);
             assertEquals("GB_SFLA_CS", frame.path("algorithmCode").asText());
             assertEquals(6, frame.path("agents").size());
-            assertEquals(2, frame.path("targets").size());
+            // A 3+3 active-capture run intentionally owns one moving enemy.
+            // Additional enemies are introduced only by the adaptive scale thresholds.
+            assertEquals(1, frame.path("targets").size());
             assertFalse(manager.framesAfter(runId, 0).isEmpty());
             long observedSequence = frame.path("sequence").asLong();
             assertTrue(manager.framesAfter(runId, observedSequence).stream()
@@ -138,9 +142,35 @@ class AlgorithmRuntimeManagerTests {
                 new ObjectMapper(),
                 runRepository,
                 catalogService,
-                "python",
+                resolvePythonExecutable(),
                 runner.toString()
         );
+    }
+
+    private String resolvePythonExecutable() {
+        String configured = System.getenv("ALGORITHM_PYTHON");
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        String locator = System.getProperty("os.name", "").toLowerCase().contains("win")
+                ? "where.exe"
+                : "which";
+        try {
+            Process process = new ProcessBuilder(locator, "python").redirectErrorStream(true).start();
+            try (var reader = process.inputReader()) {
+                String candidate;
+                while ((candidate = reader.readLine()) != null) {
+                    Path path = Path.of(candidate.trim());
+                    if (Files.isRegularFile(path) && !path.toString().contains("WindowsApps")) {
+                        return path.toString();
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+            // Portable fallback for environments where the locator command is
+            // unavailable but python itself is executable from PATH.
+        }
+        return "python";
     }
 
     private MissionRun run(String algorithmCode) {

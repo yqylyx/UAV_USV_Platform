@@ -1,23 +1,135 @@
 import os
 
 os.environ['OMP_NUM_THREADS'] = '1'
-import matplotlib
-
-matplotlib.use('TkAgg')
-# import skfuzzy as fuzz
-from sklearn.cluster import KMeans
-from scipy.spatial.distance import cdist
-from scipy.optimize import linear_sum_assignment
 import numpy as np
-from mpl_toolkits.mplot3d import proj3d
-import matplotlib.pyplot as plt
+
+# The web runtime is headless.  SciPy/sklearn/matplotlib remain optional for
+# the original desktop visualizer, while the adapter can run with NumPy only.
+try:
+    from sklearn.cluster import KMeans
+except ImportError:
+    class KMeans:
+        def __init__(self, n_clusters=2, random_state=42, n_init=10):
+            self.n_clusters = int(n_clusters)
+            self.random_state = int(random_state or 0)
+
+        def fit_predict(self, values):
+            points = np.asarray(values, dtype=float)
+            if len(points) <= self.n_clusters:
+                return np.arange(len(points), dtype=int) % self.n_clusters
+            # Deterministic farthest-point initialization plus Lloyd updates.
+            centres = [points[0]]
+            while len(centres) < self.n_clusters:
+                distance = np.min(cdist(points, np.asarray(centres)), axis=1)
+                centres.append(points[int(np.argmax(distance))])
+            centres = np.asarray(centres, dtype=float)
+            labels = np.zeros(len(points), dtype=int)
+            for _ in range(40):
+                updated = np.argmin(cdist(points, centres), axis=1)
+                if np.array_equal(labels, updated):
+                    break
+                labels = updated
+                for index in range(self.n_clusters):
+                    members = points[labels == index]
+                    if len(members):
+                        centres[index] = np.mean(members, axis=0)
+            return labels
+
+try:
+    from scipy.spatial.distance import cdist
+except ImportError:
+    def cdist(left, right):
+        a = np.asarray(left, dtype=float)
+        b = np.asarray(right, dtype=float)
+        return np.linalg.norm(a[:, None, :] - b[None, :, :], axis=2)
+
+try:
+    from scipy.optimize import linear_sum_assignment
+except ImportError:
+    def linear_sum_assignment(cost_matrix):
+        """Rectangular Hungarian assignment used by the headless adapter."""
+        cost = np.asarray(cost_matrix, dtype=float)
+        transposed = cost.shape[0] > cost.shape[1]
+        if transposed:
+            cost = cost.T
+        rows, columns = cost.shape
+        u = np.zeros(rows + 1)
+        v = np.zeros(columns + 1)
+        matched = np.zeros(columns + 1, dtype=int)
+        previous = np.zeros(columns + 1, dtype=int)
+        for row in range(1, rows + 1):
+            matched[0] = row
+            column0 = 0
+            minimum = np.full(columns + 1, np.inf)
+            used = np.zeros(columns + 1, dtype=bool)
+            while True:
+                used[column0] = True
+                active_row = matched[column0]
+                delta = np.inf
+                column1 = 0
+                for column in range(1, columns + 1):
+                    if used[column]:
+                        continue
+                    current = cost[active_row - 1, column - 1] - u[active_row] - v[column]
+                    if current < minimum[column]:
+                        minimum[column] = current
+                        previous[column] = column0
+                    if minimum[column] < delta:
+                        delta, column1 = minimum[column], column
+                for column in range(columns + 1):
+                    if used[column]:
+                        u[matched[column]] += delta
+                        v[column] -= delta
+                    else:
+                        minimum[column] -= delta
+                column0 = column1
+                if matched[column0] == 0:
+                    break
+            while True:
+                column1 = previous[column0]
+                matched[column0] = matched[column1]
+                column0 = column1
+                if column0 == 0:
+                    break
+        row_indices = []
+        column_indices = []
+        for column in range(1, columns + 1):
+            if matched[column]:
+                row_indices.append(matched[column] - 1)
+                column_indices.append(column - 1)
+        row_indices = np.asarray(row_indices, dtype=int)
+        column_indices = np.asarray(column_indices, dtype=int)
+        return (column_indices, row_indices) if transposed else (row_indices, column_indices)
+
+try:
+    import matplotlib
+    if os.environ.get('DISPLAY') or os.name == 'nt':
+        matplotlib.use('Agg')
+    from mpl_toolkits.mplot3d import proj3d
+    import matplotlib.pyplot as plt
+    from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+except ImportError:
+    class _HeadlessPlot:
+        rcParams = {}
+
+        def __getattr__(self, name):
+            raise RuntimeError('matplotlib is required only for the desktop visualizer')
+
+    plt = _HeadlessPlot()
+    proj3d = _HeadlessPlot()
+
+    class OffsetImage:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError('matplotlib is required only for the desktop visualizer')
+
+    class AnnotationBbox(OffsetImage):
+        pass
 
 # from matplotlib.patches import FancyArrowPatch
 # from matplotlib.widgets import AxesWidget
 # from matplotlib.transforms import Affine2D
 # from matplotlib import transforms
 # from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 import random
 # import math
 # from sklearn.neighbors import NearestNeighbors
@@ -49,6 +161,8 @@ CAPTURE_RADIUS = 100
 CAPTURE_FORMATION_USV_RADIUS = 80
 CAPTURE_FORMATION_UAV_RADIUS = 105
 CAPTURE_FORMATION_UAV_ALTITUDE = 75
+CAPTURE_FORMATION_USV_SLOT_SPECS = []
+CAPTURE_FORMATION_UAV_SLOT_SPECS = []
 CAPTURE_FORMATION_USV_TOLERANCE = 7
 CAPTURE_FORMATION_UAV_TOLERANCE = 8
 CAPTURE_FORMATION_ALTITUDE_TOLERANCE = 8
@@ -969,12 +1083,9 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
             if not typed_ids:
                 continue
             radius = float(
-                params[1]
-                * (
-                    CAPTURE_FORMATION_USV_RADIUS
-                    if agent_type == 1
-                    else CAPTURE_FORMATION_UAV_RADIUS
-                )
+                CAPTURE_FORMATION_USV_RADIUS
+                if agent_type == 1
+                else CAPTURE_FORMATION_UAV_RADIUS
             )
             # The formation orientation must remain stable between frames.
             # Optimising a fresh phase on every step made all desired slots
@@ -985,20 +1096,34 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
                 if agent_type == 1
                 else CAPTURE_FORMATION_PHASE + np.pi / 3.0
             )
-            angles = (
-                phase_offset
-                + 2 * np.pi * np.arange(len(typed_ids)) / len(typed_ids)
-            )
-            altitude = (
-                USV_Z
+            configured_specs = (
+                CAPTURE_FORMATION_USV_SLOT_SPECS
                 if agent_type == 1
-                else target_pos[2] + params[2] * CAPTURE_FORMATION_UAV_ALTITUDE
+                else CAPTURE_FORMATION_UAV_SLOT_SPECS
             )
+            if len(configured_specs) == len(typed_ids):
+                radii = np.asarray([float(item[0]) for item in configured_specs])
+                angles = np.asarray([float(item[1]) for item in configured_specs])
+                altitudes = np.asarray([
+                    USV_Z if agent_type == 1 else target_pos[2] + float(item[2])
+                    for item in configured_specs
+                ])
+            else:
+                radii = np.full(len(typed_ids), radius)
+                angles = (
+                    phase_offset
+                    + 2 * np.pi * np.arange(len(typed_ids)) / len(typed_ids)
+                )
+                altitudes = np.full(
+                    len(typed_ids),
+                    USV_Z if agent_type == 1 else target_pos[2] + CAPTURE_FORMATION_UAV_ALTITUDE,
+                )
             slots = np.column_stack([
-                target_pos[0] + radius * np.cos(angles),
-                target_pos[1] + radius * np.sin(angles),
-                np.full(len(angles), altitude),
+                target_pos[0] + radii * np.cos(angles),
+                target_pos[1] + radii * np.sin(angles),
+                altitudes,
             ])
+            formation_outer_radius = float(np.max(radii))
             cost_matrix = np.zeros((len(typed_ids), len(typed_ids)), dtype=float)
             for row, agent_id in enumerate(typed_ids):
                 cost_matrix[row] = (
@@ -1009,18 +1134,128 @@ class GBSFLACSAlgorithm(BaseAlgorithm):
             signature = tuple(sorted(typed_ids))
             cached_slots = self.formation_slot_assignment.get(slot_key)
             if cached_slots is None or cached_slots["signature"] != signature:
-                row_ind, col_ind = linear_sum_assignment(cost_matrix)
-                cached_slots = {
-                    "signature": signature,
-                    "slots": {
+                # Preserve surface craft's cyclic order around the target. A
+                # free Hungarian assignment minimises total straight-line
+                # distance but can send one craft through the middle of the
+                # already closing ring. The reactive safety filter then keeps
+                # it blocked behind another hull indefinitely. Evaluate all
+                # rotations of the order-preserving assignment instead: this
+                # remains distance-optimal within non-crossing ring plans.
+                agent_order = sorted(
+                    range(len(typed_ids)),
+                    key=lambda row: float(np.mod(np.arctan2(
+                        agent_map[typed_ids[row]][1] - target_pos[1],
+                        agent_map[typed_ids[row]][0] - target_pos[0],
+                    ), 2 * np.pi)),
+                )
+                slot_order = sorted(
+                    range(len(typed_ids)),
+                    key=lambda col: float(np.mod(angles[col], 2 * np.pi)),
+                )
+                best_columns = None
+                best_cost = float("inf")
+                for offset in range(len(typed_ids)):
+                    columns = [
+                        slot_order[(rank + offset) % len(typed_ids)]
+                        for rank in range(len(typed_ids))
+                    ]
+                    cost = sum(
+                        cost_matrix[row, columns[rank]]
+                        for rank, row in enumerate(agent_order)
+                    )
+                    if cost < best_cost:
+                        best_cost = float(cost)
+                        best_columns = columns
+                if agent_type == 1 or len(typed_ids) <= 6:
+                    slot_assignment = {
+                        typed_ids[row]: int(best_columns[rank])
+                        for rank, row in enumerate(agent_order)
+                    }
+                else:
+                    # A dense UAV grid may cross horizontally at different
+                    # approach altitudes, so retain the shortest assignment
+                    # and avoid rotating the whole aerial grid. Small UAV
+                    # groups still use cyclic order so one craft cannot queue
+                    # behind an already occupied neighbouring slot.
+                    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+                    slot_assignment = {
                         typed_ids[int(row)]: int(col)
                         for row, col in zip(row_ind, col_ind)
-                    },
+                    }
+                cached_slots = {
+                    "signature": signature,
+                    "slots": slot_assignment,
+                    "points": slots.copy(),
                 }
                 self.formation_slot_assignment[slot_key] = cached_slots
+            else:
+                # The target may move; keep slot ownership stable while the
+                # corresponding world-space slot centres follow it.
+                cached_slots["points"] = slots.copy()
             for agent_id in typed_ids:
                 col = int(cached_slots["slots"][agent_id])
                 waypoint = np.asarray(slots[col], dtype=float)
+                if agent_type == 1:
+                    # A surface craft must never reach a slot on the far side
+                    # by cutting through the capture target. First rotate on
+                    # a wider staging circle, then tighten radially after its
+                    # assigned bearing is reached. This makes every USV take
+                    # part in a visibly closed ring and keeps the target/hull
+                    # safety solver from pinning one boat on the wrong side.
+                    current = np.asarray(agent_map[agent_id][:3], dtype=float)
+                    current_delta = current[:2] - target_pos[:2]
+                    current_radius = float(np.linalg.norm(current_delta))
+                    if current_radius <= 1e-9:
+                        current_angle = float(angles[col] + np.pi)
+                    else:
+                        current_angle = float(np.arctan2(
+                            current_delta[1], current_delta[0]
+                        ))
+                    desired_angle = float(angles[col])
+                    desired_radius = float(radii[col])
+                    slot_ring = (
+                        int(configured_specs[col][3])
+                        if len(configured_specs) == len(typed_ids) and len(configured_specs[col]) > 3
+                        else 0
+                    )
+                    # Each ring has sufficient radial clearance, so it can
+                    # close in parallel.  Waiting for every inner-ring craft
+                    # to be exact left outer USVs parked on a distant hold
+                    # circle whenever collision avoidance made a small offset.
+                    lower_rings_ready = True
+                    angle_error = float(
+                        (desired_angle - current_angle + np.pi)
+                        % (2 * np.pi) - np.pi
+                    )
+                    if lower_rings_ready and abs(angle_error) > np.deg2rad(15.0):
+                        turn = float(np.clip(
+                            angle_error,
+                            -np.deg2rad(18.0),
+                            np.deg2rad(18.0),
+                        ))
+                        # Clockwise and counter-clockwise traffic use
+                        # separate radial lanes. A small parity offset also
+                        # prevents same-direction hulls from stacking while
+                        # they spread from one random staging sector.
+                        lane_offset = (
+                            18.0
+                            + (8.0 if angle_error < 0.0 else 0.0)
+                            + (4.0 if agent_id % 2 else 0.0)
+                        )
+                        staging_base = desired_radius + lane_offset
+                        staging_radius = max(
+                            staging_base,
+                            min(
+                                max(current_radius, staging_base),
+                                staging_base + 18.0,
+                            ),
+                        )
+                        staging_angle = current_angle + turn
+                        waypoint = np.asarray([
+                            target_pos[0] + staging_radius * np.cos(staging_angle),
+                            target_pos[1] + staging_radius * np.sin(staging_angle),
+                            USV_Z,
+                        ])
                 delta = waypoint - target_pos
                 distance = float(np.linalg.norm(delta))
                 if distance > CAPTURE_RADIUS:
@@ -1892,6 +2127,13 @@ class SwarmEnv3D:
         else:
             index = typed_guard_ids.index(agent_id)
         count = len(typed_guard_ids)
+        if slot_record is not None and "points" in slot_record:
+            points = slot_record["points"]
+            if 0 <= index < len(points):
+                point = np.asarray(points[index], dtype=float).copy()
+                if agent_type == 1:
+                    point[2] = USV_Z
+                return point
         radius = (
             CAPTURE_FORMATION_UAV_RADIUS
             if agent_type == 0
@@ -1925,22 +2167,32 @@ class SwarmEnv3D:
             target_pos = self.targets[target_id, :3]
             deltas = self.agents[:, :3] - target_pos
             dists = np.linalg.norm(deltas, axis=1)
-            horizontal_dists = np.linalg.norm(deltas[:, :2], axis=1)
             formation_ready = []
             for index, agent in enumerate(self.agents):
                 agent_type = int(agent[6])
-                if agent_type == 1:
-                    ready = (
-                        abs(horizontal_dists[index] - CAPTURE_FORMATION_USV_RADIUS)
-                        <= CAPTURE_FORMATION_USV_TOLERANCE
+                agent_id = int(agent[7])
+                slot_record = getattr(self.algorithm, "formation_slot_assignment", {}).get(
+                    (target_id, agent_type)
+                )
+                expected = None
+                if slot_record is not None and "points" in slot_record:
+                    slot_index = slot_record.get("slots", {}).get(agent_id)
+                    if slot_index is not None and 0 <= int(slot_index) < len(slot_record["points"]):
+                        expected = np.asarray(slot_record["points"][int(slot_index)], dtype=float)
+                if expected is None:
+                    expected_radius = (
+                        CAPTURE_FORMATION_USV_RADIUS if agent_type == 1 else CAPTURE_FORMATION_UAV_RADIUS
+                    )
+                    ready = abs(np.linalg.norm(deltas[index, :2]) - expected_radius) <= (
+                        CAPTURE_FORMATION_USV_TOLERANCE if agent_type == 1 else CAPTURE_FORMATION_UAV_TOLERANCE
                     )
                 else:
-                    ready = (
-                        abs(horizontal_dists[index] - CAPTURE_FORMATION_UAV_RADIUS)
-                        <= CAPTURE_FORMATION_UAV_TOLERANCE
-                        and abs(deltas[index, 2] - CAPTURE_FORMATION_UAV_ALTITUDE)
-                        <= CAPTURE_FORMATION_ALTITUDE_TOLERANCE
+                    horizontal_error = np.linalg.norm(agent[:2] - expected[:2])
+                    ready = horizontal_error <= (
+                        CAPTURE_FORMATION_USV_TOLERANCE if agent_type == 1 else CAPTURE_FORMATION_UAV_TOLERANCE
                     )
+                    if agent_type == 0:
+                        ready = ready and abs(agent[2] - expected[2]) <= CAPTURE_FORMATION_ALTITUDE_TOLERANCE
                 if ready:
                     formation_ready.append(index)
             in_range_indices = np.asarray(formation_ready, dtype=int)
@@ -1953,17 +2205,25 @@ class SwarmEnv3D:
             if len(captor_ids) >= MIN_CAPTURE_AGENTS:
                 current_locked.add(target_id)
                 if target_id not in self.guarding_agents:
-                    # 选择距离目标最近的 MIN_CAPTURE_AGENTS 个智能体作为守卫，结果稳定且可复现。
-                    sorted_indices = in_range_indices[np.argsort(dists[in_range_indices])]
-                    guard_ids = {
-                        int(self.agents[index, 7])
-                        for index in sorted_indices[:MIN_CAPTURE_AGENTS]
+                    # MIN_CAPTURE_AGENTS is only the success threshold. Every
+                    # agent assigned to the captured target must remain in the
+                    # containment formation; otherwise a 4+4 fleet captures
+                    # with six agents and the remaining craft lose their task
+                    # on the next frame and appear permanently stopped.
+                    assigned_ids = {
+                        int(agent_id)
+                        for agent_id, assigned_target in getattr(
+                            self.algorithm,
+                            "last_assignments",
+                            {},
+                        ).items()
+                        if int(assigned_target) == int(target_id)
                     }
+                    guard_ids = captor_ids | assigned_ids
                     self.guarding_agents[target_id] = guard_ids
                     print(f"\n🎯 目标 {target_id} 已被围捕成功！")
                     print(f"   参与围捕的智能体ID: {sorted(captor_ids)}")
-                    print(f"   保留守卫智能体ID: {sorted(guard_ids)}")
-                    print(f"   释放智能体ID: {sorted(captor_ids - guard_ids)}")
+                    print(f"   全体编队守卫智能体ID: {sorted(guard_ids)}")
 
         self.permanently_captured.update(current_locked)
 

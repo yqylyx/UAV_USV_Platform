@@ -161,6 +161,20 @@ public class AlgorithmRuntimeManager {
         return status(runId);
     }
 
+    public AlgorithmRuntimeStatusResponse activateCapture(Long runId, String threatCode) {
+        RuntimeHandle handle = requireHandle(runId);
+        if (!"ESCORT_GUARD".equals(handle.algorithmCode)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "只有护航守卫算法支持主动围捕");
+        }
+        Map<String, Object> command = new java.util.HashMap<>();
+        command.put("action", "ACTIVE_CAPTURE");
+        if (threatCode != null && !threatCode.isBlank()) {
+            command.put("threatCode", threatCode.trim().toUpperCase());
+        }
+        send(handle, command);
+        return status(runId);
+    }
+
     public AlgorithmRuntimeStatusResponse status(Long runId) {
         RuntimeHandle handle = requireHandle(runId);
         return new AlgorithmRuntimeStatusResponse(runId, handle.algorithmCode, handle.state.get(),

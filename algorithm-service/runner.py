@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from app.adapters import CaptureAdapter, EscortAdapter
+from app.adapters import AdaptiveCaptureAdapter, AdaptiveEscortAdapter, CaptureAdapter, EscortAdapter
 
 
 def command_reader(commands: queue.Queue) -> None:
@@ -47,10 +47,21 @@ def main() -> int:
     else:
         config_text = base64.b64decode(args.config_base64).decode("utf-8") if args.config_base64 else args.config
     config = json.loads(config_text)
-    adapter = CaptureAdapter(args.run_id, config) if args.algorithm == "GB_SFLA_CS" else EscortAdapter(args.run_id, config)
+    if args.algorithm == "GB_SFLA_CS":
+        adapter = (
+            AdaptiveCaptureAdapter(args.run_id, config)
+            if int(config.get("targetCount", 1)) > 1
+            else CaptureAdapter(args.run_id, config)
+        )
+    elif bool(config.get("adaptiveMultiTarget", False)):
+        adapter = AdaptiveEscortAdapter(args.run_id, config)
+    else:
+        adapter = EscortAdapter(args.run_id, config)
     commands: queue.Queue = queue.Queue()
     threading.Thread(target=command_reader, args=(commands,), daemon=True).start()
-    state = "RUNNING" if args.autostart else "PREPARED"
+    preview_enabled = bool(config.get("previewEnabled", False)) and not args.autostart
+    state = "RUNNING" if args.autostart else "PREVIEW" if preview_enabled else "PREPARED"
+    adapter.set_mission_active(state != "PREVIEW")
     emit({"event": "runtimeReady", "runId": args.run_id, "algorithmCode": args.algorithm, "state": state})
     # Publish the authoritative initial pose while the run is still prepared.
     # The UI uses this frame to align Unity's generated scene before START;
@@ -69,6 +80,7 @@ def main() -> int:
                 break
             action = str(command.get("action", "")).upper()
             if action in {"START", "RESUME"}:
+                adapter.set_mission_active(True)
                 state = "RUNNING"
             elif action == "PAUSE":
                 state = "PAUSED"
@@ -78,11 +90,20 @@ def main() -> int:
                 state = "STOPPED"
             elif action == "PLACE_THREAT":
                 adapter.place_threat(float(command["x"]), float(command["y"]))
+            elif action == "ACTIVE_CAPTURE":
+                selected = adapter.activate_capture(command.get("threatCode"))
+                emit({
+                    "event": "commandResult",
+                    "runId": args.run_id,
+                    "action": action,
+                    "success": True,
+                    "selectedThreatCode": selected,
+                })
             emit({"event": "stateChanged", "runId": args.run_id, "state": state})
-        if state == "RUNNING":
+        if state in {"RUNNING", "PREVIEW"}:
             frame = adapter.step().to_dict()
             emit({"event": "frame", "payload": frame})
-            if frame.get("terminalStatus"):
+            if state == "RUNNING" and frame.get("terminalStatus"):
                 state = str(frame["terminalStatus"])
                 emit({"event": "stateChanged", "runId": args.run_id, "state": state})
         elapsed = time.perf_counter() - started

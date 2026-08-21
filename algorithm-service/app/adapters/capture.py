@@ -13,6 +13,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 from app.adapters.base import AlgorithmAdapter
+from app.capture import FormationSlot, assess_capture, build_formation_slots
 from app.navigation import TASK_CENTER_SCENE_MAP, SafePoint, SceneSafetyFilter
 from app.schemas import AgentFrame, RuntimeFrame, TargetFrame
 
@@ -22,53 +23,708 @@ class CaptureAdapter(AlgorithmAdapter):
 
     def __init__(self, run_id: int, config: Dict[str, object] | None = None) -> None:
         super().__init__(run_id, config)
+        fleet_size = max(1, int(self.config.get("uavCount", 3))) + max(1, int(self.config.get("usvCount", 3)))
+        self.required_pursuit_distance = 80.0 if fleet_size < 20 else 100.0 if fleet_size < 40 else 120.0
         matplotlib_cache = Path(tempfile.gettempdir()) / "uav-usv-matplotlib"
         matplotlib_cache.mkdir(parents=True, exist_ok=True)
         os.environ.setdefault("MPLCONFIGDIR", str(matplotlib_cache))
         with contextlib.redirect_stdout(sys.stderr):
             source = importlib.import_module("app.vendor.gb_sfla_cs_source")
             source.SEED = int(self.config.get("seed", 42))
-            source.ARENA_SIZE_XY = 300
-            source.ARENA_SIZE_Z = 120
-            source.UAV_COUNT = max(1, min(100, int(self.config.get("uavCount", 3))))
-            source.USV_COUNT = max(1, min(100, int(self.config.get("usvCount", 3))))
+            # The vendor module seeds only at import time. Re-seed for every
+            # standalone run so the same UI seed is reproducible regardless
+            # of which fleet sizes were simulated earlier in the process.
+            np.random.seed(source.SEED)
+            if hasattr(source, "random"):
+                source.random.seed(source.SEED)
+            # Counts are driven by the scenario device list.  The algorithm
+            # core deliberately has no 16/100 cut-off; UI/protocol limits are
+            # a separate compatibility concern and must not silently discard
+            # agents that the mission already contains.
+            source.UAV_COUNT = max(1, int(self.config.get("uavCount", 3)))
+            source.USV_COUNT = max(1, int(self.config.get("usvCount", 3)))
             source.TARGET_COUNT = max(1, min(1, int(self.config.get("targetCount", 1))))
-            source.MIN_CAPTURE_AGENTS = min(6, source.UAV_COUNT + source.USV_COUNT)
+            # A configured fleet is one containment team. Do not declare the
+            # target captured after only the first six arrive and strand the
+            # remaining devices outside the ring.
+            fleet_size = source.UAV_COUNT + source.USV_COUNT
+            # Fewer than three points cannot geometrically surround a target.
+            # Such fleets remain valid intercept/tracking runs but can never
+            # report a false encirclement success.
+            self.required_capture_agents = fleet_size if fleet_size >= 3 else fleet_size + 1
+            # The adapter validates against the target's post-motion position.
+            # Disable the vendor core's pre-motion irreversible latch; when it
+            # fires during pursuit it repeatedly prints success and rebuilds
+            # stale guard state, which both obscures logs and hurts WebGL
+            # smoothness.
+            source.MIN_CAPTURE_AGENTS = fleet_size + 1
             # The Task Center maps three native units to one scene metre.
             # Surface craft finish on a 22 m ring; UAVs finish on a 30 m
             # triangle at 26 m altitude.  The two layers remain readable in
             # both the fixed 2-D frame and Unity's fixed experiment camera.
-            source.CAPTURE_RADIUS = 135
-            source.CAPTURE_FORMATION_USV_RADIUS = 66
+            # Include the outer staging corridor and the UAV altitude in the
+            # planner's 3-D capture sphere. The old 135-unit sphere clipped a
+            # 120-unit aerial staging circle to 112 units horizontally, so an
+            # aircraft could never reach the very corridor it was told to use.
+            self.usv_slot_specs = build_formation_slots(
+                source.USV_COUNT,
+                kind="USV",
+                phase=-math.pi / 2.0,
+                minimum_radius=22.0,
+                minimum_spacing=13.8,
+            )
+            # Keep the two rendered fleets in separate radial bands.  The
+            # former fixed 30 m UAV ring sat only 8 m outside the 22 m USV
+            # ring; from 6+6 upward several air/surface slots shared the same
+            # bearing and the presentation safety layer correctly pushed one
+            # of them out of its assigned slot. Keep four additional scene
+            # metres beyond rendered hull clearance so interpolation, heading
+            # changes and high-count traffic do not consume the guard band.
+            usv_outer_radius = max(slot.radius for slot in self.usv_slot_specs)
+            uav_minimum_radius = max(34.0, usv_outer_radius + 14.0)
+            # Keep 30+ aircraft on multiple readable rings instead of letting
+            # a large starting radius make one extremely dense circle.
+            uav_minimum_spacing = max(
+                8.4,
+                2.0 * uav_minimum_radius * math.sin(math.pi / 24.0)
+                if source.UAV_COUNT > 24
+                else 8.4,
+            )
+            self.uav_slot_specs = build_formation_slots(
+                source.UAV_COUNT,
+                kind="UAV",
+                phase=-math.pi / 2.0 + math.pi / max(3, source.UAV_COUNT),
+                minimum_radius=uav_minimum_radius,
+                minimum_spacing=uav_minimum_spacing,
+                altitude=26.0,
+            )
+            self.usv_formation_radius_scene = self.usv_slot_specs[0].radius
+            outer_radius = max(
+                [slot.radius for slot in self.usv_slot_specs + self.uav_slot_specs],
+                default=30.0,
+            )
+            self.outer_formation_radius = outer_radius
+            # Keep the algorithm origin centred for large concentric fleets.
+            # Staging traffic receives an additional 35 scene metres outside
+            # the outer formation ring.
+            # The old 150-unit half arena left only 50 scene metres per side,
+            # so a target starting near the fleet was captured before a chase
+            # could become visible. Reserve a complete 80-120 m escape run,
+            # staging space and a final ring inside the algorithm arena.
+            self.internal_center = max(
+                (self.required_pursuit_distance + 80.0) * 3.0,
+                (outer_radius + 45.0) * 3.0,
+            )
+            source.ARENA_SIZE_XY = self.internal_center * 2.0
+            source.ARENA_SIZE_Z = 180
+            source.CAPTURE_RADIUS = (outer_radius + 40.0) * 3.0
+            source.CAPTURE_FORMATION_USV_RADIUS = self.usv_formation_radius_scene * 3.0
             source.CAPTURE_FORMATION_UAV_RADIUS = 90
             source.CAPTURE_FORMATION_UAV_ALTITUDE = 75
             source.CAPTURE_FORMATION_PHASE = -math.pi / 2
+            source.CAPTURE_FORMATION_USV_SLOT_SPECS = [
+                (slot.radius * 3.0, slot.angle, 0.0, slot.ring)
+                for slot in self.usv_slot_specs
+            ]
+            source.CAPTURE_FORMATION_UAV_SLOT_SPECS = [
+                (slot.radius * 3.0, slot.angle, (slot.altitude - 9.0) * 4.4, slot.ring)
+                for slot in self.uav_slot_specs
+            ]
             source.TARGET_RUN_NUM = 70
             # The vendor defaults are algorithm-scale values, not render-safe
             # world speeds.  At 10 frames/s they previously produced 13-22
             # Unity units/s and looked like teleportation.  These limits keep
             # a visible transit phase before the fleet closes the ring.
-            source.V_MAX_UAV = 2.0
-            source.V_MAX_USV = 0.9
-            target_behavior = str(self.config.get("target_behavior", self.config.get("targetBehavior", "MOVING"))).upper()
-            source.TARGET_SPEED = 0.35 if target_behavior != "STATIC" else 0
+            configured_uav_speed = min(15.0, max(0.1, float(self.config.get("uavSpeedMps", 5.0))))
+            configured_usv_speed = min(4.0, max(0.1, float(self.config.get("usvSpeedMps", 3.0))))
+            # Preserve the vendor model's native-unit calibration while making
+            # the two speed controls authoritative.  The algorithm slows again
+            # during final formation; these are transit limits, not a constant
+            # animation multiplier.
+            source.V_MAX_UAV = 2.0 * configured_uav_speed / 5.0
+            source.V_MAX_USV = 0.9 * configured_usv_speed
+            # Direct capture is an escape/chase experiment.  Historical
+            # callers may still send targetBehavior=STATIC, but honouring it
+            # made the pursuit-distance gate impossible to finish and brought
+            # back the exact "enemy only spins in place" failure reported in
+            # the WebGL view.  The target therefore always starts with a
+            # visible, surface-speed-calibrated escape run.
+            self.target_cruise_mps = min(
+                2.2,
+                max(0.75, configured_usv_speed * 0.72),
+            )
+            # Target motion is executed in scene metres below. Letting the
+            # vendor core also move it applied two unrelated motion models and
+            # produced frequent heading changes with almost no net travel.
+            source.TARGET_SPEED = 0
             source.TARGET_IS_STATIC = 1 if source.TARGET_SPEED == 0 else 0
             source.UAV_Z_MIN, source.UAV_Z_MAX = 18, 54
+            # The multi-target coordinator runs one isolated one-target
+            # solver per capture group. The vendor module stores these values
+            # as globals, so retain the exact profile owned by this instance
+            # and reactivate it before every step.
+            self._vendor_runtime_config = {
+                name: getattr(source, name)
+                for name in (
+                    "UAV_COUNT", "USV_COUNT", "TARGET_COUNT",
+                    "MIN_CAPTURE_AGENTS", "ARENA_SIZE_XY", "ARENA_SIZE_Z",
+                    "CAPTURE_RADIUS", "CAPTURE_FORMATION_USV_RADIUS",
+                    "CAPTURE_FORMATION_UAV_RADIUS",
+                    "CAPTURE_FORMATION_UAV_ALTITUDE",
+                    "CAPTURE_FORMATION_PHASE",
+                    "CAPTURE_FORMATION_USV_SLOT_SPECS",
+                    "CAPTURE_FORMATION_UAV_SLOT_SPECS", "TARGET_RUN_NUM",
+                    "V_MAX_UAV", "V_MAX_USV", "TARGET_SPEED",
+                    "TARGET_IS_STATIC", "UAV_Z_MIN", "UAV_Z_MAX",
+                )
+            }
             self.source = source
             self.env = source.SwarmEnv3D()
             self._reset_positions()
             self._initial_frame_pending = True
-        self.safety = SceneSafetyFilter(TASK_CENTER_SCENE_MAP)
+        scene_extent = max(
+            145.0,
+            self.internal_center / 3.0 - 12.0,
+            # The spawn contract may already shift the target 90 m away from
+            # a compact fleet. Reserve another full pursuit plus the final
+            # ring on either side so a boundary turn is a tactical choice,
+            # not something forced immediately after START.
+            outer_radius + self.required_pursuit_distance * 2.0 + 70.0,
+        )
+        self.safety = SceneSafetyFilter({
+            "bounds": [-scene_extent, scene_extent, -scene_extent, scene_extent],
+            "obstacles": list(TASK_CENTER_SCENE_MAP.get("obstacles", [])),
+        })
+        # Keep enough open water around the target for the complete outer
+        # ring.  Previously the target used almost the entire rectangular
+        # arena for its 80 m run, then stopped where a 30 m ring could no
+        # longer fit.  The Unity terrain makes that abstract edge look like a
+        # shoreline, which exposed the bug as a boat parked against land.
+        self.operational_inset = (
+            self.outer_formation_radius
+            + self.safety.radius_for("TARGET")
+            + 8.0
+        )
         self.previous_scene: Dict[str, Tuple[float, float, float]] = {}
         self.avoidance_count = 0
         self.captured_at_sequence: int | None = None
+        self.containment_candidate_at_sequence: int | None = None
         self.formation_ready_at_sequence: int | None = None
+        self.presentation_slot_assignments: Dict[str, int] = {}
+        self.last_usv_angular_error_deg = 180.0
         target = self._to_scene(self.env.targets[0, :3], "TARGET")
+        self.target_start_scene = (target[0], target[1])
+        self.target_travelled_distance = 0.0
+        self.target_velocity = (0.0, 0.0)
+        self.peer_target_positions: List[Tuple[float, float, float]] = []
+        self.target_escape_direction = self._choose_target_escape_direction(target)
+        self.target_behavior_state = "ESCAPE"
+        self.last_containment_confidence = 0.0
+        self.capture_hold_frames = max(10, int(self.config.get("captureHoldFrames", 20)))
+        self.display_progress = 0.0
+        self.progress_best_sequence = 0
+        self.replan_count = 0
+        self.last_replan_sequence = 0
+        self.preview_frame = 0
+        self.preview_centers: Dict[str, Tuple[float, float, float]] = {}
+        uav_no = usv_no = 0
+        for raw in self.env.agents:
+            kind = "UAV" if int(raw[6]) == 0 else "USV"
+            if kind == "UAV":
+                uav_no += 1
+                code = f"UAV-{uav_no:03d}"
+            else:
+                usv_no += 1
+                code = f"USV-{usv_no:03d}"
+            self.preview_centers[code] = self._to_scene(raw[:3], kind)
         self.initial_mean_distance = float(np.mean([
             math.hypot(self._to_scene(raw[:3], "UAV" if int(raw[6]) == 0 else "USV")[0] - target[0],
                        self._to_scene(raw[:3], "UAV" if int(raw[6]) == 0 else "USV")[1] - target[1])
             for raw in self.env.agents
         ]))
+
+    def set_mission_active(self, active: bool) -> None:
+        was_active = self.mission_active
+        super().set_mission_active(active)
+        if active and not was_active:
+            # PREVIEW has its own continuous loiter/shore-avoidance activity.
+            # Mission metrics must describe only the run that starts when the
+            # operator presses Start, otherwise the counter can already be in
+            # the thousands before pursuit begins.
+            self.avoidance_count = 0
+            target = self.previous_scene.get(
+                "TARGET",
+                self._to_scene(self.env.targets[0, :3], "TARGET"),
+            )
+            self.target_start_scene = (target[0], target[1])
+            self.target_travelled_distance = 0.0
+            self.target_escape_direction = self._choose_target_escape_direction(target)
+            self.target_behavior_state = "ESCAPE"
+            self.last_containment_confidence = 0.0
+            self.captured_at_sequence = None
+            self.containment_candidate_at_sequence = None
+            self.formation_ready_at_sequence = None
+            self.presentation_slot_assignments.clear()
+            self.last_usv_angular_error_deg = 180.0
+            self.display_progress = 0.0
+            self.progress_best_sequence = self.sequence
+            self.replan_count = 0
+            self.last_replan_sequence = self.sequence
+            self.initial_mean_distance = float(np.mean([
+                math.hypot(
+                    self._to_scene(raw[:3], "UAV" if int(raw[6]) == 0 else "USV")[0] - target[0],
+                    self._to_scene(raw[:3], "UAV" if int(raw[6]) == 0 else "USV")[1] - target[1],
+                )
+                for raw in self.env.agents
+            ]))
+
+    def _activate_vendor_runtime_config(self) -> None:
+        for name, value in self._vendor_runtime_config.items():
+            setattr(self.source, name, value)
+
+    def _choose_target_escape_direction(
+        self,
+        target: Tuple[float, float, float],
+    ) -> Tuple[float, float]:
+        """Pick a long, persistent open-water corridor away from the fleet."""
+        scene_agents = [
+            self._to_scene(raw[:3], "UAV" if int(raw[6]) == 0 else "USV")
+            for raw in self.env.agents
+        ]
+        if scene_agents:
+            center_x = sum(item[0] for item in scene_agents) / len(scene_agents)
+            center_y = sum(item[1] for item in scene_agents) / len(scene_agents)
+        else:
+            center_x, center_y = target[0] - 1.0, target[1]
+        away_x, away_y = target[0] - center_x, target[1] - center_y
+        away_length = math.hypot(away_x, away_y) or 1.0
+        away_x, away_y = away_x / away_length, away_y / away_length
+        left, right, bottom, top = self.safety.bounds
+        inset = float(getattr(self, "operational_inset", 16.0))
+
+        def clearance(dx: float, dy: float) -> float:
+            values: List[float] = []
+            if dx > 1e-6:
+                values.append((right - inset - target[0]) / dx)
+            elif dx < -1e-6:
+                values.append((left + inset - target[0]) / dx)
+            if dy > 1e-6:
+                values.append((top - inset - target[1]) / dy)
+            elif dy < -1e-6:
+                values.append((bottom + inset - target[1]) / dy)
+            return max(0.0, min((value for value in values if value >= 0.0), default=0.0))
+
+        candidates = [
+            (math.cos(2.0 * math.pi * index / 32.0), math.sin(2.0 * math.pi * index / 32.0))
+            for index in range(32)
+        ]
+        # Clearance is only a secondary objective.  The old unconstrained
+        # score could prefer the longest water corridor even when it pointed
+        # straight through the pursuing fleet.  Keep every selected corridor
+        # in the away half-plane, then optimise the available water inside it.
+        aligned = [
+            direction for direction in candidates
+            if direction[0] * away_x + direction[1] * away_y >= 0.35
+        ]
+        if not aligned:
+            aligned = [
+                direction for direction in candidates
+                if direction[0] * away_x + direction[1] * away_y >= -1e-6
+            ]
+        return max(
+            aligned or candidates,
+            key=lambda direction: clearance(*direction) + 18.0 * (
+                direction[0] * away_x + direction[1] * away_y
+            ),
+        )
+
+    def _operational_clearance(self, x: float, y: float) -> float:
+        left, right, bottom, top = self.safety.bounds
+        inset = self.operational_inset
+        return min(
+            x - (left + inset),
+            (right - inset) - x,
+            y - (bottom + inset),
+            (top - inset) - y,
+        )
+
+    @staticmethod
+    def _largest_gap_direction(
+        target: Tuple[float, float, float],
+        agents: List[Tuple[float, float, float]],
+    ) -> Tuple[float, float] | None:
+        if len(agents) < 2:
+            return None
+        angles = sorted(
+            math.atan2(item[1] - target[1], item[0] - target[0]) % (2.0 * math.pi)
+            for item in agents
+        )
+        gaps = [
+            ((angles[(index + 1) % len(angles)] - angles[index]) % (2.0 * math.pi), angles[index])
+            for index in range(len(angles))
+        ]
+        gap, start = max(gaps)
+        midpoint = start + gap / 2.0
+        return math.cos(midpoint), math.sin(midpoint)
+
+    def _choose_boundary_aware_direction(
+        self,
+        target: Tuple[float, float, float],
+        desired: Tuple[float, float],
+        agents: List[Tuple[float, float, float]],
+    ) -> Tuple[Tuple[float, float], bool]:
+        """Choose a moving open-water course before the target hits an edge."""
+        lookahead = 22.0
+        predicted_x = target[0] + desired[0] * lookahead
+        predicted_y = target[1] + desired[1] * lookahead
+        near_edge = (
+            self._operational_clearance(target[0], target[1]) < 12.0
+            or self._operational_clearance(predicted_x, predicted_y) < 0.0
+        )
+        if not near_edge:
+            return desired, False
+
+        if agents:
+            center_x = sum(item[0] for item in agents) / len(agents)
+            center_y = sum(item[1] for item in agents) / len(agents)
+            away_x, away_y = target[0] - center_x, target[1] - center_y
+            length = math.hypot(away_x, away_y) or 1.0
+            away_x, away_y = away_x / length, away_y / length
+        else:
+            away_x, away_y = desired
+        vx, vy = self.target_velocity
+        velocity_length = math.hypot(vx, vy)
+        momentum = (vx / velocity_length, vy / velocity_length) if velocity_length > 1e-5 else desired
+        candidates = [
+            (math.cos(2.0 * math.pi * index / 48.0), math.sin(2.0 * math.pi * index / 48.0))
+            for index in range(48)
+        ]
+
+        def score(direction: Tuple[float, float]) -> float:
+            next_x = target[0] + direction[0] * lookahead
+            next_y = target[1] + direction[1] * lookahead
+            clearance = self._operational_clearance(next_x, next_y)
+            return (
+                clearance * 3.0
+                + (direction[0] * away_x + direction[1] * away_y) * 14.0
+                + (direction[0] * momentum[0] + direction[1] * momentum[1]) * 7.0
+                + (direction[0] * desired[0] + direction[1] * desired[1]) * 3.0
+            )
+
+        return max(candidates, key=score), True
+
+    def _preview_agent_proposal(
+        self,
+        code: str,
+        kind: str,
+        index: int,
+    ) -> Tuple[float, float, float]:
+        center = self.preview_centers[code]
+        radius = (5.0 if kind == "USV" else 6.5) + (index % 3) * 1.2
+        direction = 1.0 if index % 2 == 0 else -1.0
+        angle = index * 2.399963 + direction * self.preview_frame * (0.006 if kind == "USV" else 0.009)
+        return (
+            center[0] + math.cos(angle) * radius,
+            center[1] + math.sin(angle) * radius,
+            center[2],
+        )
+
+    def _rotate_capture_slots(self) -> None:
+        delta = math.pi / max(8, len(self.usv_slot_specs) + len(self.uav_slot_specs))
+        self.usv_slot_specs = [
+            FormationSlot(slot.radius, slot.angle + delta, slot.altitude, slot.ring)
+            for slot in self.usv_slot_specs
+        ]
+        self.uav_slot_specs = [
+            FormationSlot(slot.radius, slot.angle + delta, slot.altitude, slot.ring)
+            for slot in self.uav_slot_specs
+        ]
+        self.source.CAPTURE_FORMATION_USV_SLOT_SPECS = [
+            (slot.radius * 3.0, slot.angle, 0.0, slot.ring)
+            for slot in self.usv_slot_specs
+        ]
+        self.source.CAPTURE_FORMATION_UAV_SLOT_SPECS = [
+            (slot.radius * 3.0, slot.angle, (slot.altitude - 9.0) * 4.4, slot.ring)
+            for slot in self.uav_slot_specs
+        ]
+        self.env.algorithm.formation_slot_assignment.clear()
+
+    def _align_capture_slots_to_open_water(self, target: Tuple[float, float, float]) -> None:
+        """Rotate the complete formation away from shoreline/obstacle conflicts."""
+        best_delta = 0.0
+        best_penalty = float("inf")
+        for candidate in range(24):
+            delta = candidate * 2.0 * math.pi / 24.0
+            penalty = 0.0
+            for kind, specs in (("USV", self.usv_slot_specs), ("UAV", self.uav_slot_specs)):
+                for slot in specs:
+                    rotated = FormationSlot(slot.radius, slot.angle + delta, slot.altitude, slot.ring)
+                    point = rotated.point(target)
+                    safe = self.safety.constrain(point, point, kind, (), 0.0)
+                    penalty += math.hypot(safe.x - point[0], safe.y - point[1])
+            if penalty < best_penalty:
+                best_penalty = penalty
+                best_delta = delta
+        if abs(best_delta) <= 1e-9:
+            return
+        self.usv_slot_specs = [
+            FormationSlot(slot.radius, slot.angle + best_delta, slot.altitude, slot.ring)
+            for slot in self.usv_slot_specs
+        ]
+        self.uav_slot_specs = [
+            FormationSlot(slot.radius, slot.angle + best_delta, slot.altitude, slot.ring)
+            for slot in self.uav_slot_specs
+        ]
+
+    def _assign_presentation_slots(
+        self,
+        target: Tuple[float, float, float],
+    ) -> None:
+        """Assign slots without asking craft to exchange sides through the ring.
+
+        A nearest-slot greedy assignment is locally cheap but can reverse the
+        cyclic order of two neighbours. Their straight paths then intersect
+        the target keep-out circle (or each other), and the swept-path safety
+        guard correctly holds both craft forever. Assign the nearest radial
+        cohort to each physical ring and preserve the cohort's angular order.
+        Only the cyclic offset is optimised, so every final route is reachable
+        without cutting through the containment centre.
+        """
+        center_x, center_y, _ = target
+        for kind, specs, type_value in (
+            ("UAV", self.uav_slot_specs, 0),
+            ("USV", self.usv_slot_specs, 1),
+        ):
+            agents: List[Tuple[str, Tuple[float, float, float]]] = []
+            ordinal = 0
+            for raw in self.env.agents:
+                if int(raw[6]) != type_value:
+                    continue
+                ordinal += 1
+                code = f"{kind}-{ordinal:03d}"
+                current = self.previous_scene.get(code, self._to_scene(raw[:3], kind))
+                agents.append((code, current))
+            agents.sort(key=lambda item: math.hypot(item[1][0] - center_x, item[1][1] - center_y))
+
+            specs_by_ring: Dict[int, List[int]] = {}
+            for slot_index, slot in enumerate(specs):
+                specs_by_ring.setdefault(slot.ring, []).append(slot_index)
+            cursor = 0
+            for ring_index in sorted(specs_by_ring, key=lambda value: specs[specs_by_ring[value][0]].radius):
+                slot_indices = sorted(specs_by_ring[ring_index], key=lambda value: specs[value].angle)
+                cohort = agents[cursor:cursor + len(slot_indices)]
+                cursor += len(slot_indices)
+                cohort.sort(key=lambda item: math.atan2(item[1][1] - center_y, item[1][0] - center_x))
+                if not cohort:
+                    continue
+                best_offset = 0
+                best_cost = float("inf")
+                for offset in range(len(slot_indices)):
+                    cost = 0.0
+                    for position, (_, current) in enumerate(cohort):
+                        slot_index = slot_indices[(position + offset) % len(slot_indices)]
+                        point = specs[slot_index].point(target)
+                        cost += math.hypot(current[0] - point[0], current[1] - point[1])
+                    if cost < best_cost:
+                        best_cost, best_offset = cost, offset
+                for position, (code, _) in enumerate(cohort):
+                    self.presentation_slot_assignments[code] = slot_indices[
+                        (position + best_offset) % len(slot_indices)
+                    ]
+
+    @staticmethod
+    def _settling_proposal(
+        current: Tuple[float, float, float],
+        slot: FormationSlot,
+        target: Tuple[float, float, float],
+        step: float,
+    ) -> Tuple[float, float, float]:
+        """Reach a ring slot by a radial/arc route that never crosses its centre."""
+        center_x, center_y, _ = target
+        dx, dy = current[0] - center_x, current[1] - center_y
+        radius = math.hypot(dx, dy)
+        if radius < 1e-6:
+            angle, radius = slot.angle, 1e-6
+        else:
+            angle = math.atan2(dy, dx)
+        angle_error = (slot.angle - angle + math.pi) % (2.0 * math.pi) - math.pi
+
+        # First clear the target hull. While changing bearing, stay on or just
+        # outside the assigned ring. This prevents a chord from cutting across
+        # the enemy and gives neighbouring craft a consistent traffic lane.
+        # Surface craft use the inside lane while changing bearing; the UAV
+        # ring is outside them, so an outside USV lane can create an avoidable
+        # air/surface deadlock. Aircraft use the outer lane. Both return to
+        # their exact configured radius once the bearing is aligned.
+        lane_offset = 2.0 if slot.altitude > 0.0 else -2.5
+        transit_radius = slot.radius + (lane_offset if abs(angle_error) > 0.10 else 0.0)
+        if abs(radius - transit_radius) > 0.75:
+            next_radius = radius + max(-step, min(step, transit_radius - radius))
+            next_angle = angle
+        elif abs(angle_error) > 0.025:
+            angular_step = min(abs(angle_error), step / max(8.0, radius))
+            next_angle = angle + math.copysign(angular_step, angle_error)
+            next_radius = radius + max(-step * 0.35, min(step * 0.35, transit_radius - radius))
+        else:
+            next_angle = slot.angle
+            next_radius = radius + max(-step, min(step, slot.radius - radius))
+        return (
+            center_x + math.cos(next_angle) * next_radius,
+            center_y + math.sin(next_angle) * next_radius,
+            slot.altitude,
+        )
+
+    def _advance_capture_target(
+        self,
+        previous: Tuple[float, float, float],
+        preview: bool = False,
+    ) -> SafePoint:
+        pursuit = preview or self.target_travelled_distance < self.required_pursuit_distance
+        desired_x, desired_y = self.target_escape_direction
+        scene_agents = [
+            self._to_scene(raw[:3], "UAV" if int(raw[6]) == 0 else "USV")
+            for raw in self.env.agents
+        ]
+        if scene_agents:
+            nearest = min(
+                scene_agents,
+                key=lambda item: math.hypot(previous[0] - item[0], previous[1] - item[1]),
+            )
+            avoid_x, avoid_y = previous[0] - nearest[0], previous[1] - nearest[1]
+            avoid_length = math.hypot(avoid_x, avoid_y) or 1.0
+            avoid_x, avoid_y = avoid_x / avoid_length, avoid_y / avoid_length
+            bias = 0.16 if preview else 0.10 if pursuit else 0.34
+            desired_x += avoid_x * bias
+            desired_y += avoid_y * bias
+        gap_direction = self._largest_gap_direction(previous, scene_agents)
+        if not preview and gap_direction is not None and (
+            not pursuit or self.last_containment_confidence >= 0.35
+        ):
+            # A target under pressure should exploit the largest opening,
+            # instead of circling around whichever single craft is nearest.
+            desired_x = desired_x * 0.35 + gap_direction[0] * 0.65
+            desired_y = desired_y * 0.35 + gap_direction[1] * 0.65
+        desired_length = math.hypot(desired_x, desired_y) or 1.0
+        desired_x, desired_y = desired_x / desired_length, desired_y / desired_length
+        # Receding-horizon escape choice: test several feasible headings
+        # before committing.  This prevents a target from blindly following a
+        # persistent vector into the coast and lets it exploit a moving gap in
+        # the interception line without random frame-to-frame zig-zagging.
+        base_angle = math.atan2(desired_y, desired_x)
+        best_direction = (desired_x, desired_y)
+        best_score = -math.inf
+        for offset_deg in (-105, -75, -50, -30, -15, 0, 15, 30, 50, 75, 105):
+            angle = base_angle + math.radians(offset_deg)
+            candidate = (math.cos(angle), math.sin(angle))
+            lookahead = 32.0
+            predicted = (
+                previous[0] + candidate[0] * lookahead,
+                previous[1] + candidate[1] * lookahead,
+                0.0,
+            )
+            safe_prediction = self.safety.constrain(previous, predicted, "TARGET", (), 0.0)
+            if safe_prediction.adjusted or math.hypot(
+                safe_prediction.x - predicted[0], safe_prediction.y - predicted[1]
+            ) > 0.5:
+                continue
+            pursuer_clearance = min((
+                math.hypot(predicted[0] - item[0], predicted[1] - item[1])
+                for item in scene_agents
+            ), default=80.0)
+            peer_clearance = min((
+                math.hypot(predicted[0] - item[0], predicted[1] - item[1])
+                for item in self.peer_target_positions
+            ), default=80.0)
+            corridor = self._operational_clearance(predicted[0], predicted[1])
+            continuity = candidate[0] * self.target_escape_direction[0] + candidate[1] * self.target_escape_direction[1]
+            score = min(70.0, pursuer_clearance) + min(55.0, peer_clearance) * 0.7
+            score += min(35.0, corridor) * 1.4 + continuity * 10.0
+            score -= abs(offset_deg) * 0.035
+            if score > best_score:
+                best_score = score
+                best_direction = candidate
+        # Heading hysteresis keeps the selected evasive route physically
+        # steerable while still allowing a decisive coast-avoidance turn.
+        desired_x = self.target_escape_direction[0] * 0.68 + best_direction[0] * 0.32
+        desired_y = self.target_escape_direction[1] * 0.68 + best_direction[1] * 0.32
+        desired_length = math.hypot(desired_x, desired_y) or 1.0
+        desired_x, desired_y = desired_x / desired_length, desired_y / desired_length
+        (desired_x, desired_y), coast_avoid = self._choose_boundary_aware_direction(
+            previous,
+            (desired_x, desired_y),
+            scene_agents,
+        )
+        self.target_escape_direction = (desired_x, desired_y)
+        if preview:
+            speed = min(1.4, self.target_cruise_mps * 0.65)
+            self.target_behavior_state = "CRUISE"
+        elif pursuit:
+            speed = (
+                max(0.55, self.target_cruise_mps * 0.78)
+                if coast_avoid else self.target_cruise_mps
+            )
+            self.target_behavior_state = "COAST_AVOID" if coast_avoid else "ESCAPE"
+        else:
+            confidence = self.last_containment_confidence
+            # A nearby interceptor is not a closed ring. Keep attempting a
+            # breakout until angular coverage, radial closure and containment
+            # jointly show that escape space has really disappeared.
+            if (
+                self.containment_candidate_at_sequence is not None
+                and self.target_travelled_distance >= self.required_pursuit_distance + 20.0
+            ):
+                held = max(0, self.sequence - self.containment_candidate_at_sequence)
+                reduction = min(0.82, held / max(1, self.capture_hold_frames * 2) * 0.82)
+                speed = max(0.08, self.target_cruise_mps * (1.0 - reduction))
+                self.target_behavior_state = "CONTAINED"
+            else:
+                # After the mandatory visible chase the fleet has established
+                # interception pressure. Keep a real breakout attempt, but
+                # trim speed enough for a faster friendly USV fleet to close
+                # its ring. The former full-speed breakout could outrun moving
+                # slots indefinitely, especially near a shoreline.
+                # The target has already completed a visible 80-120 m escape
+                # at this point.  Interception pressure now reduces (but does
+                # not zero) its speed so mixed fleets of every valid size can
+                # close moving slots; the final stop remains tied to a held
+                # containment ring below.
+                reduction = 0.55 + max(0.0, min(0.27, (confidence - 0.45) / 0.55 * 0.27))
+                speed = max(0.38, self.target_cruise_mps * (1.0 - reduction))
+                self.target_behavior_state = "COAST_AVOID" if coast_avoid else "BREAKOUT"
+        desired_vx, desired_vy = desired_x * speed, desired_y * speed
+        vx, vy = self.target_velocity
+        accel = 0.065 if preview else 0.075
+        vx += max(-accel, min(accel, desired_vx - vx))
+        vy += max(-accel, min(accel, desired_vy - vy))
+        velocity_length = math.hypot(vx, vy)
+        containment_settling = (
+            self.containment_candidate_at_sequence is not None
+            and self.target_travelled_distance >= self.required_pursuit_distance + 20.0
+        )
+        if containment_settling and velocity_length > 0.12:
+            settle_scale = 0.12 / velocity_length
+            vx, vy = vx * settle_scale, vy * settle_scale
+            velocity_length = 0.12
+        if (
+            self.formation_ready_at_sequence is None
+            and not containment_settling
+            and velocity_length < 0.36
+        ):
+            # Turning at the coast must change heading rather than visually
+            # stop while opposite velocity components cancel out.
+            vx, vy = desired_x * 0.36, desired_y * 0.36
+        proposed = (previous[0] + vx * 0.1, previous[1] + vy * 0.1, 0.0)
+        safe = self.safety.constrain(previous, proposed, "TARGET", (), 0.0)
+        step = math.hypot(safe.x - previous[0], safe.y - previous[1])
+        if safe.adjusted:
+            self.target_escape_direction = self._choose_target_escape_direction((safe.x, safe.y, 0.0))
+            fallback_speed = min(speed, max(0.55, math.hypot(vx, vy)))
+            vx = self.target_escape_direction[0] * fallback_speed
+            vy = self.target_escape_direction[1] * fallback_speed
+        self.target_velocity = (vx, vy)
+        if not preview:
+            self.target_travelled_distance += step
+        return safe
 
     def _reset_positions(self) -> None:
         # Build a layout matching the configured fleet size. The previous
@@ -91,13 +747,15 @@ class CaptureAdapter(AlgorithmAdapter):
                 # bounds after _to_scene() converts native coordinates by
                 # (value - 150) / 3.  The old 25..275 range became
                 # -41.67..41.67 and pinned edge UAVs to the boundary.
-                y = 45.0 if rows == 1 else 45.0 + 210.0 * row / (rows - 1)
+                y_min = self.internal_center - 105.0
+                y_max = self.internal_center + 105.0
+                y = self.internal_center if rows == 1 else y_min + (y_max - y_min) * row / (rows - 1)
                 positions.append([x, y, z_min + (index % 4) * z_step])
             return positions
 
         positions = np.asarray(
-            grid_positions(self.source.UAV_COUNT, 0.0, 150.0, 45.0, 8.0)
-            + grid_positions(self.source.USV_COUNT, 150.0, 300.0, 0.0, 0.0),
+            grid_positions(self.source.UAV_COUNT, self.internal_center - 150.0, self.internal_center, 45.0, 8.0)
+            + grid_positions(self.source.USV_COUNT, self.internal_center, self.internal_center + 150.0, 0.0, 0.0),
             dtype=float,
         )
         initial_poses = self.initial_pose_map()
@@ -109,8 +767,8 @@ class CaptureAdapter(AlgorithmAdapter):
             if pose is None:
                 continue
             east, north, up = self.initial_pose_to_local(pose)
-            positions[index, 0] = east * 3.0 + 150.0
-            positions[index, 1] = north * 3.0 + 150.0
+            positions[index, 0] = east * 3.0 + self.internal_center
+            positions[index, 1] = north * 3.0 + self.internal_center
             if kind == "UAV":
                 positions[index, 2] = max(18.0, (up - 9.0) * 4.4)
         self.env.agents[:, :3] = positions
@@ -121,81 +779,120 @@ class CaptureAdapter(AlgorithmAdapter):
         )
         if target_pose is not None:
             east, north, _ = self.initial_pose_to_local(target_pose)
-            target_x = east * 3.0 + 150.0
-            target_y = north * 3.0 + 150.0
+            target_x = east * 3.0 + self.internal_center
+            target_y = north * 3.0 + self.internal_center
         else:
-            target_x, target_y = 180.0, 150.0
+            target_x, target_y = self.internal_center + 30.0, self.internal_center
         self.env.targets[0, :5] = np.asarray(
             [target_x, target_y, 0, self.source.TARGET_SPEED, math.pi / 2]
         )
+        # Enforce the scenario contract inside the algorithm as well as in the
+        # front end. A stale WebGL/default layout must never place the target
+        # inside an almost-finished containment formation.
+        minimum_spawn_distance = max(
+            90.0,
+            float(self.config.get("threatMinDistanceM", 90.0)),
+        )
+        target_scene = self._to_scene(self.env.targets[0, :3], "TARGET")
+        scene_agents = [
+            self._to_scene(raw[:3], "UAV" if int(raw[6]) == 0 else "USV")
+            for raw in self.env.agents
+        ]
+        nearest = min(
+            (math.hypot(item[0] - target_scene[0], item[1] - target_scene[1]) for item in scene_agents),
+            default=minimum_spawn_distance,
+        )
+        if nearest < minimum_spawn_distance:
+            center_x = sum(item[0] for item in scene_agents) / max(1, len(scene_agents))
+            center_y = sum(item[1] for item in scene_agents) / max(1, len(scene_agents))
+            away_x, away_y = target_scene[0] - center_x, target_scene[1] - center_y
+            length = math.hypot(away_x, away_y)
+            if length < 1e-6:
+                away_x, away_y, length = 1.0, 0.0, 1.0
+            shift = minimum_spawn_distance - nearest + 8.0
+            target_scene = (
+                target_scene[0] + away_x / length * shift,
+                target_scene[1] + away_y / length * shift,
+                0.0,
+            )
+            self.env.targets[0, :3] = self._to_internal(target_scene, "TARGET")
 
     def _to_scene(self, position: np.ndarray, kind: str) -> Tuple[float, float, float]:
         # One uniform horizontal scale keeps the algorithm's circular capture
         # geometry circular in both Task Center 2-D and Unity 3-D.
-        x = (float(position[0]) - 150.0) / 3.0
-        y = (float(position[1]) - 150.0) / 3.0
+        x = (float(position[0]) - self.internal_center) / 3.0
+        y = (float(position[1]) - self.internal_center) / 3.0
         z = 0.0 if kind != "UAV" else 9.0 + float(position[2]) / 4.4
         return x, y, z
 
     def _to_internal(self, position: Tuple[float, float, float], kind: str) -> np.ndarray:
         x, y, z = position
-        return np.asarray([x * 3.0 + 150.0, y * 3.0 + 150.0, 0.0 if kind != "UAV" else max(18.0, (z - 9.0) * 4.4)])
+        return np.asarray([x * 3.0 + self.internal_center, y * 3.0 + self.internal_center, 0.0 if kind != "UAV" else max(18.0, (z - 9.0) * 4.4)])
+
+    @staticmethod
+    def _ring_angular_error(angles: List[float]) -> float:
+        """Largest gap error from an evenly distributed containment ring."""
+        if len(angles) <= 1:
+            return 0.0
+        ordered = sorted(angle % (2.0 * math.pi) for angle in angles)
+        gaps = [
+            (ordered[(index + 1) % len(ordered)] - ordered[index])
+            % (2.0 * math.pi)
+            for index in range(len(ordered))
+        ]
+        ideal = 2.0 * math.pi / len(ordered)
+        return max(abs(gap - ideal) for gap in gaps)
+
+    @staticmethod
+    def _ring_max_gap_deg(angles: List[float]) -> float:
+        if len(angles) <= 1:
+            return 360.0
+        ordered = sorted(angle % (2.0 * math.pi) for angle in angles)
+        return math.degrees(max(
+            (ordered[(index + 1) % len(ordered)] - ordered[index])
+            % (2.0 * math.pi)
+            for index in range(len(ordered))
+        ))
 
     def step(self) -> RuntimeFrame:
+        self._activate_vendor_runtime_config()
         self.sequence += 1
         initial_frame = self._initial_frame_pending
         self._initial_frame_pending = False
         initial_snapshot = initial_frame and bool(self.initial_pose_map())
-        if not initial_frame:
+        preview = not self.mission_active
+        if preview and not initial_frame:
+            self.preview_frame += 1
+        if not initial_frame and not preview:
             with contextlib.redirect_stdout(sys.stderr):
                 self.env.step()
 
-        # The protected vessel is inactive in capture mode. Keep it clear of
-        # every USV approach corridor so the capture experiment is not bent by
-        # an unrelated static hull.
-        escort_scene = (45.0, -28.0, 0.0)
         target_scene = self._to_scene(self.env.targets[0, :3], "TARGET")
-        if initial_snapshot:
+        if initial_frame:
             safe_target = SafePoint(*target_scene, False)
         else:
             target_previous = self.previous_scene.get("TARGET", target_scene)
-            safe_target = self.safety.constrain(
-                target_previous,
-                target_scene,
-                "TARGET",
-                (escort_scene,),
-                self.safety.required_separation(
-                    "CAPTURE_TARGET",
-                    "ESCORT_TARGET",
-                    0.0,
-                    0.0,
-                ),
-            )
-            # The vendor target update can propose a large correction when a
-            # Unity pose is outside the vendor arena. Keep the executed target
-            # continuous at the render frame rate instead of teleporting from
-            # sequence 1 to sequence 2.
-            max_target_step = max(
-                0.05,
-                abs(float(self.source.TARGET_SPEED)) / 3.0,
-            )
-            target_dx = safe_target.x - target_previous[0]
-            target_dy = safe_target.y - target_previous[1]
-            target_distance = math.hypot(target_dx, target_dy)
-            if target_distance > max_target_step:
-                scale = max_target_step / target_distance
-                safe_target = SafePoint(
-                    target_previous[0] + target_dx * scale,
-                    target_previous[1] + target_dy * scale,
-                    safe_target.z,
-                    True,
-                )
+            safe_target = self._advance_capture_target(target_previous, preview=preview)
         self.previous_scene["TARGET"] = (safe_target.x, safe_target.y, safe_target.z)
         self.env.targets[0, :3] = self._to_internal((safe_target.x, safe_target.y, 0.0), "TARGET")
+        if math.hypot(*self.target_velocity) > 1e-5:
+            self.env.targets[0, 4] = math.atan2(self.target_velocity[1], self.target_velocity[0])
 
         proposals: Dict[str, Tuple[str, Tuple[float, float, float]]] = {}
         rows: Dict[str, Tuple[int, np.ndarray]] = {}
         agents: List[AgentFrame] = []
+        formation_settling = (
+            not preview
+            and self.target_travelled_distance >= self.required_pursuit_distance + 20.0
+        )
+        if formation_settling and self.containment_candidate_at_sequence is None:
+            # Enter interception pressure after the mandatory visible chase.
+            # The target still moves and attempts the largest gap, but slows
+            # enough for surface craft to redistribute around a moving centre.
+            self.containment_candidate_at_sequence = self.sequence
+        if formation_settling and not self.presentation_slot_assignments:
+            self._align_capture_slots_to_open_water((safe_target.x, safe_target.y, safe_target.z))
+            self._assign_presentation_slots((safe_target.x, safe_target.y, safe_target.z))
         uav_no = usv_no = 0
         for index, raw in enumerate(self.env.agents):
             kind = "UAV" if int(raw[6]) == 0 else "USV"
@@ -205,17 +902,43 @@ class CaptureAdapter(AlgorithmAdapter):
             else:
                 usv_no += 1
                 code = f"USV-{usv_no:03d}"
-            proposals[code] = (kind, self._to_scene(raw[:3], kind))
+            if preview and not initial_frame:
+                proposed_scene = self._preview_agent_proposal(code, kind, index)
+            elif formation_settling:
+                specs = self.uav_slot_specs if kind == "UAV" else self.usv_slot_specs
+                slot_index = self.presentation_slot_assignments[code]
+                assigned_slot = specs[slot_index]
+                current_scene = self.previous_scene.get(code, self._to_scene(raw[:3], kind))
+                settle_step = 0.35 if kind == "UAV" else 0.40
+                proposed_scene = self._settling_proposal(
+                    current_scene,
+                    assigned_slot,
+                    (safe_target.x, safe_target.y, safe_target.z),
+                    settle_step,
+                )
+            else:
+                proposed_scene = self._to_scene(raw[:3], kind)
+            proposals[code] = (kind, proposed_scene)
             rows[code] = (index, raw)
 
-        resolved = {} if initial_snapshot else self.safety.resolve_group(
-            proposals,
-            self.previous_scene,
-            {
-                "TARGET": ("CAPTURE_TARGET", (safe_target.x, safe_target.y, 0.0)),
-                "ESCORT_TARGET": ("ESCORT_TARGET", escort_scene),
-            },
-        )
+        fixed_target = {"TARGET": ("CAPTURE_TARGET", (safe_target.x, safe_target.y, 0.0))}
+        if initial_snapshot:
+            resolved = {}
+        else:
+            # Every moving frame, including the final radial/arc slot-settling
+            # phase, must pass through the same whole-fleet solver.  The old
+            # settling shortcut only projected shore/bounds and allowed two
+            # correctly assigned USVs to occupy intersecting rendered hulls
+            # while they queued for neighbouring ring slots.
+            resolved = self.safety.resolve_group(
+                proposals,
+                self.previous_scene,
+                fixed_target,
+                max_steps={
+                    "UAV": min(0.35, max(0.05, float(self.config.get("uavSpeedMps", 5.0)) * 0.1)),
+                    "USV": min(0.32, max(0.04, float(self.config.get("usvSpeedMps", 3.0)) * 0.18)),
+                },
+            )
         for code, (index, raw) in rows.items():
             kind = proposals[code][0]
             previous_scene = self.previous_scene.get(code)
@@ -226,22 +949,13 @@ class CaptureAdapter(AlgorithmAdapter):
                 safe = resolved[code]
                 scene = (safe.x, safe.y, safe.z)
                 adjusted = safe.adjusted
-            capped = False
-            if not initial_snapshot and previous_scene is not None:
-                dx = scene[0] - previous_scene[0]
-                dy = scene[1] - previous_scene[1]
-                distance = math.hypot(dx, dy)
-                max_step = 0.35 if kind == "UAV" else 0.18
-                if distance > max_step + 1e-9:
-                    scale = max_step / distance
-                    scene = (
-                        previous_scene[0] + dx * scale,
-                        previous_scene[1] + dy * scale,
-                        scene[2],
-                    )
-                    capped = True
-            if adjusted or capped:
+            # SceneSafetyFilter already applies the physical per-frame motion
+            # limit before solving separation.  A second per-agent clamp here
+            # used to undo part of the pair correction and could reintroduce
+            # an overlap after the group had been made safe.
+            if adjusted:
                 self.avoidance_count += 1
+            if preview or formation_settling or adjusted:
                 self.env.agents[index, :3] = self._to_internal(scene, kind)
             self.previous_scene[code] = scene
             initial_pose = self.initial_pose_map().get(code)
@@ -256,10 +970,14 @@ class CaptureAdapter(AlgorithmAdapter):
                     math.degrees(float(raw[4])) % 360.0,
                     3.0 if kind == "UAV" else 1.5,
                 )
-            agents.append(AgentFrame(code, kind, *scene, heading, "ENCIRCLEMENT"))
-        captured = 0 in self.env.permanently_captured
-        if captured and self.captured_at_sequence is None:
-            self.captured_at_sequence = self.sequence
+            pursuit_complete = self.target_travelled_distance >= self.required_pursuit_distance
+            agents.append(AgentFrame(
+                code,
+                kind,
+                *scene,
+                heading,
+                "PATROL" if preview else "INTERCEPTOR" if not pursuit_complete else "ENCIRCLEMENT",
+            ))
         mean_distance = float(np.mean([
             math.hypot(agent.x - safe_target.x, agent.y - safe_target.y)
             for agent in agents
@@ -274,39 +992,343 @@ class CaptureAdapter(AlgorithmAdapter):
             for agent in agents
             if agent.type == "UAV"
         ]
+        usv_angles = [
+            math.atan2(agent.y - safe_target.y, agent.x - safe_target.x)
+            for agent in agents
+            if agent.type == "USV"
+        ]
+        uav_angles = [
+            math.atan2(agent.y - safe_target.y, agent.x - safe_target.x)
+            for agent in agents
+            if agent.type == "UAV"
+        ]
+        # Angular uniformity must be assessed per physical ring.  Treating two
+        # concentric rings as one list creates apparent duplicate bearings and
+        # reports a false SLOT_CONFLICT for larger fleets even when every ring
+        # is already closed around the target.
+        usv_ring_angles: Dict[int, List[float]] = {}
+        uav_ring_angles: Dict[int, List[float]] = {}
+        usv_ring_radial_errors: Dict[int, List[float]] = {}
+        uav_ring_radial_errors: Dict[int, List[float]] = {}
+        assigned_specs = []
+        for _, raw in rows.values():
+            agent_type = int(raw[6])
+            agent_id = int(raw[7])
+            record = self.env.algorithm.formation_slot_assignment.get((0, agent_type), {})
+            col = record.get("slots", {}).get(agent_id)
+            specs = self.usv_slot_specs if agent_type == 1 else self.uav_slot_specs
+            code = (
+                f"USV-{agent_id - 1999:03d}"
+                if agent_type == 1
+                else f"UAV-{agent_id - 999:03d}"
+            )
+            presentation_col = self.presentation_slot_assignments.get(code)
+            assigned = (
+                specs[int(presentation_col)]
+                if presentation_col is not None and 0 <= int(presentation_col) < len(specs)
+                else specs[int(col)] if col is not None and 0 <= int(col) < len(specs)
+                else specs[min(len(assigned_specs), len(specs) - 1)]
+            )
+            actual = next((agent for agent in agents if agent.code == code), None)
+            actual_angle = (
+                math.atan2(actual.y - safe_target.y, actual.x - safe_target.x)
+                if actual is not None
+                else assigned.angle
+            )
+            ring_angles = usv_ring_angles if agent_type == 1 else uav_ring_angles
+            ring_angles.setdefault(assigned.ring, []).append(actual_angle)
+            if actual is not None:
+                radial_errors = (
+                    usv_ring_radial_errors if agent_type == 1
+                    else uav_ring_radial_errors
+                )
+                radial_errors.setdefault(assigned.ring, []).append(abs(
+                    math.hypot(actual.x - safe_target.x, actual.y - safe_target.y)
+                    - assigned.radius
+                ))
+            # Slot ownership determines the required ring/altitude.  Its
+            # precise angle is deliberately assessed from the executed pose:
+            # whole-ring angular coverage and convex containment are already
+            # validated independently by assess_capture. Requiring the exact
+            # pre-safety angle as well caused a collision-avoidance sidestep
+            # to hold an otherwise closed ring in RUNNING forever.
+            assigned_specs.append(FormationSlot(
+                assigned.radius,
+                actual_angle,
+                assigned.altitude,
+                assigned.ring,
+            ))
+        usv_angular_error = max(
+            (self._ring_angular_error(angles) for angles in usv_ring_angles.values()),
+            default=0.0,
+        )
+        self.last_usv_angular_error_deg = math.degrees(usv_angular_error)
+        uav_angular_error = max(
+            (self._ring_angular_error(angles) for angles in uav_ring_angles.values()),
+            default=0.0,
+        )
+        ring_diagnostics: Dict[str, Dict[str, float | int | bool]] = {}
+        ring_geometry_ready = True
+        for kind, specs, angles_by_ring, errors_by_ring in (
+            ("USV", self.usv_slot_specs, usv_ring_angles, usv_ring_radial_errors),
+            ("UAV", self.uav_slot_specs, uav_ring_angles, uav_ring_radial_errors),
+        ):
+            expected_by_ring: Dict[int, int] = {}
+            for slot in specs:
+                expected_by_ring[slot.ring] = expected_by_ring.get(slot.ring, 0) + 1
+            for ring_index, expected_count in expected_by_ring.items():
+                angles = angles_by_ring.get(ring_index, [])
+                errors = errors_by_ring.get(ring_index, [])
+                max_gap = self._ring_max_gap_deg(angles)
+                ideal_gap = 360.0 / max(1, expected_count)
+                # Different-size hulls share a collision-safe annulus, so a
+                # craft may legitimately shift farther around its own logical
+                # ring to clear a neighbour on the adjacent ring. Keep this
+                # per-ring check permissive enough for that manoeuvre; the
+                # combined hull and convex-containment checks below remain the
+                # authoritative no-gap test for the visible fleet as a whole.
+                gap_limit = min(135.0, ideal_gap * 1.8 + 12.0)
+                radial_limit = 5.0
+                complete = (
+                    len(angles) == expected_count
+                    and len(errors) == expected_count
+                    and max(errors, default=float("inf")) <= radial_limit
+                    and (expected_count < 3 or max_gap <= gap_limit)
+                )
+                ring_geometry_ready = ring_geometry_ready and complete
+                ring_diagnostics[f"{kind}-{ring_index}"] = {
+                    "expected": expected_count,
+                    "actual": len(angles),
+                    "maxGapDeg": round(max_gap, 2),
+                    "maxAllowedGapDeg": round(gap_limit, 2),
+                    "maxRadialErrorM": round(max(errors, default=float("inf")), 2),
+                    "ready": complete,
+                }
+        assessment = assess_capture(
+            [(agent.x, agent.y, agent.z) for agent in agents],
+            assigned_specs,
+            (safe_target.x, safe_target.y, safe_target.z),
+            radial_tolerance=3.2,
+        )
+        pursuit_complete = self.target_travelled_distance >= self.required_pursuit_distance
+        actual_radii = [
+            math.hypot(agent.x - safe_target.x, agent.y - safe_target.y)
+            for agent in agents
+        ]
+        max_gap_limit_deg = math.degrees(min(
+            math.pi * 0.84,
+            max(29.0 * math.pi / 36.0, 2.7 * math.pi / max(1, len(agents))),
+        ))
+        # Real collision avoidance owns the final centimetres of each pose.
+        # Treat the configured concentric rings as one safe containment band:
+        # every craft must be outside the target hull, none may remain on a
+        # distant staging route, and the actual bearings still have to form a
+        # closed convex surround. This is stricter visually than allowing a
+        # missing boat, but does not require an exact mathematical slot.
+        annulus_ready = (
+            len(agents) >= 3
+            and assessment.target_inside
+            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 1e-6
+            and min(actual_radii, default=0.0) >= 13.5
+            and max(actual_radii, default=float("inf")) <= self.outer_formation_radius + 15.0
+        )
+        lower_radius = 13.5
+        upper_radius = self.outer_formation_radius + 15.0
+        in_band_count = sum(
+            lower_radius <= radius <= upper_radius
+            for radius in actual_radii
+        )
+        gap_score = max(
+            0.0,
+            min(1.0, 1.0 - assessment.combined_max_gap_deg / max(180.0, max_gap_limit_deg)),
+        )
+        radial_score = in_band_count / max(1, len(agents))
+        containment_confidence = min(
+            1.0,
+            (0.35 if assessment.target_inside else 0.0)
+            + gap_score * 0.35
+            + radial_score * 0.30,
+        )
+        self.last_containment_confidence = containment_confidence
+        coarse_containment = self.mission_active and pursuit_complete and annulus_ready
+        if coarse_containment and self.containment_candidate_at_sequence is None:
+            self.containment_candidate_at_sequence = self.sequence
+        expected_usv_radius = sum(slot.radius for slot in self.usv_slot_specs) / max(1, len(self.usv_slot_specs))
+        expected_uav_radius = sum(slot.radius for slot in self.uav_slot_specs) / max(1, len(self.uav_slot_specs))
+        usv_mean_radius = sum(usv_radii) / max(1, len(usv_radii))
+        uav_mean_radius = sum(uav_radii) / max(1, len(uav_radii))
+        # Compact fleets are visually sensitive: three craft must reach their
+        # intended radius and four craft must form a genuinely even cross.
+        # Larger fleets use the collision-safe annulus and whole-fleet hull,
+        # because exact per-type bearings would conflict with multi-ring hull
+        # separation even though the target is already surrounded.
+        domain_formation_ready = (
+            ring_geometry_ready
+            and
+            (len(usv_radii) != 3 or abs(usv_mean_radius - expected_usv_radius) <= 1.15)
+            and (len(uav_radii) != 3 or abs(uav_mean_radius - expected_uav_radius) <= 1.35)
+            and (len(usv_angles) != 4 or math.degrees(usv_angular_error) <= 18.0)
+            and (len(uav_angles) != 4 or math.degrees(uav_angular_error) <= 18.0)
+        )
+        visible_chase_complete = (
+            self.target_travelled_distance >= self.required_pursuit_distance + 20.0
+        )
         formation_ready = (
-            captured
-            and len(usv_radii) == 3
-            and len(uav_radii) == 3
-            and all(abs(radius - 22.0) <= 1.0 for radius in usv_radii)
-            and all(abs(radius - 30.0) <= 1.2 for radius in uav_radii)
+            self.mission_active
+            # Completion is forbidden during the initial escape run even if
+            # a lucky spawn already resembles a ring.  The extra 20 metres is
+            # the visually observable chase segment promised by the UI.
+            and visible_chase_complete
+            # The broad annulus is only a convergence trigger. Completion
+            # additionally requires every physical ring to be radially seated
+            # and, where geometrically meaningful, angularly closed.
+            and annulus_ready
+            and domain_formation_ready
         )
         if formation_ready and self.formation_ready_at_sequence is None:
             self.formation_ready_at_sequence = self.sequence
         elif not formation_ready:
             self.formation_ready_at_sequence = None
-        phase = (
-            "CAPTURED"
-            if formation_ready
-            else ("TRANSIT" if mean_distance > 35.0 else "ENCIRCLEMENT")
+        hold_frames = (
+            self.sequence - self.formation_ready_at_sequence + 1
+            if self.formation_ready_at_sequence is not None
+            else 0
         )
+        if (
+            formation_ready
+            and hold_frames >= self.capture_hold_frames
+            and self.captured_at_sequence is None
+        ):
+            self.captured_at_sequence = self.sequence
+            guard_ids = {int(raw[7]) for raw in self.env.agents}
+            self.env.guarding_agents[0] = guard_ids
+            self.env.permanently_captured.add(0)
+            self.target_behavior_state = "CAPTURED"
+            self.target_velocity = (0.0, 0.0)
+        captured = self.captured_at_sequence is not None
+        formation_held = formation_ready or captured
+        phase = (
+            "PREVIEW"
+            if preview
+            else "CAPTURED"
+            if captured
+            else "ESCAPE_PURSUIT"
+            if not pursuit_complete
+            else "INTERCEPTING"
+            if mean_distance > max(42.0, self.outer_formation_radius + 12.0)
+            else "ENCIRCLEMENT"
+        )
+        pursuit_progress = min(
+            1.0,
+            self.target_travelled_distance / max(1.0, self.required_pursuit_distance),
+        )
+        if preview:
+            raw_progress = 0.0
+        elif not pursuit_complete:
+            raw_progress = pursuit_progress * 0.35
+        elif formation_ready:
+            raw_progress = 0.90 + 0.10 * min(1.0, hold_frames / self.capture_hold_frames)
+        else:
+            raw_progress = 0.35 + containment_confidence * 0.55
+        if captured:
+            self.display_progress = 1.0
+        elif not preview and raw_progress > self.display_progress + 0.005:
+            self.display_progress = min(0.99, raw_progress)
+            self.progress_best_sequence = self.sequence
+        elif not preview:
+            self.display_progress = max(self.display_progress, min(0.99, raw_progress))
+
+        if preview:
+            capture_blocker = "PREVIEW_NOT_STARTED"
+        elif not visible_chase_complete:
+            capture_blocker = "PURSUIT_DISTANCE"
+        elif not assessment.target_inside:
+            capture_blocker = "TARGET_OUTSIDE_HULL"
+        elif assessment.combined_max_gap_deg > max_gap_limit_deg + 1e-6:
+            capture_blocker = "ANGULAR_GAP"
+        elif min(actual_radii, default=0.0) < lower_radius:
+            capture_blocker = "INNER_RADIUS"
+        elif max(actual_radii, default=float("inf")) > upper_radius:
+            capture_blocker = "OUTER_RADIUS"
+        elif not ring_geometry_ready:
+            capture_blocker = "RING_GEOMETRY"
+        elif not formation_ready:
+            capture_blocker = "SLOT_CONFLICT"
+        elif not captured:
+            capture_blocker = "HOLD_CONFIRMATION"
+        else:
+            capture_blocker = "NONE"
+
+        stalled = (
+            not preview
+            and pursuit_complete
+            and not captured
+            and phase == "ENCIRCLEMENT"
+            and not coarse_containment
+            and self.containment_candidate_at_sequence is None
+            and self.sequence - self.progress_best_sequence >= 80
+        )
+        if stalled and self.sequence - self.last_replan_sequence >= 80:
+            self.replan_count += 1
+            self.last_replan_sequence = self.sequence
+            self.progress_best_sequence = self.sequence
+            self._rotate_capture_slots()
+            gap_direction = self._largest_gap_direction(
+                (safe_target.x, safe_target.y, safe_target.z),
+                [(agent.x, agent.y, agent.z) for agent in agents],
+            )
+            if gap_direction is not None:
+                self.target_escape_direction = gap_direction
         metrics = {
-            "progress": 1.0 if captured else round(min(0.95, max(0.0, 1.0 - mean_distance / max(1.0, self.initial_mean_distance))), 3),
+            "progress": round(self.display_progress, 3),
             "captured": captured,
-            "formationReady": formation_ready,
-            "captureAgents": len(
-                self.env.guarding_agents.get(0, set())
-                if captured
-                else self.env.target_captors.get(0, set())
-            ),
-            "requiredCaptureAgents": 6,
+            "formationReady": formation_held,
+            "captureAgents": len(agents) if formation_held else in_band_count,
+            "requiredCaptureAgents": assessment.required,
+            "capability": assessment.capability,
+            "targetInsideFormation": assessment.target_inside,
+            "combinedMaxGapDeg": round(assessment.combined_max_gap_deg, 2),
+            "maxAllowedGapDeg": round(max_gap_limit_deg, 2),
+            "maximumSlotError": round(assessment.radial_error, 2),
+            "minimumRadiusM": round(min(actual_radii, default=0.0), 2),
+            "maximumRadiusM": round(max(actual_radii, default=0.0), 2),
+            "allowedRadiusBandM": [round(lower_radius, 2), round(upper_radius, 2)],
+            "containmentConfidence": round(containment_confidence, 3),
+            "coarseContainment": coarse_containment,
+            "domainFormationReady": domain_formation_ready,
+            "ringGeometryReady": ring_geometry_ready,
+            "ringDiagnostics": ring_diagnostics,
+            "captureHoldFrames": hold_frames,
+            "requiredCaptureHoldFrames": self.capture_hold_frames,
+            "captureBlocker": capture_blocker,
+            "replanCount": self.replan_count,
             "avoidanceCount": self.avoidance_count,
             "totalDistance": round(float(self.env.total_travel_distance), 3),
             "meanDistanceToTarget": round(mean_distance, 3),
-            "captureRadius": 45.0,
-            "usvFormationRadius": 22.0,
-            "uavFormationRadius": 30.0,
+            "targetTravelDistanceM": round(self.target_travelled_distance, 3),
+            "requiredPursuitDistanceM": round(self.required_pursuit_distance, 3),
+            "pursuitProgress": round(pursuit_progress, 3),
+            "targetSpeedMps": round(math.hypot(*self.target_velocity), 3),
+            "targetBehavior": self.target_behavior_state,
+            "operationalBoundaryClearanceM": round(
+                self._operational_clearance(safe_target.x, safe_target.y),
+                2,
+            ),
+            "targetNetDisplacementM": round(
+                math.hypot(
+                    safe_target.x - self.target_start_scene[0],
+                    safe_target.y - self.target_start_scene[1],
+                ),
+                3,
+            ),
+            "captureRadius": round(max(slot.radius for slot in self.usv_slot_specs + self.uav_slot_specs), 2),
+            "usvFormationRadius": round(self.usv_formation_radius_scene, 2),
+            "uavFormationRadius": round(self.uav_slot_specs[0].radius, 2),
             "uavFormationAltitude": 26.0,
+            "usvFormationRings": 1 + max(slot.ring for slot in self.usv_slot_specs),
+            "uavFormationRings": 1 + max(slot.ring for slot in self.uav_slot_specs),
+            "usvAngularErrorDeg": round(math.degrees(usv_angular_error), 2),
+            "uavAngularErrorDeg": round(math.degrees(uav_angular_error), 2),
             "minimumUsvSpacing": round(
                 self.safety.required_separation("USV", "USV"),
                 2,
@@ -317,7 +1339,7 @@ class CaptureAdapter(AlgorithmAdapter):
             agents,
             [
                 TargetFrame(
-                    "TARGET",
+                    "TARGET-001",
                     "CAPTURE_TARGET",
                     safe_target.x,
                     safe_target.y,
@@ -332,10 +1354,6 @@ class CaptureAdapter(AlgorithmAdapter):
                         else math.degrees(float(self.env.targets[0, 4])) % 360.0
                     ),
                 ),
-                # The protected vessel belongs to the shared scene. It remains
-                # stationary during capture and becomes route-driven only in
-                # the escort algorithm.
-                TargetFrame("ESCORT_TARGET", "ESCORT_TARGET", *escort_scene, 0.0),
             ],
             metrics,
             # Obstacles stay authoritative in the safety solver but are hidden
@@ -343,9 +1361,7 @@ class CaptureAdapter(AlgorithmAdapter):
             obstacles=[],
             terminalStatus=(
                 "COMPLETED"
-                if formation_ready
-                and self.formation_ready_at_sequence is not None
-                and self.sequence >= self.formation_ready_at_sequence + 20
+                if self.captured_at_sequence is not None
                 else None
             ),
         )

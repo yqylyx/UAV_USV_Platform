@@ -61,3 +61,12 @@ export async function placeEscortThreat(runId: number, x: number, y: number): Pr
   })
   return response.data.data
 }
+
+export async function activateEscortCapture(runId: number, threatCode?: string): Promise<AlgorithmRuntimeStatus> {
+  const csrf = await fetchCsrfToken()
+  const response = await http.post<ApiResponse<AlgorithmRuntimeStatus>>(`/algorithm-runs/${runId}/active-capture`, undefined, {
+    params: threatCode ? { threatCode } : undefined,
+    headers: { [csrf.headerName]: csrf.token },
+  })
+  return response.data.data
+}

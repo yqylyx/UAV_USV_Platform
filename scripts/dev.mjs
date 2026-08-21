@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -11,10 +11,52 @@ const healthUrl = `http://127.0.0.1:${resolvedBackendPort}/actuator/health`
 const processes = []
 let stopping = false
 
+function resolvePythonCommand() {
+  const candidates = [
+    process.env.APP_ALGORITHM_PYTHON_COMMAND,
+    process.env.PYTHON_EXECUTABLE,
+    ...(['Python313', 'Python312', 'Python311', 'Python310', 'Python39'].map(version => (
+      process.env.LOCALAPPDATA
+        ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Python', version, 'python.exe')
+        : ''
+    ))),
+    process.env.USERPROFILE
+      ? path.join(
+        process.env.USERPROFILE,
+        '.cache', 'codex-runtimes', 'codex-primary-runtime',
+        'dependencies', 'python', 'python.exe',
+      )
+      : '',
+    isWindows ? 'python.exe' : 'python3',
+    'python',
+  ].filter(Boolean)
+  for (const candidate of candidates) {
+    const check = spawnSync(candidate, ['-c', 'import numpy'], {
+      cwd: root,
+      windowsHide: true,
+      stdio: 'ignore',
+      timeout: 5000,
+    })
+    if (!check.error && check.status === 0) return candidate
+  }
+  return isWindows ? 'python.exe' : 'python3'
+}
+
+const pythonCommand = resolvePythonCommand()
+console.log(`Algorithm Python: ${pythonCommand}`)
+
 const backend = spawn(
   path.join(root, 'backend', isWindows ? 'mvnw.cmd' : 'mvnw'),
   ['-f', path.join(root, 'backend', 'pom.xml'), 'spring-boot:run'],
-  { cwd: root, shell: isWindows, stdio: 'inherit' },
+  {
+    cwd: root,
+    shell: isWindows,
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      APP_ALGORITHM_PYTHON_COMMAND: pythonCommand,
+    },
+  },
 )
 processes.push(backend)
 

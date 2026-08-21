@@ -356,6 +356,12 @@
             initialSpeedMps: finiteNumber(payload.initialSpeedMps, 0),
             initialHeadingDeg: finiteNumber(payload.initialHeadingDeg, 0),
             seed: finiteNumber(payload.seed, 0),
+            initialPosesCoordinateFrame: String(
+              payload.initialPosesCoordinateFrame || 'GLOBAL_ENU',
+            ),
+            initialPoses: Array.isArray(payload.initialPoses)
+              ? payload.initialPoses.map(normalizePose)
+              : [],
             sceneName: String(payload.sceneName || ''),
             coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
           });

@@ -58,8 +58,8 @@ def run_id_or_default(value: int | None) -> int:
 
 def build_config(args: argparse.Namespace) -> dict[str, Any]:
     return {
-        "uavCount": max(1, min(100, args.uav_count)),
-        "usvCount": max(1, min(100, args.usv_count)),
+        "uavCount": max(1, min(128, args.uav_count)),
+        "usvCount": max(1, min(128, args.usv_count)),
         "targetCount": max(1, min(1, args.target_count)),
         "seed": args.seed,
         "threatFrame": max(1, args.threat_frame),
