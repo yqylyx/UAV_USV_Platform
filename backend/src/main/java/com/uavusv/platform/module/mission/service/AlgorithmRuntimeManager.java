@@ -21,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
-import java.util.Base64;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
@@ -55,8 +54,18 @@ public class AlgorithmRuntimeManager {
     }
 
     public synchronized AlgorithmRuntimeStatusResponse prepare(Long runId, String algorithmCode, Map<String, Object> config) {
-        MissionRun run = requireMatchingRun(runId, algorithmCode);
-        algorithmCatalogService.requireEnabled(run.getAlgorithmCode());
+        Map<String, Object> runtimeConfig = config == null ? Map.of() : config;
+        boolean standaloneVirtualSimulation = Boolean.TRUE.equals(
+                runtimeConfig.get("standaloneVirtualSimulation")
+        ) || "true".equalsIgnoreCase(
+                String.valueOf(runtimeConfig.get("standaloneVirtualSimulation"))
+        );
+        if (!standaloneVirtualSimulation) {
+            MissionRun run = requireMatchingRun(runId, algorithmCode);
+            algorithmCatalogService.requireEnabled(run.getAlgorithmCode());
+        } else {
+            algorithmCatalogService.requireEnabled(algorithmCode);
+        }
         if ("UNITY_SIMPLE_ENCIRCLEMENT".equals(algorithmCode)) {
             return new AlgorithmRuntimeStatusResponse(runId, algorithmCode, "UNITY_NATIVE", 0, null, null);
         }
@@ -74,7 +83,10 @@ public class AlgorithmRuntimeManager {
         if (!Files.isRegularFile(runnerPath)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "算法运行器不存在：" + runnerPath);
         }
+        Path configFile = null;
         try {
+            configFile = Files.createTempFile("uav-usv-algorithm-", ".json");
+            Files.write(configFile, objectMapper.writeValueAsBytes(runtimeConfig));
             List<String> command = new ArrayList<>();
             command.add(pythonCommand);
             command.add(runnerPath.toString());
@@ -82,10 +94,8 @@ public class AlgorithmRuntimeManager {
             command.add(algorithmCode);
             command.add("--run-id");
             command.add(String.valueOf(runId));
-            command.add("--config-base64");
-            command.add(Base64.getEncoder().encodeToString(
-                    objectMapper.writeValueAsBytes(config == null ? Map.of() : config)
-            ));
+            command.add("--config-file");
+            command.add(configFile.toString());
             command.add("--fps");
             command.add("10");
             ProcessBuilder builder = new ProcessBuilder(command);
@@ -98,9 +108,16 @@ public class AlgorithmRuntimeManager {
                     new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)));
             handles.put(runId, handle);
             startReaders(handle);
-            if (!handle.ready.await(12, TimeUnit.SECONDS)) {
+            // The first Python start may build the Matplotlib font cache and
+            // import the vendor simulation, so 12 seconds is too short on a
+            // cold Windows environment.
+            if (!handle.ready.await(60, TimeUnit.SECONDS)) {
                 stopExisting(runId);
                 throw new BusinessException(ErrorCode.BAD_REQUEST, "算法运行器启动超时");
+            }
+            if (!handle.initialFrameReady.await(60, TimeUnit.SECONDS)) {
+                stopExisting(runId);
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "Algorithm initial frame timeout");
             }
             if (handle.error.get() != null) {
                 stopExisting(runId);
@@ -112,6 +129,14 @@ public class AlgorithmRuntimeManager {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new BusinessException(ErrorCode.BAD_REQUEST, "等待算法运行器时被中断");
+        } finally {
+            if (configFile != null) {
+                try {
+                    Files.deleteIfExists(configFile);
+                } catch (IOException ignored) {
+                    // The temporary file is only needed during process startup.
+                }
+            }
         }
     }
 
@@ -201,11 +226,13 @@ public class AlgorithmRuntimeManager {
                     } else if ("frame".equals(eventType)) {
                         JsonNode frame = event.path("payload");
                         handle.latestFrame.set(frame);
-                        handle.latestSequence.set(frame.path("sequence").asLong());
+                        long sequence = frame.path("sequence").asLong();
+                        handle.latestSequence.set(sequence);
                         synchronized (handle.frameBuffer) {
                             handle.frameBuffer.addLast(frame);
-                            while (handle.frameBuffer.size() > 90) handle.frameBuffer.removeFirst();
+                            while (handle.frameBuffer.size() > 300) handle.frameBuffer.removeFirst();
                         }
+                        if (sequence >= 1) handle.initialFrameReady.countDown();
                     } else if ("stateChanged".equals(eventType) || "runtimeStopped".equals(eventType)) {
                         handle.state.set(event.path("state").asText(handle.state.get()));
                     }
@@ -299,6 +326,7 @@ public class AlgorithmRuntimeManager {
         final Process process;
         final BufferedWriter writer;
         final CountDownLatch ready = new CountDownLatch(1);
+        final CountDownLatch initialFrameReady = new CountDownLatch(1);
         final CountDownLatch stderrDone = new CountDownLatch(1);
         final AtomicReference<String> state = new AtomicReference<>("STARTING");
         final AtomicReference<String> error = new AtomicReference<>();

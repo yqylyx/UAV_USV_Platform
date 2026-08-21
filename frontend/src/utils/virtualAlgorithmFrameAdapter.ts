@@ -1,0 +1,258 @@
+import type {
+  AlgorithmAgentFrame,
+  AlgorithmRuntimeFrame,
+  AlgorithmTargetFrame,
+} from '../types/mission'
+
+export const VIRTUAL_SIMULATION_RUNTIME_MODE = 'VIRTUAL_SIMULATION' as const
+export const UAV_MAX_SPEED_MPS = 15
+export const USV_MAX_SPEED_MPS = 2
+export type AlgorithmCoordinateFrame = 'FLEET_LOCAL_ENU' | 'GLOBAL_ENU'
+
+export interface EnuOrigin {
+  eastM: number
+  northM: number
+  upM: number
+}
+
+export interface VirtualAlgorithmFrameAdapterOptions {
+  coordinateFrame?: AlgorithmCoordinateFrame
+  fleetOrigin?: EnuOrigin
+}
+
+export interface VirtualPoseInput {
+  deviceCode: string
+  deviceType?: 'UAV' | 'USV'
+  targetType?: string
+  eastM: number
+  northM: number
+  upM: number
+  headingDeg: number
+  speedMps: number
+  state: string
+  valid: boolean
+}
+
+export interface VirtualPoseBatchPayload {
+  runtimeMode: typeof VIRTUAL_SIMULATION_RUNTIME_MODE
+  coordinateFrame: 'GLOBAL_ENU'
+  runId: number
+  sequence: number
+  sampleTime: number
+  vehicles: VirtualPoseInput[]
+  targets: VirtualPoseInput[]
+}
+
+export interface VirtualPoseState {
+  eastM: number
+  northM: number
+  upM: number
+  timestamp: number
+  headingDeg: number
+}
+
+export type VirtualPoseStateMap = Map<string, VirtualPoseState>
+
+export interface VirtualAlgorithmFrameAdapterResult {
+  payload: VirtualPoseBatchPayload
+  nextState: VirtualPoseStateMap
+  sourceCoordinateFrame: AlgorithmCoordinateFrame
+  fleetOrigin: EnuOrigin
+}
+
+function finiteOr(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function normalizeHeading(value: number) {
+  return ((value % 360) + 360) % 360
+}
+
+function canonicalDeviceCode(code: string, type: 'UAV' | 'USV' | 'TARGET') {
+  const normalized = code.trim().toUpperCase()
+  const match = normalized.match(/(\d+)$/)
+  if (type === 'TARGET') return 'TARGET-001'
+  const number = match ? Number(match[1]) : 1
+  return `${type}-${String(Math.max(1, number)).padStart(3, '0')}`
+}
+
+function canonicalVehicleType(agent: AlgorithmAgentFrame) {
+  return agent.type === 'USV' ? 'USV' : 'UAV'
+}
+
+function resolveCoordinateContext(
+  frame: AlgorithmRuntimeFrame,
+  options: VirtualAlgorithmFrameAdapterOptions,
+) {
+  const coordinateFrame = frame.coordinateFrame ?? options.coordinateFrame
+  if (!coordinateFrame) {
+    throw new Error('Algorithm frame coordinateFrame must be declared')
+  }
+  if (coordinateFrame === 'GLOBAL_ENU') {
+    return {
+      coordinateFrame,
+      fleetOrigin: { eastM: 0, northM: 0, upM: 0 },
+    }
+  }
+
+  const origin = options.fleetOrigin
+  if (
+    !origin
+    || !Number.isFinite(origin.eastM)
+    || !Number.isFinite(origin.northM)
+    || !Number.isFinite(origin.upM)
+  ) {
+    throw new Error('FLEET_LOCAL_ENU requires a finite fleetOrigin')
+  }
+  return {
+    coordinateFrame,
+    fleetOrigin: { ...origin },
+  }
+}
+
+function speedFromDelta(
+  code: string,
+  eastM: number,
+  northM: number,
+  upM: number,
+  timestamp: number,
+  previous: VirtualPoseStateMap,
+) {
+  const prior = previous.get(code)
+  if (!prior) return 0
+  const elapsedSeconds = (timestamp - prior.timestamp) / 1000
+  if (elapsedSeconds <= 0) return 0
+  const distance = Math.hypot(
+    eastM - prior.eastM,
+    northM - prior.northM,
+    upM - prior.upM,
+  )
+  return distance / elapsedSeconds
+}
+
+function poseFromAgent(
+  agent: AlgorithmAgentFrame,
+  frame: AlgorithmRuntimeFrame,
+  previous: VirtualPoseStateMap,
+  origin: EnuOrigin,
+): VirtualPoseInput {
+  const deviceType = canonicalVehicleType(agent)
+  const deviceCode = canonicalDeviceCode(agent.code, deviceType)
+  const eastM = finiteOr(agent.x, 0) + origin.eastM
+  const northM = finiteOr(agent.y, 0) + origin.northM
+  const upM = finiteOr(agent.z, deviceType === 'UAV' ? 25 : 0) + origin.upM
+  const prior = previous.get(deviceCode)
+  const deltaEast = prior ? eastM - prior.eastM : 0
+  const deltaNorth = prior ? northM - prior.northM : 0
+  const heading = Math.hypot(deltaEast, deltaNorth) > 0.0001
+    ? Math.atan2(deltaEast, deltaNorth) * 180 / Math.PI
+    : finiteOr(agent.heading, prior?.headingDeg ?? 0)
+  const maxSpeed = deviceType === 'UAV' ? UAV_MAX_SPEED_MPS : USV_MAX_SPEED_MPS
+  const speedMps = Math.min(
+    maxSpeed,
+    Math.max(0, speedFromDelta(deviceCode, eastM, northM, upM, frame.timestamp, previous)),
+  )
+
+  return {
+    deviceCode,
+    deviceType,
+    eastM,
+    northM,
+    upM,
+    headingDeg: normalizeHeading(heading),
+    speedMps,
+    state: agent.status || (deviceType === 'UAV' ? 'AIRBORNE' : 'SAILING'),
+    valid: true,
+  }
+}
+
+function poseFromTarget(
+  target: AlgorithmTargetFrame,
+  frame: AlgorithmRuntimeFrame,
+  previous: VirtualPoseStateMap,
+  origin: EnuOrigin,
+): VirtualPoseInput {
+  const deviceCode = canonicalDeviceCode(target.code, 'TARGET')
+  const eastM = finiteOr(target.x, 0) + origin.eastM
+  const northM = finiteOr(target.y, 0) + origin.northM
+  const upM = finiteOr(target.z, 0) + origin.upM
+  const prior = previous.get(deviceCode)
+  const deltaEast = prior ? eastM - prior.eastM : 0
+  const deltaNorth = prior ? northM - prior.northM : 0
+  const heading = Math.hypot(deltaEast, deltaNorth) > 0.0001
+    ? Math.atan2(deltaEast, deltaNorth) * 180 / Math.PI
+    : finiteOr(target.heading, prior?.headingDeg ?? 0)
+
+  return {
+    deviceCode,
+    targetType: target.type,
+    eastM,
+    northM,
+    upM,
+    headingDeg: normalizeHeading(heading),
+    speedMps: 0,
+    state: target.visible === false ? 'HIDDEN' : target.type,
+    valid: target.visible !== false,
+  }
+}
+
+function rememberPose(
+  state: VirtualPoseStateMap,
+  pose: VirtualPoseInput,
+  timestamp: number,
+) {
+  state.set(pose.deviceCode, {
+    eastM: pose.eastM,
+    northM: pose.northM,
+    upM: pose.upM,
+    timestamp,
+    headingDeg: pose.headingDeg,
+  })
+}
+
+export function adaptVirtualAlgorithmFrame(
+  frame: AlgorithmRuntimeFrame,
+  previous: VirtualPoseStateMap = new Map(),
+  options: VirtualAlgorithmFrameAdapterOptions = {},
+): VirtualAlgorithmFrameAdapterResult {
+  if (!Number.isInteger(frame.runId) || frame.runId <= 0) {
+    throw new Error('Algorithm frame runId must be a positive integer')
+  }
+  if (!Number.isInteger(frame.sequence) || frame.sequence <= 0) {
+    throw new Error('Algorithm frame sequence must be a positive integer')
+  }
+  if (!Number.isFinite(frame.timestamp)) {
+    throw new Error('Algorithm frame timestamp must be finite')
+  }
+
+  const { coordinateFrame, fleetOrigin } = resolveCoordinateContext(frame, options)
+  const nextState = new Map(previous)
+  const vehicles = frame.agents.map(
+    agent => poseFromAgent(agent, frame, previous, fleetOrigin),
+  )
+  const visibleTargets = frame.targets.filter(target => target.visible !== false)
+  const hasThreatTarget = visibleTargets.some(target => target.type === 'THREAT_TARGET')
+  const targets = visibleTargets
+    // Unity currently exposes one target device. During escort runs the
+    // threat owns TARGET-001; ESCORT_TARGET remains an internal algorithm
+    // reference and must not overwrite or duplicate the rendered enemy.
+    .filter(target => !hasThreatTarget || target.type !== 'ESCORT_TARGET')
+    .map(target => poseFromTarget(target, frame, previous, fleetOrigin))
+
+  for (const pose of [...vehicles, ...targets]) rememberPose(nextState, pose, frame.timestamp)
+
+  return {
+    payload: {
+      runtimeMode: VIRTUAL_SIMULATION_RUNTIME_MODE,
+      coordinateFrame: 'GLOBAL_ENU',
+      runId: frame.runId,
+      sequence: frame.sequence,
+      sampleTime: frame.timestamp,
+      vehicles,
+      targets,
+    },
+    nextState,
+    sourceCoordinateFrame: coordinateFrame,
+    fleetOrigin,
+  }
+}

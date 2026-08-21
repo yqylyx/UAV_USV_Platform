@@ -1,14 +1,15 @@
-"""单目标随机方向出现与随机角度环绕的 UAV/USV 护航守卫仿真。
+"""单目标随机环绕的 UAV/USV 三维护航守卫仿真。
 
 运行示例：
 
-    python 护航守卫727+3+3+1_Python39.py
-    python 护航守卫727+3+3+1_Python39.py --sensor-radius 12
-    python 护航守卫727+3+3+1_Python39.py --reserve-count 2
+    python 护航守卫10_三维单目标随机环绕_Python39.py
+    python 护航守卫10_三维单目标随机环绕_Python39.py --sensor-radius 12
+    python 护航守卫10_三维单目标随机环绕_Python39.py --reserve-count 2
 
-程序只考虑一个敌方目标。目标从随机方向逐步接近，进入感知范围后触发
-守卫编队；编队形成后，目标沿自身轨道按随机角度段进行顺时针或逆时针
-环绕，并在每段结束时随机决定是否切换方向。
+每架 UAV 在创建时获得 10–50 的随机固定高度，USV、敌方目标和我方
+高价值目标严格保持在 z=0。目标进入感知范围并完成守卫编队后，按随机
+角度段进行顺时针或逆时针环绕。按 N 只重置敌方目标的位置与任务状态，
+不会重置我方目标、UAV/USV 的当前位置或 UAV 高度。
 """
 import argparse
 import math
@@ -23,7 +24,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 NUM_UAV = 3
 NUM_USV = 3
-ESCORT_RESERVE_COUNT = 0 # 允许设置为 0 或 2
+ESCORT_RESERVE_COUNT = 0  # 允许设置为 0 或 2
 
 WORLD_X_MIN = -80.0
 WORLD_X_MAX = 80.0
@@ -44,6 +45,11 @@ SUPPORT_ARC_REAR_OFFSET_DEG = 180.0
 
 DEFAULT_SENSOR_RADIUS = 12.0
 
+UAV_ALTITUDE_MIN = 0.0
+UAV_ALTITUDE_MAX = 7.0
+VIEW_Z_MIN = 0.0
+VIEW_Z_MAX = 55.0
+
 RANDOM_ORBIT_MIN_ANGLE_DEG = 25.0
 RANDOM_ORBIT_MAX_ANGLE_DEG = 120.0
 RANDOM_ORBIT_MIN_SPEED = 0.012
@@ -62,6 +68,29 @@ STATE_LABELS = {
     "forming": "守卫编队中",
     "orbiting": "环绕机动",
 }
+
+
+def horizontal(value: np.ndarray) -> np.ndarray:
+    """Return the horizontal x/y components of a 2-D or 3-D vector."""
+    arr = np.asarray(value, dtype=float)
+    if arr.shape[0] < 2:
+        raise ValueError("a position/vector must contain at least x and y")
+    return arr[:2].copy()
+
+
+def point3(value: np.ndarray, altitude: float = 0.0) -> np.ndarray:
+    """Build a three-dimensional position from horizontal coordinates."""
+    xy = horizontal(value)
+    return np.array([xy[0], xy[1], float(altitude)], dtype=float)
+
+
+def with_altitude(value: np.ndarray, altitude: float) -> np.ndarray:
+    """Copy a position and force its z coordinate to the requested altitude."""
+    return point3(value, altitude)
+
+
+def horizontal_distance(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.linalg.norm(horizontal(a) - horizontal(b)))
 
 
 def normalize(v: np.ndarray, fallback: Optional[np.ndarray] = None) -> np.ndarray:
@@ -93,25 +122,25 @@ def compute_blocker_point(
     r_max: float = 4.0,
     fallback_direction: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, float]:
-    """计算严格位于敌我连线内部的动态核心阻断点。"""
+    """计算严格位于敌我水平连线内部、海拔为 0 的动态核心阻断点。"""
     if not (0.0 < ratio < 1.0):
         raise ValueError("ratio must be in (0, 1)")
     if not (0.0 <= r_min <= r_max):
         raise ValueError("expected 0 <= r_min <= r_max")
-    own = np.asarray(own, dtype=float)
-    enemy = np.asarray(enemy, dtype=float)
-    delta = enemy - own
+    own_xy = horizontal(own)
+    enemy_xy = horizontal(enemy)
+    delta = enemy_xy - own_xy
     distance = float(np.linalg.norm(delta))
     if distance <= EPS:
         delta = normalize(
-            np.array([1.0, 0.0]) if fallback_direction is None else fallback_direction,
+            np.array([1.0, 0.0]) if fallback_direction is None else horizontal(fallback_direction),
             np.array([1.0, 0.0]),
         )
         distance = 1.0
     requested = float(np.clip(ratio * distance, r_min, r_max))
     radius = min(max(distance * 1e-9, requested), distance * (1.0 - 1e-9))
     t = radius / distance
-    return own + t * delta, float(t)
+    return point3(own_xy + t * delta, 0.0), float(t)
 
 
 @dataclass
@@ -121,6 +150,7 @@ class Platform:
     position: np.ndarray
     max_speed: float
     gain: float
+    altitude: float
     role: str = "escort"
     goal: Optional[np.ndarray] = None
     assigned_threat_id: Optional[int] = None
@@ -136,7 +166,7 @@ class ThreatTask:
     state: str = "waiting"
     current_speed_limit: float = 0.0
     detected_frame: Optional[int] = None
-    blocker_point: np.ndarray = field(default_factory=lambda: np.zeros(2, dtype=float))
+    blocker_point: np.ndarray = field(default_factory=lambda: np.zeros(3, dtype=float))
     blocker_t: float = math.nan
     guard_quota: int = 0
     core_guard_index: Optional[int] = None
@@ -204,7 +234,7 @@ class EscortGuardSimulator:
     ) -> None:
         platform_count = int(num_uav) + int(num_usv)
         if num_uav < 0 or num_usv < 0 or platform_count < 6:
-            raise ValueError("The UAV/USV total must be greater than 6")
+            raise ValueError("The UAV/USV total must be at least 6")
         if escort_reserve_count not in {0, 2}:
             raise ValueError("escort_reserve_count must be 0 or 2")
         if support_guard_radius <= own_target_avoid_radius:
@@ -213,7 +243,6 @@ class EscortGuardSimulator:
             raise ValueError("support_arc_half_angle_deg must be in [0, 180)")
         if sensor_radius <= max(guard_arc_radius, support_guard_radius, own_target_avoid_radius):
             raise ValueError("sensor_radius must exceed guard and safety radii")
-            raise ValueError("sensor_radius is too small for two separated guard tracks")
         if not (0.0 < wing_ready_ratio <= 1.0):
             raise ValueError("wing_ready_ratio must be in (0, 1]")
         if not (0.0 < random_orbit_min_angle_deg <= random_orbit_max_angle_deg <= 360.0):
@@ -222,7 +251,6 @@ class EscortGuardSimulator:
             raise ValueError("random orbit speeds must satisfy 0 < min <= max")
         if not (0.0 <= random_orbit_reverse_probability <= 1.0):
             raise ValueError("random_orbit_reverse_probability must be in [0, 1]")
-            raise ValueError("invalid stagger delay range")
 
         self.seed = int(seed)
         self.reset_count = 0
@@ -273,13 +301,12 @@ class EscortGuardSimulator:
         self.world_x_max = float(WORLD_X_MAX)
         self.world_y_min = float(WORLD_Y_MIN)
         self.world_y_max = float(WORLD_Y_MAX)
-        self.initial_own_position = np.array([OWN_START_X, OWN_START_Y], dtype=float)
+        self.initial_own_position = np.array([OWN_START_X, OWN_START_Y, 0.0], dtype=float)
         if not (
             self.world_x_min + self.ring_radius < self.initial_own_position[0] < self.world_x_max - self.ring_radius
             and self.world_y_min + self.ring_radius < self.initial_own_position[1] < self.world_y_max - self.ring_radius
         ):
             raise ValueError("The initial escort position must leave room for the escort ring")
-            raise ValueError("sensor_radius is too small for two separated enemy tracks")
 
         self.forward = np.array([1.0, 0.0], dtype=float)
         self.own_position = self.initial_own_position.copy()
@@ -288,10 +315,16 @@ class EscortGuardSimulator:
         self.frame = 0
         self.paused = False
         self.phase = "正常护航"
-        self.last_message = "敌方目标尚未进入感知范围"
+        # self.last_message = "敌方目标尚未进入感知范围"
+
+        self.last_message = "当前没有敌方目标，请按 N 键随机生成"
 
         self.platforms = self._create_mixed_ring()
-        self.threats = self._create_threat_schedule()
+        # self.threats = self._create_threat_schedule()
+
+        # 初始化时没有敌方目标，按 N 键后再随机生成
+        self.threats: List[ThreatTask] = []
+
         self.reserve_guard_indices: List[int] = []
         self._reserve_slot_offsets: Dict[int, np.ndarray] = {}
         self._reserve_slot_by_index: Dict[int, int] = {}
@@ -352,23 +385,29 @@ class EscortGuardSimulator:
         result: List[Platform] = []
         uav_no = usv_no = 0
         for angle, kind in zip(angles, kinds):
-            position = self.own_position + self.ring_radius * np.array(
+            horizontal_position = horizontal(self.own_position) + self.ring_radius * np.array(
                 [math.cos(angle), math.sin(angle)], dtype=float
             )
             if kind == "UAV":
                 uav_no += 1
-                result.append(Platform(f"U{uav_no}", kind, position, 0.28, 0.42))
+                altitude = float(self.rng.uniform(UAV_ALTITUDE_MIN, UAV_ALTITUDE_MAX))
+                position = point3(horizontal_position, altitude)
+                result.append(Platform(f"U{uav_no}", kind, position, 0.28, 0.42, altitude))
             else:
                 usv_no += 1
-                result.append(Platform(f"S{usv_no}", kind, position, 0.15, 0.32))
+                altitude = 0.0
+                position = point3(horizontal_position, altitude)
+                result.append(Platform(f"S{usv_no}", kind, position, 0.15, 0.32, altitude))
         return result
 
     def _create_threat_schedule(self) -> List[ThreatTask]:
         """Create exactly one target at a uniformly random bearing."""
         angle = float(self.rng.uniform(0.0, 2.0 * math.pi))
-        radius = float(self.rng.uniform(self.sensor_radius + 6.0, self.sensor_radius + 12.0))
-        position = self.own_position + radius * np.array(
-            [math.cos(angle), math.sin(angle)], dtype=float
+        radius = float(self.rng.uniform(self.sensor_radius + 4.0, self.sensor_radius + 8.0))
+        position = point3(
+            horizontal(self.own_position)
+            + radius * np.array([math.cos(angle), math.sin(angle)], dtype=float),
+            0.0,
         )
         return [
             ThreatTask(
@@ -402,17 +441,15 @@ class EscortGuardSimulator:
         task.orbit_segment_count += 1
 
     def reset(self) -> None:
+        """只重置敌方目标；保留我方目标、平台位置和 UAV 固定高度。"""
         self.reset_count += 1
-        self.rng = np.random.default_rng(self.seed + self.reset_count)
-        self.own_position = self.initial_own_position.copy()
-        self.own_goal = self.own_position.copy()
-        self.avoid_direction = np.zeros(2, dtype=float)
-        self.frame = 0
-        self.paused = False
-        self.phase = "正常护航"
-        self.last_message = "场景已重置"
-        self.platforms = self._create_mixed_ring()
-        self.threats = self._create_threat_schedule()
+        for platform in self.platforms:
+            platform.role = "escort"
+            platform.goal = platform.position.copy()
+            platform.assigned_threat_id = None
+            # 双重约束高度，防止外部修改后重置造成高度漂移。
+            platform.position[2] = platform.altitude if platform.kind == "UAV" else 0.0
+
         self.reserve_guard_indices = []
         self._reserve_slot_offsets = {}
         self._reserve_slot_by_index = {}
@@ -420,6 +457,28 @@ class EscortGuardSimulator:
         self._support_slot_by_index = {}
         self._last_detected_ids = ()
         self._own_target_bypass_side = {}
+        self.avoid_direction = np.zeros(2, dtype=float)
+
+        angle = float(self.rng.uniform(0.0, 2.0 * math.pi))
+        radius = float(self.rng.uniform(self.sensor_radius + 4.0, self.sensor_radius + 8.0))
+        position = point3(
+            horizontal(self.own_position)
+            + radius * np.array([math.cos(angle), math.sin(angle)], dtype=float),
+            0.0,
+        )
+        self.threats = [
+            ThreatTask(
+                threat_id=1,
+                spawn_frame=self.frame,
+                spawn_angle=angle,
+                spawn_radius=radius,
+                position=position,
+                state="approaching",
+                current_speed_limit=self.enemy_approach_speed,
+            )
+        ]
+        self.phase = "正常护航"
+        self.last_message = "仅敌方目标位置已重置；我方编队与 UAV 高度保持不变"
 
     def toggle_pause(self) -> bool:
         self.paused = not self.paused
@@ -428,8 +487,11 @@ class EscortGuardSimulator:
     def _spawn_due_threats(self) -> None:
         for task in self.threats:
             if task.state == "waiting" and self.frame >= task.spawn_frame:
-                task.position = self.own_position + task.spawn_radius * np.array(
-                    [math.cos(task.spawn_angle), math.sin(task.spawn_angle)], dtype=float
+                task.position = point3(
+                    horizontal(self.own_position)
+                    + task.spawn_radius
+                    * np.array([math.cos(task.spawn_angle), math.sin(task.spawn_angle)], dtype=float),
+                    0.0,
                 )
                 task.state = "approaching"
                 task.current_speed_limit = self.enemy_approach_speed
@@ -438,36 +500,40 @@ class EscortGuardSimulator:
     def _move_point_toward(
         self, current: np.ndarray, desired: np.ndarray, speed_limit: float
     ) -> np.ndarray:
-        delta = np.asarray(desired, dtype=float) - np.asarray(current, dtype=float)
+        current_arr = np.asarray(current, dtype=float)
+        desired_arr = np.asarray(desired, dtype=float)
+        delta = horizontal(desired_arr) - horizontal(current_arr)
         distance = float(np.linalg.norm(delta))
         max_step = max(0.0, float(speed_limit)) * self.dt
+        result = current_arr.copy()
         if distance <= max_step + EPS:
-            return np.asarray(desired, dtype=float).copy()
-        return np.asarray(current, dtype=float) + delta * (max_step / (distance + EPS))
+            result[:2] = horizontal(desired_arr)
+        else:
+            result[:2] = horizontal(current_arr) + delta * (max_step / (distance + EPS))
+        result[2] = current_arr[2] if current_arr.shape[0] >= 3 else 0.0
+        return result
 
     def _move_enemy(self, task: ThreatTask) -> None:
         if task.state == "waiting":
             task.current_speed_limit = 0.0
+            task.position[2] = 0.0
             return
-        relative = task.position - self.own_position
-        distance = float(np.linalg.norm(relative))
+        relative = horizontal(task.position) - horizontal(self.own_position)
         direction = normalize(relative, np.array([1.0, 0.0]))
         if task.state == "approaching":
             task.current_speed_limit = self.enemy_approach_speed
-            desired = self.own_position
+            desired = with_altitude(self.own_position, 0.0)
             task.position = self._move_point_toward(task.position, desired, task.current_speed_limit)
             task.position = self._clip_position_to_world(task.position, margin=0.2)
+            task.position[2] = 0.0
             return
         if task.state in {"detected", "forming"}:
             task.current_speed_limit = self.enemy_forming_speed
-            # 每个敌方目标只接近到自己的最终受控轨道。目标到达自身轨道后立即停止径向逼近；在守卫队形尚未完成时，
-            # 仅维持当前方位和指定半径，不再继续靠近高价值目标。
             target_radius = self._controlled_track_radius(task)
-            desired = self.own_position + direction * target_radius
-            task.position = self._move_point_toward(
-                task.position, desired, task.current_speed_limit
-            )
+            desired = point3(horizontal(self.own_position) + direction * target_radius, 0.0)
+            task.position = self._move_point_toward(task.position, desired, task.current_speed_limit)
             task.position = self._clip_position_to_world(task.position, margin=0.2)
+            task.position[2] = 0.0
             return
         task.current_speed_limit = self.enemy_controlled_speed
         if task.state == "orbiting":
@@ -478,16 +544,16 @@ class EscortGuardSimulator:
                 task.orbit_angular_speed_current * self.dt,
             )
             task.controlled_angle += task.orbit_direction * angular_step
-            task.orbit_segment_remaining = max(
-                0.0, task.orbit_segment_remaining - angular_step
+            task.orbit_segment_remaining = max(0.0, task.orbit_segment_remaining - angular_step)
+            desired = point3(
+                horizontal(self.own_position)
+                + task.controlled_radius
+                * np.array([math.cos(task.controlled_angle), math.sin(task.controlled_angle)], dtype=float),
+                0.0,
             )
-            desired = self.own_position + task.controlled_radius * np.array(
-                [math.cos(task.controlled_angle), math.sin(task.controlled_angle)], dtype=float
-            )
-            task.position = self._move_point_toward(
-                task.position, desired, task.current_speed_limit
-            )
+            task.position = self._move_point_toward(task.position, desired, task.current_speed_limit)
             task.position = self._clip_position_to_world(task.position, margin=0.2)
+            task.position[2] = 0.0
             if task.orbit_segment_remaining <= EPS:
                 self._start_random_orbit_segment(task)
             return
@@ -497,7 +563,7 @@ class EscortGuardSimulator:
         for task in self.threats:
             if task.state != "approaching":
                 continue
-            distance = float(np.linalg.norm(task.position - self.own_position))
+            distance = horizontal_distance(task.position, self.own_position)
             if distance <= self.sensor_radius + EPS:
                 task.state = "detected"
                 task.detected_frame = self.frame
@@ -506,7 +572,7 @@ class EscortGuardSimulator:
         return changed
 
     def _threat_geometry(self, task: ThreatTask) -> Tuple[np.ndarray, np.ndarray, float]:
-        delta = task.position - self.own_position
+        delta = horizontal(task.position) - horizontal(self.own_position)
         distance = float(np.linalg.norm(delta))
         return delta, normalize(delta, self.forward), distance
 
@@ -601,11 +667,10 @@ class EscortGuardSimulator:
         tasks = self.detected_threats
         if not tasks:
             return []
-        # 保留对当前威胁平均到达时间最长的平台，尽量不占用最适合拦截的成员。
         scores = []
         for index, platform in enumerate(self.platforms):
             costs = [
-                np.linalg.norm(platform.position - task.blocker_point)
+                horizontal_distance(platform.position, task.blocker_point)
                 / (platform.max_speed + EPS)
                 for task in tasks
             ]
@@ -645,15 +710,18 @@ class EscortGuardSimulator:
         else:
             angles = np.linspace(-half_angle, half_angle, wing_count)
         return [
-            self.own_position
-            + radius * (math.cos(phi) * threat_dir + math.sin(phi) * lateral)
+            point3(
+                horizontal(self.own_position)
+                + radius * (math.cos(phi) * threat_dir + math.sin(phi) * lateral),
+                0.0,
+            )
             for phi in angles
         ]
 
     def support_goals(
         self, task_or_id: Union[ThreatTask, int], count: Optional[int] = None
     ) -> List[np.ndarray]:
-        """Return a rear support arc that rotates with one detected threat."""
+        """Return a rear support arc on the sea plane that rotates with the threat."""
         task = task_or_id if isinstance(task_or_id, ThreatTask) else self.get_threat(task_or_id)
         support_count = len(self.support_guard_indices) if count is None else int(count)
         if support_count <= 0:
@@ -669,18 +737,18 @@ class EscortGuardSimulator:
             dtype=float,
         )
         lateral = rotate90(center_dir)
+        angles: Iterable[float]
         if support_count == 1:
-            angles: Iterable[float] = [0.0]
+            angles = [0.0]
         else:
-            angles = np.linspace(
-                -self.support_arc_half_angle,
-                self.support_arc_half_angle,
-                support_count,
-            )
+            angles = np.linspace(-self.support_arc_half_angle, self.support_arc_half_angle, support_count)
         return [
-            self.own_position
-            + self.support_guard_radius
-            * (math.cos(phi) * center_dir + math.sin(phi) * lateral)
+            point3(
+                horizontal(self.own_position)
+                + self.support_guard_radius
+                * (math.cos(phi) * center_dir + math.sin(phi) * lateral),
+                0.0,
+            )
             for phi in angles
         ]
 
@@ -702,7 +770,8 @@ class EscortGuardSimulator:
         result: Dict[int, np.ndarray] = {}
         for index, slot in self._reserve_slot_by_index.items():
             if slot < len(offsets):
-                result[index] = self.own_position + offsets[slot]
+                platform = self.platforms[index]
+                result[index] = point3(horizontal(self.own_position) + offsets[slot], platform.altitude)
         return result
 
     def _assign_reserve_slots(self) -> None:
@@ -714,9 +783,9 @@ class EscortGuardSimulator:
         candidates = self.reserve_guard_indices
         cost = np.zeros((len(offsets), len(candidates)), dtype=float)
         for row, offset in enumerate(offsets):
-            goal = self.own_position + offset
+            goal = point3(horizontal(self.own_position) + offset, 0.0)
             for col, index in enumerate(candidates):
-                cost[row, col] = np.linalg.norm(self.platforms[index].position - goal)
+                cost[row, col] = horizontal_distance(self.platforms[index].position, goal)
         assignment = self._minimum_cost_assignment(cost)
         for slot, column in enumerate(assignment):
             index = candidates[column]
@@ -729,7 +798,7 @@ class EscortGuardSimulator:
             return
         core = self.platforms[task.core_guard_index]
         task.core_dispatch_origin = core.position.copy()
-        task.core_dispatch_initial_distance = float(np.linalg.norm(core.position - task.blocker_point))
+        task.core_dispatch_initial_distance = horizontal_distance(core.position, task.blocker_point)
         task.core_trajectory = [core.position.copy()]
         task.core_motion_state = "moving"
 
@@ -770,7 +839,7 @@ class EscortGuardSimulator:
         for row, task in enumerate(tasks):
             for col, index in enumerate(candidates):
                 platform = self.platforms[index]
-                core_cost[row, col] = np.linalg.norm(platform.position - task.blocker_point) / (
+                core_cost[row, col] = horizontal_distance(platform.position, task.blocker_point) / (
                     platform.max_speed + EPS
                 )
         core_columns = self._minimum_cost_assignment(core_cost)
@@ -789,7 +858,7 @@ class EscortGuardSimulator:
             wing_cost = np.zeros((len(slot_records), len(wing_candidates)), dtype=float)
             for row, (_, _, goal) in enumerate(slot_records):
                 for col, index in enumerate(wing_candidates):
-                    wing_cost[row, col] = np.linalg.norm(self.platforms[index].position - goal)
+                    wing_cost[row, col] = horizontal_distance(self.platforms[index].position, goal)
             wing_columns = self._minimum_cost_assignment(wing_cost)
             for record, column in zip(slot_records, wing_columns):
                 task, slot, _ = record
@@ -808,9 +877,7 @@ class EscortGuardSimulator:
                 support_cost = np.zeros((len(support_goals), len(support_candidates)), dtype=float)
                 for row, goal in enumerate(support_goals):
                     for col, index in enumerate(support_candidates):
-                        support_cost[row, col] = np.linalg.norm(
-                            self.platforms[index].position - goal
-                        )
+                        support_cost[row, col] = horizontal_distance(self.platforms[index].position, goal)
                 support_columns = self._minimum_cost_assignment(support_cost)
                 for slot, column in enumerate(support_columns):
                     index = support_candidates[column]
@@ -877,25 +944,22 @@ class EscortGuardSimulator:
     def _truncate_own_step_for_platforms(
         self, start: np.ndarray, end: np.ndarray
     ) -> np.ndarray:
-        """连续缩短我方目标航步，避免移动中心主动穿入任一平台。"""
-        start = np.asarray(start, dtype=float)
-        end = np.asarray(end, dtype=float)
-        direction = end - start
+        """连续缩短我方目标水平航步，避免移动中心主动穿入任一平台。"""
+        start_xy = horizontal(start)
+        end_xy = horizontal(end)
+        direction = end_xy - start_xy
         a = float(np.dot(direction, direction))
         if a <= EPS:
-            return start.copy()
+            return point3(start_xy, 0.0)
         allowed = 1.0
         radius = self.own_target_avoid_radius
         for platform in self.platforms:
-            relative = start - platform.position
-            # 若当前已贴近边界，只允许沿远离该平台的方向移动。
+            relative = start_xy - horizontal(platform.position)
             start_distance = float(np.linalg.norm(relative))
             if start_distance < radius - 1e-9:
                 allowed = 0.0
                 continue
-            closest_parameter = float(
-                np.clip(-np.dot(relative, direction) / a, 0.0, 1.0)
-            )
+            closest_parameter = float(np.clip(-np.dot(relative, direction) / a, 0.0, 1.0))
             closest = relative + closest_parameter * direction
             if float(np.linalg.norm(closest)) >= radius - 1e-10:
                 continue
@@ -904,23 +968,21 @@ class EscortGuardSimulator:
             discriminant = max(0.0, b * b - 4.0 * a * c)
             root = math.sqrt(discriminant)
             roots = sorted(
-                value for value in (
-                    (-b - root) / (2.0 * a),
-                    (-b + root) / (2.0 * a),
-                )
+                value
+                for value in ((-b - root) / (2.0 * a), (-b + root) / (2.0 * a))
                 if 0.0 <= value <= 1.0
             )
             if roots:
                 allowed = min(allowed, max(0.0, roots[0] - 1e-8))
-        return start + allowed * direction
+        return point3(start_xy + allowed * direction, 0.0)
 
     def _clip_position_to_world(self, position: np.ndarray, margin: float = 0.0) -> np.ndarray:
-        lower = np.array([self.world_x_min + margin, self.world_y_min + margin], dtype=float)
-        upper = np.array([self.world_x_max - margin, self.world_y_max - margin], dtype=float)
-        if np.any(lower > upper):
-            lower = np.minimum(lower, upper)
-            upper = np.maximum(lower, upper)
-        return np.clip(np.asarray(position, dtype=float), lower, upper)
+        result = np.asarray(position, dtype=float).copy()
+        result[0] = float(np.clip(result[0], self.world_x_min + margin, self.world_x_max - margin))
+        result[1] = float(np.clip(result[1], self.world_y_min + margin, self.world_y_max - margin))
+        if result.shape[0] < 3:
+            result = point3(result, 0.0)
+        return result
 
     def _move_own_target(self) -> None:
         if not self.detected_threats:
@@ -928,35 +990,33 @@ class EscortGuardSimulator:
             self.avoid_direction = np.zeros(2, dtype=float)
         else:
             self.avoid_direction = self._resolve_avoid_direction()
-            desired_velocity = (
-                normalize(self.forward) * self.forward_shift
-                + self.avoid_direction * self.avoid_distance
-            )
+            desired_velocity = normalize(self.forward) * self.forward_shift + self.avoid_direction * self.avoid_distance
             velocity = self.own_gain * desired_velocity
         speed = float(np.linalg.norm(velocity))
         if speed > self.own_max_speed:
             velocity *= self.own_max_speed / (speed + EPS)
-        proposed = self.own_position + velocity * self.dt
-        self.own_position = self._truncate_own_step_for_platforms(
-            self.own_position, proposed
-        )
+        proposed = point3(horizontal(self.own_position) + velocity * self.dt, 0.0)
+        self.own_position = self._truncate_own_step_for_platforms(self.own_position, proposed)
         self.own_position = self._clip_position_to_world(self.own_position, margin=0.8)
-        self.own_goal = self.own_position + velocity
+        self.own_position[2] = 0.0
+        self.own_goal = point3(horizontal(self.own_position) + velocity, 0.0)
 
     def _normal_ring_goals(self) -> Dict[int, np.ndarray]:
         count = len(self.platforms)
-        return {
-            index: self.own_position
-            + self.ring_radius * np.array([math.cos(phi), math.sin(phi)], dtype=float)
-            for index, phi in enumerate(np.linspace(0.0, 2.0 * math.pi, count, endpoint=False))
-        }
+        result: Dict[int, np.ndarray] = {}
+        for index, phi in enumerate(np.linspace(0.0, 2.0 * math.pi, count, endpoint=False)):
+            platform = self.platforms[index]
+            result[index] = point3(
+                horizontal(self.own_position)
+                + self.ring_radius * np.array([math.cos(phi), math.sin(phi)], dtype=float),
+                platform.altitude,
+            )
+        return result
 
     def _desired_non_core_goals(self) -> Dict[int, np.ndarray]:
         if not self.detected_threats:
             return self._normal_ring_goals()
 
-        # 未被选为核心/弧线/预留成员的平台继续执行正常环形护航，
-        # 而不是停在原地。随后用守卫弧和贴身护航目标覆盖对应成员。
         result = self._normal_ring_goals()
         for core_index in self._core_guard_indices():
             result.pop(core_index, None)
@@ -964,14 +1024,14 @@ class EscortGuardSimulator:
             goals = self.wing_goals(task)
             for index, slot in task.wing_slot_by_index.items():
                 if slot < len(goals):
-                    result[index] = goals[slot]
+                    result[index] = with_altitude(goals[slot], self.platforms[index].altitude)
 
         if len(self.detected_threats) == 1 and self.support_guard_indices:
             task = self.detected_threats[0]
             support_goals = self.support_goals(task)
             for index, slot in self._support_slot_by_index.items():
                 if slot < len(support_goals):
-                    result[index] = support_goals[slot]
+                    result[index] = with_altitude(support_goals[slot], self.platforms[index].altitude)
 
         result.update(self._current_reserve_goals())
         return result
@@ -986,12 +1046,12 @@ class EscortGuardSimulator:
     def _repulsion_velocity(self, index: int) -> np.ndarray:
         if index in self._core_guard_indices():
             return np.zeros(2, dtype=float)
-        current = self.platforms[index].position
+        current = horizontal(self.platforms[index].position)
         repulsion = np.zeros(2, dtype=float)
         for other_index, other in enumerate(self.platforms):
             if other_index == index:
                 continue
-            diff = current - other.position
+            diff = current - horizontal(other.position)
             distance = float(np.linalg.norm(diff))
             if EPS < distance < self.safe_distance:
                 repulsion += (
@@ -1009,18 +1069,17 @@ class EscortGuardSimulator:
     def _segment_intersects_own_target_circle(
         self, start: np.ndarray, end: np.ndarray, radius: Optional[float] = None
     ) -> bool:
-        start = np.asarray(start, dtype=float)
-        end = np.asarray(end, dtype=float)
+        start_xy = horizontal(start)
+        end_xy = horizontal(end)
+        center = horizontal(self.own_position)
         protected_radius = self.own_target_avoid_radius if radius is None else float(radius)
-        segment = end - start
+        segment = end_xy - start_xy
         denominator = float(np.dot(segment, segment))
         if denominator <= EPS:
-            return float(np.linalg.norm(start - self.own_position)) < protected_radius - EPS
-        parameter = float(
-            np.clip(np.dot(self.own_position - start, segment) / denominator, 0.0, 1.0)
-        )
-        closest = start + parameter * segment
-        return float(np.linalg.norm(closest - self.own_position)) < protected_radius - EPS
+            return float(np.linalg.norm(start_xy - center)) < protected_radius - EPS
+        parameter = float(np.clip(np.dot(center - start_xy, segment) / denominator, 0.0, 1.0))
+        closest = start_xy + parameter * segment
+        return float(np.linalg.norm(closest - center)) < protected_radius - EPS
 
     @staticmethod
     def _directed_arc_delta(start_angle: float, end_angle: float, side: int) -> float:
@@ -1029,10 +1088,10 @@ class EscortGuardSimulator:
         return float((start_angle - end_angle) % (2.0 * math.pi))
 
     def _bypass_path_length(self, current: np.ndarray, goal: np.ndarray, side: int) -> float:
-        center = self.own_position
+        center = horizontal(self.own_position)
         radius = self.own_target_route_radius
-        p = np.asarray(current, dtype=float) - center
-        g = np.asarray(goal, dtype=float) - center
+        p = horizontal(current) - center
+        g = horizontal(goal) - center
         pd = max(float(np.linalg.norm(p)), radius)
         gd = max(float(np.linalg.norm(g)), radius)
         pa = math.atan2(p[1], p[0])
@@ -1060,14 +1119,15 @@ class EscortGuardSimulator:
 
     def _truncate_step_before_safety_circle(self, start: np.ndarray, end: np.ndarray) -> np.ndarray:
         if not self._segment_intersects_own_target_circle(start, end):
-            return np.asarray(end, dtype=float)
-        start = np.asarray(start, dtype=float)
-        end = np.asarray(end, dtype=float)
-        direction = end - start
+            return np.asarray(end, dtype=float).copy()
+        altitude = float(np.asarray(start, dtype=float)[2])
+        start_xy = horizontal(start)
+        end_xy = horizontal(end)
+        direction = end_xy - start_xy
         a = float(np.dot(direction, direction))
         if a <= EPS:
-            return start.copy()
-        relative = start - self.own_position
+            return point3(start_xy, altitude)
+        relative = start_xy - horizontal(self.own_position)
         b = 2.0 * float(np.dot(relative, direction))
         c = float(np.dot(relative, relative) - self.own_target_avoid_radius**2)
         disc = max(0.0, b * b - 4.0 * a * c)
@@ -1075,69 +1135,62 @@ class EscortGuardSimulator:
         roots = [(-b - root) / (2.0 * a), (-b + root) / (2.0 * a)]
         valid = [value for value in roots if 0.0 <= value <= 1.0]
         if not valid:
-            return start.copy()
-        return start + max(0.0, min(valid) - 1e-8) * direction
+            return point3(start_xy, altitude)
+        return point3(start_xy + max(0.0, min(valid) - 1e-8) * direction, altitude)
 
     def _safe_route_waypoint(
         self, index: int, current: np.ndarray, goal: np.ndarray, max_step: float
     ) -> np.ndarray:
-        """用稳定的切向引导连续绕过随船移动的安全圆。"""
-        center = self.own_position
+        """在水平面绕过安全圆，同时保留平台固定高度。"""
+        altitude = self.platforms[index].altitude
+        center = horizontal(self.own_position)
         route_radius = self.own_target_route_radius
-        current = np.asarray(current, dtype=float)
-        goal = np.asarray(goal, dtype=float)
-        current_relative = current - center
-        goal_relative = goal - center
+        current_xy = horizontal(current)
+        goal_xy = horizontal(goal)
+        current_relative = current_xy - center
+        goal_relative = goal_xy - center
         current_distance = float(np.linalg.norm(current_relative))
         goal_distance = float(np.linalg.norm(goal_relative))
 
         if goal_distance < route_radius:
             goal_relative = normalize(goal_relative, current_relative) * route_radius
-            goal = center + goal_relative
+            goal_xy = center + goal_relative
 
-        # 直线路径已经安全时立即恢复直接追踪，并清除旧绕行方向。
-        if (
-            current_distance >= route_radius - 1e-8
-            and not self._segment_intersects_own_target_circle(
-                current, goal, route_radius
-            )
-        ):
+        goal3 = point3(goal_xy, altitude)
+        if current_distance >= route_radius - 1e-8 and not self._segment_intersects_own_target_circle(current, goal3, route_radius):
             self._own_target_bypass_side.pop(index, None)
-            return goal
+            return goal3
 
-        side = self._choose_bypass_side(index, current, goal)
+        side = self._choose_bypass_side(index, current, goal3)
         radial = normalize(current_relative, -goal_relative)
         tangent = side * rotate90(radial)
         radial_error = current_distance - route_radius
-
-        # 距离安全圆较远时一边靠近一边绕行；贴近圆周后以切向运动为主，
-        # 并用径向反馈抵消我方目标移动造成的内外漂移。
         if radial_error > max(0.25, 1.5 * max_step):
             steering = tangent - 0.85 * radial
         else:
-            correction = float(
-                np.clip(-2.5 * radial_error / max(max_step, 1e-6), -1.4, 1.8)
-            )
+            correction = float(np.clip(-2.5 * radial_error / max(max_step, 1e-6), -1.4, 1.8))
             steering = tangent + correction * radial
-        return current + normalize(steering, tangent) * max_step
+        return point3(current_xy + normalize(steering, tangent) * max_step, altitude)
 
     def _move_platform_safely(
         self, index: int, goal: np.ndarray, *, include_repulsion: bool = False
     ) -> None:
         platform = self.platforms[index]
         current = platform.position.copy()
+        goal3 = with_altitude(goal, platform.altitude)
         max_step = platform.max_speed * self.dt
-        waypoint = self._safe_route_waypoint(index, current, np.asarray(goal, dtype=float), max_step)
-        velocity = platform.gain * (waypoint - current)
+        waypoint = self._safe_route_waypoint(index, current, goal3, max_step)
+        velocity = platform.gain * (horizontal(waypoint) - horizontal(current))
         if include_repulsion and index not in self._own_target_bypass_side:
             velocity += self._repulsion_velocity(index)
         speed = float(np.linalg.norm(velocity))
         if speed > platform.max_speed:
             velocity *= platform.max_speed / (speed + EPS)
-        proposed = current + velocity * self.dt
+        proposed = point3(horizontal(current) + velocity * self.dt, platform.altitude)
         proposed = self._truncate_step_before_safety_circle(current, proposed)
         platform.position = self._clip_position_to_world(proposed, margin=0.2)
-        platform.goal = np.asarray(goal, dtype=float).copy()
+        platform.position[2] = platform.altitude if platform.kind == "UAV" else 0.0
+        platform.goal = goal3.copy()
 
     def _move_platforms(self) -> None:
         cores = self._core_guard_indices()
@@ -1149,8 +1202,10 @@ class EscortGuardSimulator:
         for task in self.detected_threats:
             if task.core_guard_index is None:
                 continue
-            self._move_platform_safely(task.core_guard_index, task.blocker_point)
-            core = self.platforms[task.core_guard_index]
+            core_index = task.core_guard_index
+            core_goal = with_altitude(task.blocker_point, self.platforms[core_index].altitude)
+            self._move_platform_safely(core_index, core_goal)
+            core = self.platforms[core_index]
             core.role = "core"
             core.assigned_threat_id = task.threat_id
             task.core_trajectory.append(core.position.copy())
@@ -1162,7 +1217,7 @@ class EscortGuardSimulator:
         task = self.get_threat(threat_id)
         if task.core_guard_index is None:
             return math.inf
-        return float(np.linalg.norm(self.platforms[task.core_guard_index].position - task.blocker_point))
+        return horizontal_distance(self.platforms[task.core_guard_index].position, task.blocker_point)
 
     def core_guard_arrived(self, threat_id: int) -> bool:
         task = self.get_threat(threat_id)
@@ -1179,7 +1234,7 @@ class EscortGuardSimulator:
         for index in task.wing_guard_indices:
             slot = task.wing_slot_by_index[index]
             if slot < len(goals):
-                error = float(np.linalg.norm(self.platforms[index].position - goals[slot]))
+                error = horizontal_distance(self.platforms[index].position, goals[slot])
                 if error <= self.wing_arrival_tolerance:
                     arrived += 1
         return arrived / len(task.wing_guard_indices)
@@ -1202,9 +1257,8 @@ class EscortGuardSimulator:
         )
 
     def controlled_track_error(self, task_or_id: Union[ThreatTask, int]) -> float:
-        """Return the radial error from the threat's own controlled track."""
         task = task_or_id if isinstance(task_or_id, ThreatTask) else self.get_threat(task_or_id)
-        distance = float(np.linalg.norm(task.position - self.own_position))
+        distance = horizontal_distance(task.position, self.own_position)
         return abs(distance - self._controlled_track_radius(task))
 
     def target_on_controlled_track(
@@ -1223,7 +1277,7 @@ class EscortGuardSimulator:
         return self.controlled_track_error(task_or_id) <= tol + EPS
 
     def _enter_controlled_motion(self, task: ThreatTask) -> None:
-        relative = task.position - self.own_position
+        relative = horizontal(task.position) - horizontal(self.own_position)
         task.controlled_radius = self._controlled_track_radius(task)
         task.controlled_angle = math.atan2(relative[1], relative[0])
         task.state = "orbiting"
@@ -1231,9 +1285,7 @@ class EscortGuardSimulator:
         task.orbit_direction_changes = 0
         self._start_random_orbit_segment(task)
         direction_label = "逆时针" if task.orbit_direction > 0 else "顺时针"
-        self.last_message = (
-            f"T1 守卫队形形成，开始随机分段环绕；当前方向：{direction_label}"
-        )
+        self.last_message = f"T1 守卫队形形成，开始随机分段环绕；当前方向：{direction_label}"
 
     def _update_control_transitions(self) -> None:
         for task in self.detected_threats:
@@ -1287,7 +1339,7 @@ class EscortGuardSimulator:
     def status(self) -> Dict[str, object]:
         records = []
         for task in self.threats:
-            distance = float(np.linalg.norm(task.position - self.own_position))
+            distance = horizontal_distance(task.position, self.own_position)
             records.append(
                 {
                     "threat_id": task.threat_id,
@@ -1342,137 +1394,60 @@ class EscortGuardSimulator:
 
 
 class EscortGuardVisualizer:
-    TARGET_COLORS = ("#e53935",)
+    """局部与全局双三维视图。运动控制仍在水平面，Z 轴显示固定高度。"""
+
+    FRIEND_UAV_COLOR = "#00acc1"
+    FRIEND_USV_COLOR = "#43a047"
+    OWN_TARGET_COLOR = "#0d47a1"
+    ENEMY_COLOR = "#e53935"
+    CORE_EDGE_COLOR = "#ffca28"
+    NORMAL_EDGE_COLOR = "#1f2933"
+    SEA_COLOR = "#81d4fa"
 
     def __init__(self, simulator: EscortGuardSimulator) -> None:
         import matplotlib.pyplot as plt
         from matplotlib import font_manager
-        from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch, Polygon, Rectangle
+        from matplotlib.lines import Line2D
 
         self.plt = plt
-        self.Circle = Circle
-        self.Polygon = Polygon
-        self.FancyArrowPatch = FancyArrowPatch
-        self.FancyBboxPatch = FancyBboxPatch
-        self.Rectangle = Rectangle
+        self.Line2D = Line2D
         self.sim = simulator
         self.animation = None
         self.min_view_half_width = 19.0
         self.min_view_half_height = 12.0
-        self.view_half_width = self.min_view_half_width
-        self.view_half_height = self.min_view_half_height
         self.view_padding = 2.5
-        self.view_shrink_smoothing = 0.12
         self.view_aspect_ratio = self.min_view_half_width / self.min_view_half_height
 
-        preferred_fonts = ["Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Arial Unicode MS", "DejaVu Sans"]
+        preferred_fonts = [
+            "Microsoft YaHei",
+            "SimHei",
+            "Noto Sans CJK SC",
+            "Arial Unicode MS",
+            "DejaVu Sans",
+        ]
         noto_path = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc")
         if noto_path.exists():
             try:
                 font_manager.fontManager.addfont(str(noto_path))
-                preferred_fonts.insert(0, font_manager.FontProperties(fname=str(noto_path)).get_name())
+                preferred_fonts.insert(
+                    0, font_manager.FontProperties(fname=str(noto_path)).get_name()
+                )
             except (OSError, RuntimeError, ValueError):
                 pass
         plt.rcParams["font.sans-serif"] = preferred_fonts
         plt.rcParams["axes.unicode_minus"] = False
 
-        self.fig, (self.local_ax, self.global_ax) = plt.subplots(1, 2, figsize=(18, 8.5))
-        self.ax = self.local_ax  # backward-compatible alias for the tracked local view
-        self.fig.subplots_adjust(wspace=0.08, left=0.05, right=0.98, top=0.92, bottom=0.08)
-
-        self.local_view = self._create_view_bundle(
-            self.local_ax, "局部视图（以我方守卫目标为中心）", local=True
-        )
-        self.global_view = self._create_view_bundle(
-            self.global_ax, "全局视图（固定长方形画布）", local=False
+        self.fig = plt.figure(figsize=(18, 8.8))
+        self.local_ax = self.fig.add_subplot(1, 2, 1, projection="3d")
+        self.global_ax = self.fig.add_subplot(1, 2, 2, projection="3d")
+        self.global_ax.view_init(elev=90.0, azim=-90.0)
+        # self.global_ax.set_proj_type("ortho")
+        self.ax = self.local_ax
+        self.fig.subplots_adjust(
+            wspace=0.04, left=0.035, right=0.985, top=0.91, bottom=0.07
         )
         self.fig.canvas.mpl_connect("key_press_event", self.on_key)
         self._refresh_artists()
-
-    def _create_view_bundle(self, ax, title: str, *, local: bool) -> Dict[str, object]:
-        ax.set_aspect("equal", adjustable="box")
-        ax.set_facecolor("#dff4f7")
-        ax.grid(alpha=0.25, linestyle="--")
-        ax.set_xlabel("X / 海里（示意）")
-        ax.set_ylabel("Y / 海里（示意）")
-        ax.set_title(title, fontsize=13, weight="bold")
-
-        boundary = self.Rectangle(
-            (self.sim.world_x_min, self.sim.world_y_min),
-            self.sim.world_x_max - self.sim.world_x_min,
-            self.sim.world_y_max - self.sim.world_y_min,
-            fill=False, linewidth=2.0, linestyle="-", edgecolor="#455a64", alpha=0.85, zorder=0
-        )
-        ax.add_patch(boundary)
-
-        uav_size = LOCAL_UAV_SIZE if local else GLOBAL_UAV_SIZE
-        usv_size = LOCAL_USV_SIZE if local else GLOBAL_USV_SIZE
-        enemy_scale = 1.0 if local else GLOBAL_ENEMY_SCALE
-        own_scale = 1.0 if local else 0.42
-        label_fontsize = 7.8 if local else 4.8
-
-        sensor_circle = self.Circle(
-            tuple(self.sim.own_position), self.sim.sensor_radius,
-            fill=False, linestyle="--", linewidth=1.8, edgecolor="#1976d2", alpha=0.65,
-            label="圆形感知范围", zorder=1,
-        )
-        ax.add_patch(sensor_circle)
-        uav_scatter = ax.scatter([], [], marker="o", s=uav_size, zorder=5, label="UAV")
-        usv_scatter = ax.scatter([], [], marker="s", s=usv_size, zorder=5, label="USV")
-        own_patch = self.FancyBboxPatch(
-            (-1.6 * own_scale, -0.55 * own_scale), 3.2 * own_scale, 1.1 * own_scale,
-            boxstyle="round,pad=0.18,rounding_size=0.18",
-            facecolor="#4472c4", edgecolor="#203864", linewidth=1.8, zorder=6,
-        )
-        ax.add_patch(own_patch)
-        own_text = ax.text(0.0, 0.0, "我方高价值护航目标", ha="center", va="center", color="white", weight="bold", fontsize=9.5 if local else 5.0, zorder=7)
-
-        enemy_patches, enemy_texts, threat_lines, guard_arc_lines, blocker_crosses = [], [], [], [], []
-        support_arc_line, = ax.plot(
-            [], [], "-.", color="#1565c0", linewidth=1.8, alpha=0.78,
-            zorder=2, label="动态支援弧",
-        )
-        for slot in range(self.sim.max_targets):
-            color = self.TARGET_COLORS[slot]
-            patch = self.Polygon(np.zeros((3, 2)), closed=True, facecolor=color, edgecolor="#5d0000", linewidth=1.5 if local else 0.8, zorder=6)
-            ax.add_patch(patch)
-            text = ax.text(0.0, 0.0, "", ha="center", va="center", color="white", weight="bold", fontsize=8 if local else 4.5, zorder=7)
-            line, = ax.plot([], [], "--", color=color, linewidth=1.5, alpha=0.8, zorder=2, label="敌我连线" if slot == 0 else None)
-            arc, = ax.plot([], [], color=color, linewidth=2.0, alpha=0.75, zorder=2, label="防护弧" if slot == 0 else None)
-            cross, = ax.plot([], [], marker="x", markersize=10, markeredgewidth=2.2, color=color, zorder=8, label="阻断点" if slot == 0 else None)
-            enemy_patches.append(patch)
-            enemy_texts.append(text)
-            threat_lines.append(line)
-            guard_arc_lines.append(arc)
-            blocker_crosses.append(cross)
-
-        heading_arrow = self.FancyArrowPatch((0, 0), (2.5, 0), arrowstyle="-|>", mutation_scale=18, linewidth=2.0, color="#1f4e79", zorder=4)
-        ax.add_patch(heading_arrow)
-        avoid_arrow = self.FancyArrowPatch((0, 0), (0, 0), arrowstyle="-|>", mutation_scale=16, linewidth=2.0, linestyle="--", color="#00695c", zorder=4)
-        ax.add_patch(avoid_arrow)
-        platform_labels = [ax.text(0, 0, "", ha="center", va="bottom", fontsize=label_fontsize, zorder=9) for _ in self.sim.platforms]
-        status_text = ax.text(
-            0.985, 0.985, "", transform=ax.transAxes, ha="right", va="top", fontsize=8.8,
-            bbox=dict(facecolor="white", alpha=0.9, edgecolor="#6c757d", boxstyle="round,pad=0.45"), zorder=12,
-        )
-        help_text = ax.text(
-            0.015, 0.015,
-            "Space：暂停/继续   N：按当前参数重置   Esc：关闭\n局部图跟随我方目标；全局图显示固定长方形画布",
-            transform=ax.transAxes, ha="left", va="bottom", fontsize=8.5,
-            bbox=dict(facecolor="white", alpha=0.84, edgecolor="#90a4ae"), zorder=12,
-        )
-        ax.legend(loc="lower right", framealpha=0.9, fontsize=8)
-        return {
-            "ax": ax, "boundary": boundary, "sensor_circle": sensor_circle,
-            "local": local, "enemy_scale": enemy_scale, "own_scale": own_scale,
-            "uav_scatter": uav_scatter, "usv_scatter": usv_scatter,
-            "own_patch": own_patch, "own_text": own_text,
-            "enemy_patches": enemy_patches, "enemy_texts": enemy_texts,
-            "threat_lines": threat_lines, "guard_arc_lines": guard_arc_lines,
-            "blocker_crosses": blocker_crosses, "support_arc_line": support_arc_line,
-            "heading_arrow": heading_arrow, "avoid_arrow": avoid_arrow,
-            "platform_labels": platform_labels, "status_text": status_text, "help_text": help_text,
-        }
 
     def _scene_points_for_view(self) -> np.ndarray:
         points: List[np.ndarray] = [self.sim.own_position.copy()]
@@ -1483,77 +1458,50 @@ class EscortGuardVisualizer:
                 points.append(task.blocker_point.copy())
         return np.asarray(points, dtype=float)
 
-    def _required_view_half_extents(self) -> Tuple[float, float]:
+    def _local_limits(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         points = self._scene_points_for_view()
-        relative = points - self.sim.own_position
+        own_xy = horizontal(self.sim.own_position)
+        relative = points[:, :2] - own_xy if len(points) else np.zeros((1, 2))
         max_x = float(np.max(np.abs(relative[:, 0]))) if len(relative) else 0.0
         max_y = float(np.max(np.abs(relative[:, 1]))) if len(relative) else 0.0
-        width = max(self.min_view_half_width, max_x + self.view_padding)
-        height = max(self.min_view_half_height, max_y + self.view_padding)
-        if width / height < self.view_aspect_ratio:
-            width = height * self.view_aspect_ratio
+        half_width = max(self.min_view_half_width, max_x + self.view_padding)
+        half_height = max(self.min_view_half_height, max_y + self.view_padding)
+        if half_width / half_height < self.view_aspect_ratio:
+            half_width = half_height * self.view_aspect_ratio
         else:
-            height = width / self.view_aspect_ratio
-        return width, height
-
-    def _center_local_view_on_own_target(self) -> None:
-        required_width, required_height = self._required_view_half_extents()
-        if required_width >= self.view_half_width:
-            self.view_half_width = required_width
-        else:
-            self.view_half_width += self.view_shrink_smoothing * (required_width - self.view_half_width)
-            self.view_half_width = max(required_width, self.view_half_width)
-        self.view_half_height = self.view_half_width / self.view_aspect_ratio
-        if self.view_half_height < required_height:
-            self.view_half_height = required_height
-            self.view_half_width = required_height * self.view_aspect_ratio
-        x, y = self.sim.own_position
-        self.local_ax.set_xlim(x - self.view_half_width, x + self.view_half_width)
-        self.local_ax.set_ylim(y - self.view_half_height, y + self.view_half_height)
-
-    def _set_global_view(self) -> None:
-        self.global_ax.set_xlim(self.sim.world_x_min, self.sim.world_x_max)
-        self.global_ax.set_ylim(self.sim.world_y_min, self.sim.world_y_max)
+            half_height = half_width / self.view_aspect_ratio
+        x, y = own_xy
+        return (x - half_width, x + half_width), (y - half_height, y + half_height)
 
     @staticmethod
-    def _role_style(platform: Platform) -> Tuple[str, str, float]:
-        if platform.role == "core":
-            return "#ffbf00", "#b00020", 3.0
-        if platform.role == "wing":
-            return "#ffd966", "#8a6d00", 1.8
-        if platform.role == "support":
-            return "#90caf9", "#1565c0", 1.8
-        if platform.role == "reserve":
-            return "#a5d6a7", "#2e7d32", 1.8
-        return "#86c56f", "#275d38", 1.4
-
-    def _update_platform_scatter(self, kind: str, artist, *, local: bool) -> None:
-        entries = [p for p in self.sim.platforms if p.kind == kind]
-        if not entries:
-            artist.set_offsets(np.empty((0, 2)))
+    def _set_line3d(line, points: np.ndarray) -> None:
+        if points.size == 0:
+            line.set_data_3d([], [], [])
             return
-        artist.set_offsets(np.array([p.position for p in entries]))
-        styles = [self._role_style(p) for p in entries]
-        artist.set_facecolors([item[0] for item in styles])
-        artist.set_edgecolors([item[1] for item in styles])
-        line_scale = 1.0 if local else 0.55
-        artist.set_linewidths([item[2] * line_scale for item in styles])
+        line.set_data_3d(points[:, 0], points[:, 1], points[:, 2])
 
-    def _arc_polyline(self, task: ThreatTask) -> np.ndarray:
+    def _guard_arc_polyline(self, task: ThreatTask) -> np.ndarray:
         if task.state not in DETECTED_STATES or task.guard_quota <= 1:
-            return np.empty((0, 2))
+            return np.empty((0, 3))
         _, direction, _ = self.sim._threat_geometry(task)
         lateral = rotate90(direction)
         radius, half_angle = self.sim._guard_arc_geometry(task)
         phis = np.linspace(-half_angle, half_angle, 90)
-        return np.array([
-            self.sim.own_position + radius * (math.cos(phi) * direction + math.sin(phi) * lateral)
-            for phi in phis
-        ])
+        return np.array(
+            [
+                point3(
+                    horizontal(self.sim.own_position)
+                    + radius
+                    * (math.cos(phi) * direction + math.sin(phi) * lateral),
+                    0.0,
+                )
+                for phi in phis
+            ]
+        )
 
     def _support_arc_polyline(self) -> np.ndarray:
         if len(self.sim.detected_threats) != 1 or not self.sim.support_guard_indices:
-            return np.empty((0, 2))
+            return np.empty((0, 3))
         task = self.sim.detected_threats[0]
         _, threat_dir, _ = self.sim._threat_geometry(task)
         center_dir = np.array(
@@ -1571,142 +1519,276 @@ class EscortGuardVisualizer:
             self.sim.support_arc_half_angle,
             90,
         )
-        return np.array([
-            self.sim.own_position
-            + self.sim.support_guard_radius
-            * (math.cos(phi) * center_dir + math.sin(phi) * lateral)
-            for phi in phis
-        ])
+        return np.array(
+            [
+                point3(
+                    horizontal(self.sim.own_position)
+                    + self.sim.support_guard_radius
+                    * (math.cos(phi) * center_dir + math.sin(phi) * lateral),
+                    0.0,
+                )
+                for phi in phis
+            ]
+        )
 
-    def _hide_target_slot(self, view: Dict[str, object], slot: int) -> None:
-        view["enemy_patches"][slot].set_visible(False)
-        view["enemy_texts"][slot].set_visible(False)
-        view["threat_lines"][slot].set_data([], [])
-        view["guard_arc_lines"][slot].set_data([], [])
-        view["blocker_crosses"][slot].set_data([], [])
+    def _draw_sea_and_boundary(
+        self,
+        ax,
+        x_limits: Tuple[float, float],
+        y_limits: Tuple[float, float],
+    ) -> None:
+        x0, x1 = x_limits
+        y0, y1 = y_limits
+        xx, yy = np.meshgrid(np.array([x0, x1]), np.array([y0, y1]))
+        zz = np.zeros_like(xx)
+        ax.plot_surface(
+            xx,
+            yy,
+            zz,
+            color=self.SEA_COLOR,
+            alpha=0.10,
+            shade=False,
+            linewidth=0,
+            zorder=0,
+        )
+        bx = [x0, x1, x1, x0, x0]
+        by = [y0, y0, y1, y1, y0]
+        ax.plot(bx, by, [0.0] * 5, color="#455a64", linewidth=1.3, alpha=0.75)
 
-    def _render_view(self, view: Dict[str, object], *, local: bool) -> List[object]:
-        ax = view["ax"]
-        self._update_platform_scatter("UAV", view["uav_scatter"], local=local)
-        self._update_platform_scatter("USV", view["usv_scatter"], local=local)
-        for text, platform in zip(view["platform_labels"], self.sim.platforms):
-            label_offset = 0.34 if local else 0.16
-            text.set_position(platform.position + np.array([0.0, label_offset]))
+    def _platform_style(self, platform: Platform) -> Tuple[str, str, float, str]:
+        if platform.kind == "UAV":
+            face = self.FRIEND_UAV_COLOR
+            marker = "o"
+            base_size = 86.0
+        else:
+            face = self.FRIEND_USV_COLOR
+            marker = "s"
+            base_size = 82.0
+        if platform.role == "core":
+            return face, self.CORE_EDGE_COLOR, base_size * 1.45, marker
+        if platform.role == "wing":
+            return face, "#f9a825", base_size * 1.10, marker
+        if platform.role == "support":
+            return face, "#1565c0", base_size, marker
+        if platform.role == "reserve":
+            return face, "#2e7d32", base_size, marker
+        return face, self.NORMAL_EDGE_COLOR, base_size, marker
+
+    def _draw_platforms(self, ax, *, local: bool) -> None:
+        size_scale = 1.0 if local else 0.55
+        label_offset = 1.7 if local else 1.1
+        for platform in self.sim.platforms:
+            x, y, z = platform.position
+            face, edge, size, marker = self._platform_style(platform)
+            ax.scatter(
+                [x],
+                [y],
+                [z],
+                marker=marker,
+                s=size * size_scale,
+                c=[face],
+                edgecolors=[edge],
+                linewidths=2.2 if platform.role == "core" else 1.2,
+                depthshade=True,
+                zorder=8,
+            )
+            if platform.kind == "UAV":
+                ax.plot(
+                    [x, x],
+                    [y, y],
+                    [0.0, z],
+                    linestyle="--",
+                    linewidth=0.9,
+                    color=self.FRIEND_UAV_COLOR,
+                    alpha=0.42,
+                    zorder=2,
+                )
+                ax.scatter(
+                    [x], [y], [0.0], marker=".", s=18 * size_scale,
+                    c=[self.FRIEND_UAV_COLOR], alpha=0.48, zorder=3
+                )
             suffix = f"/T{platform.assigned_threat_id}" if platform.assigned_threat_id else ""
-            text.set_text(platform.identifier + suffix)
-            text.set_weight("bold" if platform.role == "core" else "normal")
-            text.set_color("#8b0000" if platform.role == "core" else "#1f2933")
+            altitude_text = f"\n{z:.1f}" if platform.kind == "UAV" else ""
+            ax.text(
+                x,
+                y,
+                z + label_offset,
+                # platform.identifier + suffix + altitude_text,
+                platform.identifier,
+                ha="center",
+                va="bottom",
+                fontsize=7.2 if local else 5.4,
+                color="#263238",
+                weight="bold" if platform.role == "core" else "normal",
+                zorder=10,
+            )
 
-        own_x, own_y = self.sim.own_position
-        own_scale = float(view["own_scale"])
-        view["own_patch"].set_x(own_x - 1.6 * own_scale)
-        view["own_patch"].set_y(own_y - 0.55 * own_scale)
-        view["own_text"].set_position((own_x, own_y))
-        view["sensor_circle"].center = (own_x, own_y)
-        view["sensor_circle"].set_radius(self.sim.sensor_radius)
+    def _draw_common_scene(self, ax, *, local: bool) -> None:
+        own_x, own_y, own_z = self.sim.own_position
+        ax.scatter(
+            [own_x], [own_y], [own_z], marker="o", s=160 if local else 85,
+            c=[self.OWN_TARGET_COLOR], edgecolors=["#082d65"], linewidths=1.6,
+            depthshade=True, zorder=9
+        )
+        ax.text(
+            own_x, own_y, own_z + 1.6,
+            "高价值目标", ha="center", va="bottom",
+            fontsize=8 if local else 5.8, color=self.OWN_TARGET_COLOR, weight="bold"
+        )
 
-        for slot in range(self.sim.max_targets):
-            if slot >= len(self.sim.threats) or self.sim.threats[slot].state == "waiting":
-                self._hide_target_slot(view, slot)
-                continue
-            task = self.sim.threats[slot]
-            x, y = task.position
-            enemy_scale = float(view["enemy_scale"])
-            view["enemy_patches"][slot].set_xy(np.array([
-                [x, y + 0.60 * enemy_scale],
-                [x - 0.52 * enemy_scale, y - 0.40 * enemy_scale],
-                [x + 0.52 * enemy_scale, y - 0.40 * enemy_scale],
-            ]))
-            view["enemy_patches"][slot].set_visible(True)
-            view["enemy_texts"][slot].set_position((x, y - 0.05))
-            view["enemy_texts"][slot].set_text(f"T{task.threat_id}\n{STATE_LABELS[task.state]}")
-            view["enemy_texts"][slot].set_visible(True)
+        circle_angles = np.linspace(0.0, 2.0 * math.pi, 180)
+        sensor_x = own_x + self.sim.sensor_radius * np.cos(circle_angles)
+        sensor_y = own_y + self.sim.sensor_radius * np.sin(circle_angles)
+        ax.plot(
+            sensor_x, sensor_y, np.zeros_like(sensor_x),
+            linestyle="--", linewidth=1.5, color="#1976d2", alpha=0.68,
+            label="感知范围"
+        )
+
+        heading_end = horizontal(self.sim.own_position) + normalize(self.sim.forward) * 3.0
+        # ax.plot(
+        #     [own_x, heading_end[0]], [own_y, heading_end[1]], [0.4, 0.4],
+        #     color="#1f4e79", linewidth=2.0
+        # )
+        if self.sim.detected_threats:
+            avoid_end = horizontal(self.sim.own_position) + self.sim.avoid_direction * 3.0
+            # ax.plot(
+            #     [own_x, avoid_end[0]], [own_y, avoid_end[1]], [0.7, 0.7],
+            #     color="#00695c", linewidth=2.0, linestyle="--"
+            # )
+
+        self._draw_platforms(ax, local=local)
+
+        for task in self.sim.spawned_threats:
+            x, y, z = task.position
+            ax.scatter(
+                [x], [y], [z], marker="^", s=145 if local else 80,
+                c=[self.ENEMY_COLOR], edgecolors=["#7f0000"], linewidths=1.5,
+                depthshade=True, zorder=9
+            )
+            ax.text(
+                x, y, z + 1.4,
+                f"敌方 T{task.threat_id}\n{STATE_LABELS[task.state]}",
+                ha="center", va="bottom", fontsize=7.5 if local else 5.3,
+                color="#8b0000", weight="bold"
+            )
             if task.state in DETECTED_STATES:
-                view["threat_lines"][slot].set_data([own_x, x], [own_y, y])
-                view["blocker_crosses"][slot].set_data([task.blocker_point[0]], [task.blocker_point[1]])
-                arc = self._arc_polyline(task)
+                # ax.plot(
+                #     [own_x, x], [own_y, y], [0.0, 0.0],
+                #     linestyle="--", linewidth=1.4,
+                #     color=self.ENEMY_COLOR, alpha=0.75
+                # )
+                bx, by, bz = task.blocker_point
+                ax.scatter(
+                    [bx], [by], [bz], marker="x", s=85 if local else 45,
+                    c=[self.CORE_EDGE_COLOR], linewidths=2.2, zorder=10
+                )
+                arc = self._guard_arc_polyline(task)
                 if len(arc):
-                    view["guard_arc_lines"][slot].set_data(arc[:, 0], arc[:, 1])
-                else:
-                    view["guard_arc_lines"][slot].set_data([], [])
-            else:
-                view["threat_lines"][slot].set_data([], [])
-                view["blocker_crosses"][slot].set_data([], [])
-                view["guard_arc_lines"][slot].set_data([], [])
+                    ax.plot(
+                        arc[:, 0], arc[:, 1], arc[:, 2],
+                        color="#f57c00", linewidth=2.0, alpha=0.82
+                    )
 
         support_arc = self._support_arc_polyline()
         if len(support_arc):
-            view["support_arc_line"].set_data(support_arc[:, 0], support_arc[:, 1])
-        else:
-            view["support_arc_line"].set_data([], [])
+            ax.plot(
+                support_arc[:, 0], support_arc[:, 1], support_arc[:, 2],
+                color="#1565c0", linestyle="-.", linewidth=1.8, alpha=0.80
+            )
 
-        heading_start = self.sim.own_position + np.array([0.0, -1.2])
-        view["heading_arrow"].set_positions(heading_start, heading_start + normalize(self.sim.forward) * 2.2)
-        if self.sim.detected_threats:
-            avoid_start = self.sim.own_position + np.array([0.0, 1.2])
-            view["avoid_arrow"].set_positions(avoid_start, avoid_start + self.sim.avoid_direction * 2.2)
-            view["avoid_arrow"].set_visible(True)
-        else:
-            view["avoid_arrow"].set_visible(False)
-
+    def _status_lines(self) -> List[str]:
         status = self.sim.status()
-        reserve_mode = "保留2个守卫" if self.sim.escort_reserve_count == 2 else "不保留贴身守卫"
         lines = [
             f"帧：{status['frame']}｜UAV/USV：{status['uav_count']}/{status['usv_count']}",
-            f"敌方数量：1｜出现：随机方向",
-            f"感知半径：{status['sensor_radius']:.1f}｜已感知：{status['detected_count']}",
-            f"守卫模式：{reserve_mode}｜直接守卫：{sum(item['guard_quota'] for item in status['threats'])}",
-            f"动态支援：{status['support_count']}｜普通护航：{status['normal_escort_count']}",
             f"阶段：{status['phase']}",
+            f"已感知：{status['detected_count']}｜直接守卫：{sum(item['guard_quota'] for item in status['threats'])}",
+            f"动态支援：{status['support_count']}｜预留：{status['reserve_count']}",
+            "UAV 高度：固定随机 10–50｜USV 高度：0",
         ]
         for item in status["threats"]:
-            if item["state"] == "waiting":
-                lines.append(f"T{item['threat_id']} 等待至第 {item['spawn_frame']} 帧")
-            else:
-                ready = f"核心{'√' if item['core_ready'] else '×'}/弧线{item['wing_ready_ratio']*100:.0f}%" if item["detected"] else "未触发守卫"
-                if item["state"] == "orbiting":
-                    motion = (
-                        f"{item['orbit_direction']}｜本段{item['orbit_segment_angle_deg']:.0f}°"
-                        f"｜余{item['orbit_segment_remaining_deg']:.0f}°"
-                    )
-                else:
-                    motion = item["motion"]
+            if item["state"] == "orbiting":
                 lines.append(
-                    f"T{item['threat_id']} {item['state_label']}｜距{item['distance']:.2f}｜{motion}｜守卫{item['guard_quota']}｜{ready}"
+                    f"T1 {item['orbit_direction']}｜本段 {item['orbit_segment_angle_deg']:.0f}°"
+                    f"｜剩余 {item['orbit_segment_remaining_deg']:.0f}°"
                 )
-        lines.append("已暂停" if status["paused"] else "运行中")
-        if local:
-            view["status_text"].set_text("\n".join(lines))
-            ax.set_title("局部视图（以我方守卫目标为中心）", fontsize=13, weight="bold")
-        else:
-            view["status_text"].set_text(
-                "固定全局矩形画布\n"
-                f"X范围：[{self.sim.world_x_min:.0f}, {self.sim.world_x_max:.0f}]\n"
-                f"Y范围：[{self.sim.world_y_min:.0f}, {self.sim.world_y_max:.0f}]\n"
-                + reserve_mode + "\n单目标随机分段环绕"
-            )
-            ax.set_title("全局视图（固定长方形画布）", fontsize=13, weight="bold")
+            else:
+                lines.append(f"T1 {item['state_label']}｜距离 {item['distance']:.2f}")
+        lines.append("运行中" if not status["paused"] else "已暂停")
+        return lines
 
-        artists: List[object] = [
-            view["boundary"], view["sensor_circle"], view["uav_scatter"], view["usv_scatter"],
-            view["own_patch"], view["own_text"], view["heading_arrow"], view["avoid_arrow"],
-            view["status_text"], view["help_text"], view["support_arc_line"],
+    def _configure_axis(self, ax, *, local: bool) -> None:
+        ax.cla()
+        if local:
+            x_limits, y_limits = self._local_limits()
+            title = "局部 3D 视图（跟随我方高价值目标）"
+            box_aspect = (1.65, 1.05, 1.0)
+        else:
+            # own_x, own_y = self.sim.own_position[:2]
+            # # own_x, own_y = self.sim.world_x_min, self.sim.world_x_max
+            # th = 0.8
+            # x_limits = (own_x - 28.0 * th, own_x + 28.0 * th)
+            # y_limits = (own_y - 18.0 * th, own_y + 18.0 * th)
+            x_limits = (self.sim.world_x_min, self.sim.world_x_max)
+            y_limits = (self.sim.world_y_min, self.sim.world_y_max)
+            title = "全局 3D 视图（固定长方体空间）"
+            box_aspect = (1.75, 1.10, 0.72)
+
+        self._draw_sea_and_boundary(ax, x_limits, y_limits)
+        self._draw_common_scene(ax, local=local)
+        ax.set_xlim(*x_limits)
+        ax.set_ylim(*y_limits)
+        ax.set_zlim(VIEW_Z_MIN, VIEW_Z_MAX)
+        ax.set_xlabel("X / 海里（示意）", labelpad=8)
+        ax.set_ylabel("Y / 海里（示意）", labelpad=8)
+        ax.set_zlabel("高度 Z", labelpad=7)
+        ax.set_title(title, fontsize=12.5, weight="bold", pad=14)
+        # ax.view_init(elev=24.0, azim=-58.0)
+        ax.set_box_aspect(box_aspect)
+        ax.grid(True, alpha=0.28, linestyle="--")
+
+        status_text = "\n".join(self._status_lines()) if local else (
+            "固定全局空间\n"
+            f"X：[{self.sim.world_x_min:.0f}, {self.sim.world_x_max:.0f}]\n"
+            f"Y：[{self.sim.world_y_min:.0f}, {self.sim.world_y_max:.0f}]\n"
+            f"Z：[{VIEW_Z_MIN:.0f}, {VIEW_Z_MAX:.0f}]\n"
+            "N：仅重置敌方目标"
+        )
+        ax.text2D(
+            0.985, 0.985, status_text,
+            transform=ax.transAxes, ha="right", va="top", fontsize=8.2,
+            bbox=dict(facecolor="white", alpha=0.88, edgecolor="#78909c", boxstyle="round,pad=0.42")
+        )
+        ax.text2D(
+            0.015, 0.015,
+            "Space：暂停/继续   N：仅重置敌方目标   Esc：关闭",
+            transform=ax.transAxes, ha="left", va="bottom", fontsize=8.0,
+            bbox=dict(facecolor="white", alpha=0.80, edgecolor="#90a4ae")
+        )
+
+        legend_handles = [
+            self.Line2D([0], [0], marker="o", color="none", markerfacecolor=self.FRIEND_UAV_COLOR,
+                        markeredgecolor=self.NORMAL_EDGE_COLOR, markersize=8, label="我方 UAV"),
+            self.Line2D([0], [0], marker="s", color="none", markerfacecolor=self.FRIEND_USV_COLOR,
+                        markeredgecolor=self.NORMAL_EDGE_COLOR, markersize=8, label="我方 USV"),
+            self.Line2D([0], [0], marker="D", color="none", markerfacecolor=self.OWN_TARGET_COLOR,
+                        markeredgecolor="#082d65", markersize=8, label="高价值目标"),
+            self.Line2D([0], [0], marker="^", color="none", markerfacecolor=self.ENEMY_COLOR,
+                        markeredgecolor="#7f0000", markersize=8, label="敌方"),
+            self.Line2D([0], [0], marker="o", color="none", markerfacecolor=self.FRIEND_UAV_COLOR,
+                        markeredgecolor=self.CORE_EDGE_COLOR, markeredgewidth=2, markersize=8, label="核心守卫"),
         ]
-        artists.extend(view["enemy_patches"])
-        artists.extend(view["enemy_texts"])
-        artists.extend(view["threat_lines"])
-        artists.extend(view["guard_arc_lines"])
-        artists.extend(view["blocker_crosses"])
-        artists.extend(view["platform_labels"])
-        return artists
+        ax.legend(handles=legend_handles, loc="lower right", fontsize=7.5, framealpha=0.9)
 
     def _refresh_artists(self) -> Tuple[object, ...]:
-        self._center_local_view_on_own_target()
-        self._set_global_view()
-        local_artists = self._render_view(self.local_view, local=True)
-        global_artists = self._render_view(self.global_view, local=False)
-        self.fig.suptitle("单目标随机环绕与 UAV/USV 自适应护航守卫仿真", fontsize=15, weight="bold")
-        return tuple(local_artists + global_artists)
+        self._configure_axis(self.local_ax, local=True)
+        self._configure_axis(self.global_ax, local=False)
+        self.fig.suptitle(
+            "单目标随机环绕 UAV/USV 三维护航守卫仿真",
+            fontsize=15,
+            weight="bold",
+        )
+        return tuple()
 
     def update(self, _frame: int) -> Tuple[object, ...]:
         self.sim.step()
@@ -1728,7 +1810,14 @@ class EscortGuardVisualizer:
 
     def show(self, interval_ms: int = 55) -> None:
         from matplotlib.animation import FuncAnimation
-        self.animation = FuncAnimation(self.fig, self.update, interval=interval_ms, blit=False, cache_frame_data=False)
+
+        self.animation = FuncAnimation(
+            self.fig,
+            self.update,
+            interval=interval_ms,
+            blit=False,
+            cache_frame_data=False,
+        )
         self.plt.show()
 
     def save_snapshot(self, path: Union[str, Path], dpi: int = 150) -> Path:
@@ -1737,7 +1826,6 @@ class EscortGuardVisualizer:
         self._refresh_artists()
         self.fig.savefig(output, dpi=dpi, bbox_inches="tight")
         return output
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)

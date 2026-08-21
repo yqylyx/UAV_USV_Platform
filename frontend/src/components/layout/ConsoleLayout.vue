@@ -115,6 +115,10 @@ async function logout() {
           <Boxes :size="18" />
           <span class="console-nav-label">设备管理</span>
         </RouterLink>
+        <RouterLink class="nav-item" active-class="active" to="/virtual-fleet" title="算法仿真">
+          <Boxes :size="18" />
+          <span class="console-nav-label">算法仿真</span>
+        </RouterLink>
       </nav>
 
       <div class="sidebar-footer console-sidebar-footer">

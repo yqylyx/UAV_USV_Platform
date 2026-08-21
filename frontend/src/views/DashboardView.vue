@@ -38,6 +38,8 @@ type UnityMessage = {
   payload?: Record<string, unknown>
 }
 
+type OverviewRuntimeMode = 'VIRTUAL_SIMULATION' | 'REAL'
+
 const monitoringStore = useMonitoringStore()
 const realtimeStore = useRealtimeStore()
 const activeExperimentStore = useActiveExperimentStore()
@@ -69,6 +71,10 @@ const overviewAlgorithmFallbacks: AlgorithmDefinition[] = [
 ]
 const overviewAlgorithms = ref<AlgorithmDefinition[]>([...overviewAlgorithmFallbacks])
 const selectedOverviewAlgorithm = ref('GB_SFLA_CS')
+const overviewRuntimeMode = ref<OverviewRuntimeMode>('VIRTUAL_SIMULATION')
+const virtualUavCount = ref(3)
+const virtualUsvCount = ref(3)
+const virtualScenarioRunId = ref(Date.now())
 const enabledOverviewAlgorithms = computed(() => overviewAlgorithms.value.filter(item => item.enabled && ['GB_SFLA_CS','ESCORT_GUARD'].includes(item.code)))
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
@@ -335,13 +341,48 @@ const overviewMissionRunning = computed(() =>
 const overviewMissionButtonLabel = computed(() =>
   overviewMissionRunning.value ? '终止任务' : '启动任务',
 )
+const overviewRuntimeModeLabel = computed(() =>
+  overviewRuntimeMode.value === 'VIRTUAL_SIMULATION' ? '虚拟仿真' : '真实任务',
+)
+
+function sendVirtualScenario(algorithmCode = selectedOverviewAlgorithm.value) {
+  virtualScenarioRunId.value = Date.now()
+  return unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', {
+    runtimeMode: 'VIRTUAL_SIMULATION',
+    runId: virtualScenarioRunId.value,
+    algorithmCode,
+    uavCount: virtualUavCount.value,
+    usvCount: virtualUsvCount.value,
+    targetCount: 1,
+    initialSpeedMps: 2,
+    initialHeadingDeg: 0,
+    seed: virtualScenarioRunId.value % 2147483647,
+  })
+}
 
 async function selectOverviewAlgorithm(code: string) {
   if (overviewMissionRunning.value) return
   selectedOverviewAlgorithm.value = code
   overviewMissionName.value = overviewAlgorithms.value.find(item => item.code === code)?.name ?? code
   overviewDeploymentAcknowledged.value = false
-  unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', { algorithmCode: code })
+  if (overviewRuntimeMode.value === 'VIRTUAL_SIMULATION') sendVirtualScenario(code)
+}
+
+async function selectOverviewRuntimeMode(mode: OverviewRuntimeMode) {
+  if (overviewMissionRunning.value || commandBusy.value) return
+  overviewRuntimeMode.value = mode
+  overviewDeploymentAcknowledged.value = false
+  overviewMissionStatus.value = 'READY'
+  if (mode === 'REAL') {
+    try {
+      await loadOverviewMission()
+      overviewDeploymentAcknowledged.value = overviewMissionId.value !== null
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : '真实任务加载失败')
+    }
+    return
+  }
+  sendVirtualScenario()
 }
 const selectedOverviewActions = computed<OverviewQuickAction[]>(() => {
   if (selectedOverviewDevice.value?.type === 'USV') {
@@ -847,6 +888,58 @@ async function runOverviewDemoCommand(action: 'start' | 'pause' | 'resume' | 'ca
   }[action] as MissionStatus
 }
 
+async function startOverviewMission() {
+  if (overviewRuntimeMode.value === 'REAL') {
+    if (!overviewMissionId.value) await loadOverviewMission()
+    if (!overviewMissionId.value) throw new Error('未找到真实任务')
+    unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', {
+      runtimeMode: 'REAL',
+      algorithmCode: selectedOverviewAlgorithm.value,
+      missionId: overviewMissionId.value,
+    })
+    await runOverviewMissionAction('start')
+    return
+  }
+  sendVirtualScenario()
+  await runOverviewDemoCommand('start')
+}
+
+async function pauseOverviewMission() {
+  if (overviewRuntimeMode.value === 'REAL') {
+    await runOverviewMissionAction('pause')
+    return
+  }
+  const held = await sendFleetPair('UAV_HOVER', '无人机编组悬停', 'USV_HOLD', '无人艇编组定点保持')
+  if (!held.allAcknowledged) throw new Error(`暂停失败：${held.failed} 台载具未确认保持`)
+  await runOverviewDemoCommand('pause')
+}
+
+async function resumeOverviewMission() {
+  if (overviewRuntimeMode.value === 'REAL') {
+    await runOverviewMissionAction('resume')
+    return
+  }
+  const resumed = await sendFleetPair('UAV_RESUME', '无人机继续任务', 'USV_RESUME', '无人艇继续航行')
+  if (!resumed.allAcknowledged) throw new Error(`继续任务失败：${resumed.failed} 台载具未确认恢复`)
+  await runOverviewDemoCommand('resume')
+}
+
+async function finishOverviewMission(action: 'return' | 'abort') {
+  if (overviewRuntimeMode.value === 'REAL') {
+    if (action === 'return') {
+      const returning = await sendFleetPair('UAV_RETURN', '无人机编组返航', 'USV_RETURN', '无人艇编组返航')
+      if (!returning.allAcknowledged) {
+        throw new Error(`返航失败：${returning.failed} 台载具未确认返航`)
+      }
+    }
+    await runOverviewMissionAction('cancel')
+    overviewDeploymentAcknowledged.value = false
+    return
+  }
+  await runOverviewDemoCommand('cancel')
+  overviewDeploymentAcknowledged.value = false
+}
+
 async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | 'resume' | 'return' | 'abort') {
   if (commandBusy.value) return
   if (!unityControlReady.value) {
@@ -864,9 +957,8 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
   commandBusy.value = true
   try {
     if (action === 'abort') {
-      await runOverviewDemoCommand('cancel')
-      overviewDeploymentAcknowledged.value = false
-      ElMessage.success('简单围捕任务已终止')
+      await finishOverviewMission('abort')
+      ElMessage.success(`${overviewRuntimeModeLabel.value}任务已终止`)
       return
     }
 
@@ -879,7 +971,11 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
       // “开始任务”统一触发，避免逐台命令依赖 Unity 当前设备选择。
       overviewMissionStatus.value = 'READY'
       overviewDeploymentAcknowledged.value = true
-      ElMessage.success(`编组部署完成：${quickControlDevices.value.length}/${quickControlDevices.value.length} 台载具已加入简单围捕`)
+      if (overviewRuntimeMode.value === 'REAL') {
+        await loadOverviewMission()
+        overviewDeploymentAcknowledged.value = overviewMissionId.value !== null
+      }
+      ElMessage.success(`${overviewRuntimeModeLabel.value}任务已完成准备`)
       return
     }
 
@@ -887,31 +983,24 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
       if (!overviewDeploymentAcknowledged.value) {
         throw new Error('请先点击“编组部署”，确认三机三艇加入围捕编组')
       }
-      unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', { algorithmCode: selectedOverviewAlgorithm.value })
-      await runOverviewMissionAction('start')
+      await startOverviewMission()
       ElMessage.success(`${overviewMissionName.value}已启动`)
       return
     }
 
     if (action === 'pause') {
-      const held = await sendFleetPair('UAV_HOVER', '无人机编组悬停', 'USV_HOLD', '无人艇编组定点保持')
-      if (!held.allAcknowledged) throw new Error(`暂停失败：${held.failed} 台载具未确认保持`)
-      await runOverviewDemoCommand('pause')
-      ElMessage.success('任务已暂停，三机三艇均已进入保持状态')
+      await pauseOverviewMission()
+      ElMessage.success('任务已暂停')
       return
     }
 
     if (action === 'resume') {
-      const resumed = await sendFleetPair('UAV_RESUME', '无人机继续任务', 'USV_RESUME', '无人艇继续航行')
-      if (!resumed.allAcknowledged) throw new Error(`继续任务失败：${resumed.failed} 台载具未确认恢复`)
-      await runOverviewDemoCommand('resume')
-      ElMessage.success('任务已继续，Unity 与后端状态均已确认')
+      await resumeOverviewMission()
+      ElMessage.success('任务已继续')
       return
     }
 
-    const returning = await sendFleetPair('UAV_RETURN', '无人机编组返航', 'USV_RETURN', '无人艇编组返航')
-    if (!returning.allAcknowledged) throw new Error(`返航失败：${returning.failed} 台载具未确认返航`)
-    await runOverviewDemoCommand('cancel')
+    await finishOverviewMission('return')
     ElMessage.success('全体返航已确认，当前任务已结束')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '任务编组操作失败')
@@ -1154,6 +1243,17 @@ watch(
             <span>算法</span>
             <select :value="selectedOverviewAlgorithm" :disabled="overviewMissionRunning || commandBusy" @change="selectOverviewAlgorithm(($event.target as HTMLSelectElement).value)">
               <option v-for="algorithm in enabledOverviewAlgorithms" :key="algorithm.code" :value="algorithm.code">{{ algorithm.name }} v{{ algorithm.version }}</option>
+            </select>
+          </label>
+          <label class="overview-algorithm-select">
+            <span>运行模式</span>
+            <select
+              :value="overviewRuntimeMode"
+              :disabled="overviewMissionRunning || commandBusy"
+              @change="selectOverviewRuntimeMode(($event.target as HTMLSelectElement).value as OverviewRuntimeMode)"
+            >
+              <option value="VIRTUAL_SIMULATION">虚拟仿真</option>
+              <option value="REAL">真实任务</option>
             </select>
           </label>
           <div class="overview-camera-tabs" aria-label="Unity 视角切换">

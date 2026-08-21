@@ -14,7 +14,7 @@ const freshness=computed(()=>overview.value.updatedAt?Math.max(0,Date.now()-over
 const latestEvents=computed(()=>[...overview.value.items].sort((a,b)=>b.timestampMs-a.timestampMs).slice(0,4))
 const fmt=(v:number|null,d=1)=>v==null?'--':v.toFixed(d)
 const time=(v:number)=>v?new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(v)):'--'
-onMounted(()=>{void store.refresh();timer=window.setInterval(()=>void store.refresh(true),750)})
+onMounted(()=>{void store.refresh();timer=window.setInterval(()=>void store.refresh(true),2000)})
 onBeforeUnmount(()=>{if(timer)clearInterval(timer)})
 </script>
 

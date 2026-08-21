@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from typing import Dict, Sequence
+from typing import Dict, Mapping, Sequence
 
 from app.schemas import RuntimeFrame
 
@@ -44,6 +44,39 @@ class AlgorithmAdapter(ABC):
         heading = (old_heading + limited) % 360.0
         self._stable_headings[code] = heading
         return heading
+
+    def initial_pose_map(self) -> Dict[str, Mapping[str, object]]:
+        """Return scenario poses supplied by Unity, keyed by device code."""
+        raw_poses = self.config.get("initialPoses", [])
+        if not isinstance(raw_poses, list):
+            return {}
+        result: Dict[str, Mapping[str, object]] = {}
+        for raw_pose in raw_poses:
+            if not isinstance(raw_pose, dict):
+                continue
+            code = str(raw_pose.get("deviceCode", "")).strip().upper()
+            if code:
+                result[code] = raw_pose
+        return result
+
+    def initial_pose_to_local(
+        self,
+        pose: Mapping[str, object],
+    ) -> tuple[float, float, float]:
+        """Convert the Unity scenario pose to the algorithm local frame."""
+        east = float(pose.get("eastM", 0.0))
+        north = float(pose.get("northM", 0.0))
+        up = float(pose.get("upM", 0.0))
+        frame = str(
+            self.config.get("initialPosesCoordinateFrame", "GLOBAL_ENU")
+        ).upper()
+        if frame == "GLOBAL_ENU":
+            origin = self.config.get("fleetOrigin", {})
+            if isinstance(origin, dict):
+                east -= float(origin.get("eastM", 0.0))
+                north -= float(origin.get("northM", 0.0))
+                up -= float(origin.get("upM", 0.0))
+        return east, north, up
 
     @abstractmethod
     def step(self) -> RuntimeFrame:

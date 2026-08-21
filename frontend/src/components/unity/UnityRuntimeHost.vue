@@ -7,6 +7,7 @@ import type { UnityRuntimeScope } from '@/stores/unityBridge'
 const props = withDefaults(
   defineProps<{
     viewport: string
+    iframeSrc?: string
     runtimeScope?: UnityRuntimeScope
     runtimeInstanceId?: string
     missionId?: number
@@ -15,6 +16,7 @@ const props = withDefaults(
     layer?: number
   }>(),
   {
+    iframeSrc: '/unity-overview/index.html?embedded=1',
     runtimeScope: 'SYSTEM_OVERVIEW',
     runtimeInstanceId: 'overview-unity-01',
     active: true,
@@ -118,6 +120,7 @@ onBeforeUnmount(() => {
     :aria-label="`${runtimeScope} Unity WebGL 运行实例`"
   >
     <UnityWebglPanel
+      :iframe-src="iframeSrc"
       :runtime-scope="runtimeScope"
       :runtime-instance-id="runtimeInstanceId"
       :mission-id="missionId"

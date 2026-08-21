@@ -1,7 +1,7 @@
 export interface RadarItem {
   id: string
   deviceId: string
-  kind: 'OBSTACLE' | 'DETECTION' | 'POINTCLOUD'
+  kind: 'OBSTACLE' | 'DETECTION' | 'POINTCLOUD' | 'RADAR_RETURN'
   range: number | null
   bearing: number | null
   x: number | null

@@ -435,7 +435,7 @@ function startAlgorithmPolling(forceRunning = false) {
   if (!externalAlgorithm.value) return
   void pollAlgorithmFrames()
   if (!forceRunning && detail.value?.mission.status !== 'RUNNING') return
-  algorithmPollTimer = window.setInterval(() => void pollAlgorithmFrames(), 100)
+  algorithmPollTimer = window.setInterval(() => void pollAlgorithmFrames(), 500)
 }
 
 async function runMissionAction(action: 'pause' | 'resume' | 'complete' | 'cancel') {

@@ -20,6 +20,7 @@ namespace UavUsv.PlatformTools
         private sealed class Envelope
         {
             public string type;
+            public string requestId;
             public Payload payload;
         }
 
@@ -69,8 +70,20 @@ namespace UavUsv.PlatformTools
 
         private sealed class PoseTarget
         {
+            public string code;
+            public string type;
             public Transform subject;
             public readonly List<PoseSnapshot> snapshots = new List<PoseSnapshot>();
+        }
+
+        [Serializable]
+        private sealed class ScenarioStatus
+        {
+            public bool ready;
+            public string algorithmCode;
+            public long runId;
+            public long sequence;
+            public string reason;
         }
 
         private readonly Dictionary<string, PoseTarget> poseTargets =
@@ -80,6 +93,7 @@ namespace UavUsv.PlatformTools
         private Transform escortTarget;
         private LineRenderer routeRenderer;
         private long lastSequence;
+        private long activeRunId;
         private string algorithmCode = string.Empty;
         private string phase = string.Empty;
         private bool externalMode;
@@ -87,9 +101,16 @@ namespace UavUsv.PlatformTools
         private long latestSourceTimestamp;
         private double latestFrameArrival;
         private readonly Dictionary<GameObject, bool> cleanPresentationStates = new Dictionary<GameObject, bool>();
+        private readonly Dictionary<LineRenderer, bool> cleanLineStates = new Dictionary<LineRenderer, bool>();
         private const double InterpolationDelayMs = 180.0;
         private GUIStyle escortLabelStyle;
         private GUIStyle threatLabelStyle;
+        private GUIStyle uavLabelStyle;
+        private GUIStyle usvLabelStyle;
+        private UavUsv.ChaseCamera chaseCamera;
+        private bool chaseLabelsCaptured;
+        private bool originalChaseLabels;
+        private bool originalChaseCameraEnabled;
         private Camera missionCamera;
         private bool cameraStateCaptured;
         private Vector3 originalCameraPosition;
@@ -97,6 +118,20 @@ namespace UavUsv.PlatformTools
         private float originalCameraFieldOfView;
         private float originalCameraOrthographicSize;
         private Vector3 externalOrigin;
+        private bool missionCameraFramed;
+        [Header("Gateway ENU Mapping")]
+        [SerializeField, Min(0.01f)] private float externalPositionScale = 1f;
+        [SerializeField] private float externalAltitudeOffset;
+        [SerializeField, Min(10f)] private float externalCoordinateLimit = 5000f;
+        private Vector3 missionFrameMin;
+        private Vector3 missionFrameMax;
+        private bool missionBoundsReady;
+        private const float MinimumMissionFrameWidth = 130f;
+        private const float MinimumMissionFrameHeight = 95f;
+        private const float MissionFramePadding = 20f;
+        [SerializeField]
+        [Tooltip("World-space device nameplates are disabled for the task-center 3D and sensor presentations.")]
+        private bool showWorldLabels;
         public bool IsExternalMode => externalMode;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -126,7 +161,7 @@ namespace UavUsv.PlatformTools
             switch (message.type.Trim().ToLowerInvariant())
             {
                 case "loadscenario":
-                    LoadScenario(payload.algorithmCode);
+                    LoadScenario(payload.algorithmCode, payload.runId);
                     break;
                 case "poseframe":
                     ApplyFrame(payload);
@@ -137,12 +172,18 @@ namespace UavUsv.PlatformTools
             }
         }
 
-        private void LoadScenario(string requestedAlgorithm)
+        private void LoadScenario(string requestedAlgorithm, long requestedRunId)
         {
             EnsureScenario();
             algorithmCode = (requestedAlgorithm ?? string.Empty).Trim().ToUpperInvariant();
+            activeRunId = requestedRunId;
             externalMode = algorithmCode == "GB_SFLA_CS" || algorithmCode == "ESCORT_GUARD";
             externalOrigin = ResolveExternalOrigin();
+            missionCameraFramed = false;
+            missionBoundsReady = false;
+            ExpandMissionBounds(externalOrigin);
+            GameObject uavPlatform = GameObject.Find("island_uav_base");
+            if (uavPlatform) ExpandMissionBounds(uavPlatform.transform.position);
             SetComparisonActive(!externalMode);
             lastSequence = 0;
             latestSourceTimestamp = 0;
@@ -158,6 +199,7 @@ namespace UavUsv.PlatformTools
                 SetFleetExternal(externalMode);
                 SetCleanTaskPresentation(externalMode);
             }
+            SetExternalLabels(externalMode);
             if (externalMode) CaptureCameraState();
             else RestoreCameraState();
             // A target becomes visible only after an authoritative algorithm
@@ -165,6 +207,14 @@ namespace UavUsv.PlatformTools
             // extra escort vessel in the scene.
             if (escortTarget) escortTarget.gameObject.SetActive(false);
             if (routeRenderer) routeRenderer.enabled = false;
+            UnityPlatformCompatibilityBridge.Post("scenarioReady", new ScenarioStatus
+            {
+                ready = externalMode && scenario,
+                algorithmCode = algorithmCode,
+                runId = activeRunId,
+                sequence = 0,
+                reason = externalMode && scenario ? string.Empty : "Scenario is not ready"
+            });
         }
 
         private void ApplyControl(string rawCommand)
@@ -191,9 +241,14 @@ namespace UavUsv.PlatformTools
         {
             if (payload == null) return;
             string incomingAlgorithm = (payload.algorithmCode ?? algorithmCode).Trim().ToUpperInvariant();
-            if (!externalMode || !string.Equals(algorithmCode, incomingAlgorithm, StringComparison.OrdinalIgnoreCase))
-                LoadScenario(incomingAlgorithm);
-            if (!externalMode || payload.sequence <= lastSequence || !EnsureScenario()) return;
+            if (!externalMode ||
+                payload.runId != activeRunId ||
+                !string.Equals(algorithmCode, incomingAlgorithm, StringComparison.OrdinalIgnoreCase) ||
+                payload.sequence <= lastSequence ||
+                !EnsureScenario())
+            {
+                return;
+            }
 
             lastSequence = payload.sequence;
             if (payload.timestamp > 0)
@@ -230,6 +285,14 @@ namespace UavUsv.PlatformTools
             if (escortTarget) escortTarget.gameObject.SetActive(escortSeen);
             if (scenario.targetVessel) scenario.targetVessel.gameObject.SetActive(threatSeen);
             RenderRoute(payload.route);
+            UnityPlatformCompatibilityBridge.Post("poseFrameApplied", new ScenarioStatus
+            {
+                ready = true,
+                algorithmCode = algorithmCode,
+                runId = activeRunId,
+                sequence = lastSequence,
+                reason = string.Empty
+            });
         }
 
         private void RegisterAgentPose(AgentPose item, long timestamp)
@@ -243,28 +306,48 @@ namespace UavUsv.PlatformTools
             Transform[] fleet = isUav ? scenario.drones : scenario.boats;
             int index = ordinal - 1;
             if (fleet == null || index < 0 || index >= fleet.Length || !fleet[index]) return;
-            RegisterPose(code, fleet[index], item.x, item.y, item.z, item.heading, isUav, timestamp);
+            RegisterPose(code, item.type, fleet[index], item.x, item.y, item.z, item.heading, isUav, timestamp);
         }
 
         private bool RegisterTargetPose(TargetPose item, Transform subject, long timestamp)
         {
             if (!item.visible || !subject) return false;
-            RegisterPose(item.code ?? item.type, subject, item.x, item.y, item.z, item.heading, false, timestamp);
+            RegisterPose(item.code ?? item.type, item.type, subject, item.x, item.y, item.z, item.heading, false, timestamp);
             return true;
         }
 
-        private void RegisterPose(string code, Transform subject, float x, float y, float z, float heading, bool isUav, long timestamp)
+        private void RegisterPose(string code, string type, Transform subject, float x, float y, float z, float heading, bool isUav, long timestamp)
         {
             if (!subject) return;
+            if (float.IsNaN(x) || float.IsInfinity(x) ||
+                float.IsNaN(y) || float.IsInfinity(y) ||
+                float.IsNaN(z) || float.IsInfinity(z) ||
+                Mathf.Abs(x) > externalCoordinateLimit ||
+                Mathf.Abs(y) > externalCoordinateLimit ||
+                Mathf.Abs(z) > externalCoordinateLimit)
+            {
+                Debug.LogWarning($"[AlgorithmScenarioBridge] Ignored invalid ENU pose for {code}: ({x}, {y}, {z})");
+                return;
+            }
             Vector3 world = externalOrigin +
-                            new Vector3(x, isUav ? Mathf.Max(2f, z) : .42f, y);
+                            new Vector3(
+                                x * externalPositionScale,
+                                isUav ? Mathf.Max(2f, z * externalPositionScale + externalAltitudeOffset) : .42f,
+                                y * externalPositionScale);
+            ExpandMissionBounds(world);
             string key = code ?? subject.name;
             if (!poseTargets.TryGetValue(key, out PoseTarget target))
             {
-                target = new PoseTarget { subject = subject };
+                target = new PoseTarget { code = key, type = type, subject = subject };
                 poseTargets[key] = target;
                 subject.position = world;
                 subject.rotation = Quaternion.Euler(0f, 90f - heading, 0f);
+            }
+            else
+            {
+                target.code = key;
+                target.type = type;
+                target.subject = subject;
             }
             PoseSnapshot snapshot = new PoseSnapshot
             {
@@ -274,6 +357,13 @@ namespace UavUsv.PlatformTools
             };
             if (target.snapshots.Count > 0 && snapshot.timestamp <= target.snapshots[target.snapshots.Count - 1].timestamp)
                 return;
+            if (target.snapshots.Count > 0 &&
+                snapshot.timestamp - target.snapshots[target.snapshots.Count - 1].timestamp > 750)
+            {
+                target.snapshots.Clear();
+                subject.position = world;
+                subject.rotation = snapshot.rotation;
+            }
             if (Vector3.Distance(subject.position, world) > 45f)
             {
                 target.snapshots.Clear();
@@ -335,6 +425,22 @@ namespace UavUsv.PlatformTools
                 comparison.comparisonActive = active;
         }
 
+        private void SetExternalLabels(bool active)
+        {
+            if (!chaseCamera && Camera.main)
+                chaseCamera = Camera.main.GetComponent<UavUsv.ChaseCamera>();
+            if (!chaseCamera)
+                return;
+            if (!chaseLabelsCaptured)
+            {
+                originalChaseLabels = chaseCamera.showAgentLabels;
+                originalChaseCameraEnabled = chaseCamera.enabled;
+                chaseLabelsCaptured = true;
+            }
+            chaseCamera.showAgentLabels = active ? false : originalChaseLabels;
+            chaseCamera.enabled = active ? false : originalChaseCameraEnabled;
+        }
+
         private void UpdateMissionCamera()
         {
             if (!externalMode || playbackFrozen || poseTargets.Count == 0) return;
@@ -342,38 +448,57 @@ namespace UavUsv.PlatformTools
             if (!missionCamera) return;
             CaptureCameraState();
 
-            bool hasSubject = false;
-            float minX = float.MaxValue, maxX = float.MinValue;
-            float minZ = float.MaxValue, maxZ = float.MinValue;
-            foreach (PoseTarget target in poseTargets.Values)
-            {
-                if (!target.subject || !target.subject.gameObject.activeInHierarchy) continue;
-                Vector3 point = target.subject.position;
-                minX = Mathf.Min(minX, point.x);
-                maxX = Mathf.Max(maxX, point.x);
-                minZ = Mathf.Min(minZ, point.z);
-                maxZ = Mathf.Max(maxZ, point.z);
-                hasSubject = true;
-            }
-            if (!hasSubject) return;
-
-            Vector3 center = new Vector3((minX + maxX) * .5f, 1.2f, (minZ + maxZ) * .5f);
-            float span = Mathf.Max(maxX - minX, maxZ - minZ);
-            float height = Mathf.Clamp(27f + span * .68f, 34f, 68f);
-            Vector3 desiredPosition = center + new Vector3(0f, height, -height * .58f);
+            // Bounds only expand during a run. This keeps the camera stable,
+            // while still allowing a long ROS mission to remain visible.
+            float width = missionBoundsReady
+                ? Mathf.Max(MinimumMissionFrameWidth, missionFrameMax.x - missionFrameMin.x)
+                : MinimumMissionFrameWidth;
+            float depth = missionBoundsReady
+                ? Mathf.Max(MinimumMissionFrameHeight, missionFrameMax.z - missionFrameMin.z)
+                : MinimumMissionFrameHeight;
+            Vector3 center = missionBoundsReady
+                ? new Vector3((missionFrameMin.x + missionFrameMax.x) * .5f, 1.2f,
+                    (missionFrameMin.z + missionFrameMax.z) * .5f)
+                : externalOrigin + new Vector3(0f, 1.2f, 0f);
+            float extent = Mathf.Max(depth, width / Mathf.Max(1.15f, missionCamera.aspect));
+            Vector3 desiredPosition = center + new Vector3(
+                0f,
+                extent * .82f + 22f,
+                -extent * .58f
+            );
             Quaternion desiredRotation = Quaternion.LookRotation(center - desiredPosition, Vector3.up);
-            float blend = 1f - Mathf.Exp(-2.8f * Time.unscaledDeltaTime);
+            float blend = missionCameraFramed
+                ? 1f - Mathf.Exp(-3.0f * Time.unscaledDeltaTime)
+                : 1f - Mathf.Exp(-5.5f * Time.unscaledDeltaTime);
             missionCamera.transform.position = Vector3.Lerp(missionCamera.transform.position, desiredPosition, blend);
             missionCamera.transform.rotation = Quaternion.Slerp(missionCamera.transform.rotation, desiredRotation, blend);
             if (missionCamera.orthographic)
             {
-                float desiredSize = Mathf.Clamp(13f + span * .58f, 18f, 42f);
+                float desiredSize = extent * .58f;
                 missionCamera.orthographicSize = Mathf.Lerp(missionCamera.orthographicSize, desiredSize, blend);
             }
             else
             {
-                missionCamera.fieldOfView = Mathf.Lerp(missionCamera.fieldOfView, 50f, blend);
+                missionCamera.fieldOfView = Mathf.Lerp(missionCamera.fieldOfView, 46f, blend);
             }
+            missionCameraFramed = true;
+        }
+
+        private void ExpandMissionBounds(Vector3 world)
+        {
+            Vector3 planar = new Vector3(world.x, 0f, world.z);
+            if (!missionBoundsReady)
+            {
+                missionFrameMin = planar - new Vector3(MinimumMissionFrameWidth * .5f, 0f,
+                    MinimumMissionFrameHeight * .5f);
+                missionFrameMax = planar + new Vector3(MinimumMissionFrameWidth * .5f, 0f,
+                    MinimumMissionFrameHeight * .5f);
+                missionBoundsReady = true;
+            }
+            missionFrameMin.x = Mathf.Min(missionFrameMin.x, planar.x - MissionFramePadding);
+            missionFrameMin.z = Mathf.Min(missionFrameMin.z, planar.z - MissionFramePadding);
+            missionFrameMax.x = Mathf.Max(missionFrameMax.x, planar.x + MissionFramePadding);
+            missionFrameMax.z = Mathf.Max(missionFrameMax.z, planar.z + MissionFramePadding);
         }
 
         private void RestoreCameraState()
@@ -384,6 +509,7 @@ namespace UavUsv.PlatformTools
             missionCamera.fieldOfView = originalCameraFieldOfView;
             missionCamera.orthographicSize = originalCameraOrthographicSize;
             cameraStateCaptured = false;
+            missionCameraFramed = false;
             missionCamera = null;
         }
 
@@ -479,19 +605,19 @@ namespace UavUsv.PlatformTools
                 foreach (KeyValuePair<GameObject, bool> item in cleanPresentationStates)
                     if (item.Key) item.Key.SetActive(item.Value);
                 cleanPresentationStates.Clear();
+                foreach (KeyValuePair<LineRenderer, bool> item in cleanLineStates)
+                    if (item.Key) item.Key.enabled = item.Value;
+                cleanLineStates.Clear();
                 return;
             }
 
-            HideTaskClutter(scenario.shoreBase);
             if (scenario.obstacles == null) return;
             foreach (Transform obstacle in scenario.obstacles)
             {
                 if (!obstacle) continue;
                 string objectName = obstacle.name.ToLowerInvariant();
-                if (objectName.Contains("lighthouse") || objectName.Contains("shorebase") ||
-                    objectName.Contains("shore_command_base") ||
-                    objectName.Contains("island_uav_base") ||
-                    objectName.Contains("helipad"))
+                if (objectName.Contains("lighthouse") ||
+                    objectName.Contains("catalina_island_terrain"))
                     HideTaskClutter(obstacle);
             }
 
@@ -503,11 +629,22 @@ namespace UavUsv.PlatformTools
             {
                 if (!item) continue;
                 string objectName = item.name.ToLowerInvariant();
-                if (objectName == "navigationlighthouse" || objectName == "shorebasestation" ||
-                    objectName == "shore_command_base" ||
-                    objectName == "island_uav_base" ||
-                    objectName.StartsWith("helipad"))
+                if (objectName == "navigationlighthouse" ||
+                    objectName == "catalina_island_terrain")
                     HideTaskClutter(item);
+            }
+
+            // The built-in overview scenario creates sensor circles, tracks,
+            // command links and capture rings before the external algorithm
+            // takes control.  Disabling the scenario stops them updating but
+            // does not clear their existing geometry, so hide every pre-existing
+            // line renderer. The task-center escort route is created afterwards
+            // and remains visible when the 3-D route layer is enabled.
+            foreach (LineRenderer line in FindObjectsOfType<LineRenderer>(true))
+            {
+                if (!line || line == routeRenderer) continue;
+                if (!cleanLineStates.ContainsKey(line)) cleanLineStates[line] = line.enabled;
+                line.enabled = false;
             }
         }
 
@@ -523,6 +660,7 @@ namespace UavUsv.PlatformTools
         {
             RestoreCameraState();
             SetCleanTaskPresentation(false);
+            SetExternalLabels(false);
         }
 
         private void RenderRoute(Vector2[] route)
@@ -554,11 +692,35 @@ namespace UavUsv.PlatformTools
 
         private void OnGUI()
         {
-            if (!externalMode || !Camera.main) return;
+            if (!showWorldLabels || !externalMode || !Camera.main) return;
             EnsureStyles();
-            DrawWorldLabel(escortTarget, "ESCORT", escortLabelStyle);
-            if (scenario && algorithmCode == "ESCORT_GUARD")
-                DrawWorldLabel(scenario.targetVessel, "THREAT", threatLabelStyle);
+            var items = new List<PoseTarget>(poseTargets.Values);
+            items.Sort((left, right) =>
+                LabelPriority(right).CompareTo(LabelPriority(left)));
+            var occupied = new List<Rect>();
+            foreach (PoseTarget item in items)
+            {
+                if (item == null || !item.subject ||
+                    !item.subject.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+                Vector3 point = Camera.main.WorldToScreenPoint(LabelAnchor(item.subject));
+                if (point.z <= 0f) continue;
+                string label = DisplayLabel(item);
+                GUIStyle style = LabelStyle(item);
+                Vector2 size = style.CalcSize(new GUIContent(label));
+                float width = Mathf.Clamp(size.x + 18f, 62f, 116f);
+                Rect rect = FindLabelRect(
+                    point.x,
+                    Screen.height - point.y,
+                    width,
+                    24f,
+                    occupied
+                );
+                occupied.Add(rect);
+                GUI.Box(rect, label, style);
+            }
         }
 
         private void EnsureStyles()
@@ -576,14 +738,99 @@ namespace UavUsv.PlatformTools
                 fontStyle = FontStyle.Bold,
                 normal = { textColor = new Color(1f, .3f, .3f) }
             };
+            uavLabelStyle = new GUIStyle(GUI.skin.box)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontStyle = FontStyle.Bold,
+                normal = { textColor = new Color(1f, .80f, .24f) }
+            };
+            usvLabelStyle = new GUIStyle(GUI.skin.box)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontStyle = FontStyle.Bold,
+                normal = { textColor = new Color(1f, .38f, .38f) }
+            };
         }
 
-        private static void DrawWorldLabel(Transform subject, string text, GUIStyle style)
+        private static int LabelPriority(PoseTarget item)
         {
-            if (!subject || !subject.gameObject.activeInHierarchy) return;
-            Vector3 point = Camera.main.WorldToScreenPoint(subject.position + Vector3.up * 3.8f);
-            if (point.z <= 0f) return;
-            GUI.Box(new Rect(point.x - 42f, Screen.height - point.y - 12f, 84f, 24f), text, style);
+            string type = (item.type ?? string.Empty).ToUpperInvariant();
+            return type.Contains("TARGET") ? 2 : 1;
+        }
+
+        private GUIStyle LabelStyle(PoseTarget item)
+        {
+            string type = (item.type ?? item.code ?? string.Empty).ToUpperInvariant();
+            if (type == "ESCORT_TARGET") return escortLabelStyle;
+            if (type == "CAPTURE_TARGET" || type == "THREAT_TARGET" || type == "TARGET")
+                return threatLabelStyle;
+            return type == "UAV" || (item.code ?? string.Empty).StartsWith("UAV", StringComparison.OrdinalIgnoreCase)
+                ? uavLabelStyle
+                : usvLabelStyle;
+        }
+
+        private static string DisplayLabel(PoseTarget item)
+        {
+            string type = (item.type ?? string.Empty).ToUpperInvariant();
+            if (type == "ESCORT_TARGET") return "ESCORT";
+            if (type == "CAPTURE_TARGET") return "TARGET";
+            if (type == "THREAT_TARGET") return "THREAT";
+            return NormalizeCode(item.code ?? type);
+        }
+
+        private static Vector3 LabelAnchor(Transform subject)
+        {
+            Renderer[] renderers = subject.GetComponentsInChildren<Renderer>(false);
+            if (renderers.Length == 0)
+                return subject.position + Vector3.up * 2f;
+            Bounds bounds = renderers[0].bounds;
+            for (int index = 1; index < renderers.Length; index++)
+                bounds.Encapsulate(renderers[index].bounds);
+            return new Vector3(bounds.center.x, bounds.max.y + .8f, bounds.center.z);
+        }
+
+        private static Rect FindLabelRect(
+            float x,
+            float y,
+            float width,
+            float height,
+            List<Rect> occupied)
+        {
+            Rect[] candidates =
+            {
+                new Rect(x + 10f, y - height - 10f, width, height),
+                new Rect(x - width - 10f, y - height - 10f, width, height),
+                new Rect(x + 10f, y + 10f, width, height),
+                new Rect(x - width - 10f, y + 10f, width, height),
+                new Rect(x - width * .5f, y - height - 18f, width, height),
+                new Rect(x - width * .5f, y + 18f, width, height)
+            };
+            foreach (Rect candidate in candidates)
+            {
+                if (candidate.xMin < 4f || candidate.xMax > Screen.width - 4f ||
+                    candidate.yMin < 4f || candidate.yMax > Screen.height - 4f)
+                    continue;
+                bool overlaps = false;
+                foreach (Rect other in occupied)
+                {
+                    Rect padded = new Rect(
+                        other.x - 4f,
+                        other.y - 4f,
+                        other.width + 8f,
+                        other.height + 8f
+                    );
+                    if (candidate.Overlaps(padded))
+                    {
+                        overlaps = true;
+                        break;
+                    }
+                }
+                if (!overlaps) return candidate;
+            }
+            Rect fallback = candidates[0];
+            fallback.x = Mathf.Clamp(fallback.x, 4f, Mathf.Max(4f, Screen.width - width - 4f));
+            fallback.y = Mathf.Clamp(fallback.y, 4f, Mathf.Max(4f, Screen.height - height - 4f));
+            return fallback;
         }
 
         private static string NormalizeCode(string code)

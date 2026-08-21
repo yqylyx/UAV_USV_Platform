@@ -75,7 +75,11 @@ function draw(now = performance.now()) {
     const y = cy - entry.value!.y / maxRange * radius
     projected.push({ item: entry.item, x, y })
     const selected = entry.item.id === props.selectedId
-    context.fillStyle = entry.item.kind === 'OBSTACLE' ? '#ffad45' : '#62e7bc'
+    context.fillStyle = entry.item.kind === 'OBSTACLE'
+      ? '#ffad45'
+      : entry.item.kind === 'RADAR_RETURN'
+        ? '#55d8ff'
+        : '#62e7bc'
     context.shadowColor = context.fillStyle; context.shadowBlur = selected ? 15 : 7
     context.beginPath(); context.arc(x, y, selected ? 6 : 3, 0, Math.PI * 2); context.fill()
     context.shadowBlur = 0

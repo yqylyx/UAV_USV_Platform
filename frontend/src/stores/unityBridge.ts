@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { acknowledgeRuntimeCommand } from '@/api/runtimeControl'
 import type { RuntimeCommandStatus } from '@/api/runtimeControl'
 
-export type UnityRuntimeScope = 'SYSTEM_OVERVIEW' | 'MISSION_CENTER'
+export type UnityRuntimeScope = 'SYSTEM_OVERVIEW' | 'MISSION_CENTER' | 'VIRTUAL_FLEET'
 
 export interface UnityBridgeMessage {
   type: string
@@ -66,7 +66,7 @@ function createChannel(): UnityBridgeChannel {
     lastMessage: null,
     lastOutgoing: null,
     error: '',
-    trajectoryVisible: true,
+    trajectoryVisible: false,
     trajectoryTogglePending: false,
     outbox: [],
     commandKeys: {},
@@ -107,6 +107,7 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
     channels: {
       SYSTEM_OVERVIEW: createChannel(),
       MISSION_CENTER: createChannel(),
+      VIRTUAL_FLEET: createChannel(),
     } as Record<UnityRuntimeScope, UnityBridgeChannel>,
   }),
   getters: {
