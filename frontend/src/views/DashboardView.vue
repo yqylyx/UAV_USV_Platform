@@ -338,8 +338,19 @@ const selectedOverviewDevice = computed(() =>
 const overviewMissionRunning = computed(() =>
   overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED',
 )
+const overviewRosMissionPhase = computed(() => {
+  const payload = realtimeStore.missionStatus?.payload
+  return String(payload?.phase ?? payload?.state ?? '').trim().toUpperCase()
+})
+const overviewOperatorStartPending = computed(() =>
+  overviewRuntimeMode.value === 'REAL'
+  && overviewMissionRunning.value
+  && overviewRosMissionPhase.value === 'TRACKING',
+)
 const overviewMissionButtonLabel = computed(() =>
-  overviewMissionRunning.value ? '终止任务' : '启动任务',
+  overviewOperatorStartPending.value
+    ? '启动围捕'
+    : overviewMissionRunning.value ? '终止任务' : '启动任务',
 )
 const overviewRuntimeModeLabel = computed(() =>
   overviewRuntimeMode.value === 'VIRTUAL_SIMULATION' ? '虚拟仿真' : '真实任务',
@@ -477,6 +488,10 @@ async function issueSelectedQuickCommand(action: OverviewQuickAction) {
 }
 
 async function handleOverviewMissionToggle() {
+  if (overviewOperatorStartPending.value) {
+    await handleMissionGroupAction('start')
+    return
+  }
   if (overviewMissionRunning.value) {
     await handleMissionGroupAction('abort')
     return
@@ -912,6 +927,26 @@ function sendRealOverviewScenario(detail?: MissionDetail | null) {
   })
 }
 
+async function triggerRealOverviewMissionStart(detail: MissionDetail) {
+  const run = detail.currentRun
+  if (!run) throw new Error('当前真实任务没有可启动的运行批次')
+  const result = await issueRuntimeCommand({
+    commandType: 'START_MISSION',
+    runId: run.id,
+    payload: JSON.stringify({ source: 'SYSTEM_OVERVIEW', operatorStart: true }),
+    detail: `启动围捕：${detail.mission.name}`,
+    runtimeScope: 'MISSION_CENTER',
+    runtimeInstanceId: run.runtimeInstanceId ?? undefined,
+  })
+  if (result.status === 'FAILED' || result.status === 'TIMEOUT') {
+    throw new Error(result.detail || '真实任务启动指令未能下发')
+  }
+  const rosStatus = await realtimeStore.waitForCommandResult(result.commandKey, 90000)
+  if (rosStatus !== 'SUCCEEDED') {
+    throw new Error(`真实任务启动指令未收到成功结果：${rosStatus}`)
+  }
+}
+
 async function startOverviewMission() {
   if (overviewRuntimeMode.value === 'REAL') {
     if (!realValidationReady.value) {
@@ -922,6 +957,9 @@ async function startOverviewMission() {
     if (overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED') {
       overviewDeploymentAcknowledged.value = true
       sendRealOverviewScenario(current)
+      if (current && overviewOperatorStartPending.value) {
+        await triggerRealOverviewMissionStart(current)
+      }
       return
     }
     if (overviewMissionStatus.value !== 'READY') {
@@ -1308,14 +1346,14 @@ watch(
             </button>
           </div>
           <div class="overview-mission-toggle">
-            <span>{{ overviewMissionRunning ? '任务运行中' : '任务未启动' }}</span>
+            <span>{{ overviewOperatorStartPending ? '等待启动围捕' : overviewMissionRunning ? '任务运行中' : '任务未启动' }}</span>
             <button
               type="button"
-              :class="{ danger: overviewMissionRunning }"
+              :class="{ danger: overviewMissionRunning && !overviewOperatorStartPending }"
               :disabled="commandBusy || !unityControlReady"
               @click="handleOverviewMissionToggle"
             >
-              <component :is="overviewMissionRunning ? CircleStop : Play" :size="18" />
+              <component :is="overviewMissionRunning && !overviewOperatorStartPending ? CircleStop : Play" :size="18" />
               {{ overviewMissionButtonLabel }}
             </button>
           </div>
