@@ -99,9 +99,13 @@ function poseState(sample: VehiclePoseSample) {
 
 const realtimeTrajectoryFrame = computed<UnityTrajectoryFrame | null>(() => {
   const envelope = realtimeStore.poseBatch
-  if (!envelope?.runId || String(envelope.runId) !== String(currentRunId.value ?? '')) return null
   const vehicles = envelope?.payload.vehicles?.filter(validPoseSample) ?? []
   if (!envelope || !vehicles.length) return null
+  if (envelope.runId) {
+    if (String(envelope.runId) !== String(currentRunId.value ?? '')) return null
+  } else if (!currentRunId.value) {
+    return null
+  }
   return {
     sequence: envelope.sequence,
     source: envelope.source,
