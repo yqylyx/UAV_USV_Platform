@@ -1,3 +1,5 @@
+import { deriveAdaptiveScenarioPlan } from './adaptiveScenarioPlan'
+
 export interface GridScenarioPose {
   deviceCode: string
   deviceType: 'UAV' | 'USV' | 'TARGET'
@@ -8,6 +10,7 @@ export interface GridScenarioPose {
   speedMps: number
   state: string
   valid: boolean
+  targetType?: string
 }
 
 export interface GridLayoutOptions {
@@ -20,6 +23,8 @@ export interface GridLayoutOptions {
   }
   uavSpeedMps: number
   usvSpeedMps: number
+  captureMode?: boolean
+  seed?: number
 }
 
 function gridAxis(index: number, count: number, min: number, max: number) {
@@ -62,40 +67,115 @@ function appendGrid(
   }
 }
 
+function createSeededRandom(seed: number | undefined) {
+  let state = (Number.isFinite(seed) ? Math.trunc(seed as number) : 20260814) >>> 0
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 0x100000000
+  }
+}
+
+interface PlanarPoint {
+  eastM: number
+  northM: number
+}
+
+function appendRandomStaging(
+  poses: GridScenarioPose[],
+  type: 'UAV' | 'USV',
+  count: number,
+  speedMps: number,
+  origin: GridLayoutOptions['fleetOrigin'],
+  random: () => number,
+  occupied: PlanarPoint[],
+  frontEastOffset: number,
+) {
+  const spacing = type === 'USV' ? 14 : 10
+  const columns = Math.max(1, Math.ceil(Math.sqrt(count)))
+  const rows = Math.max(1, Math.ceil(count / columns))
+  for (let index = 0; index < count; index += 1) {
+    const row = Math.floor(index / columns)
+    const column = index % columns
+    // Seeded cell jitter preserves the requested random-looking idle layout
+    // while the cell pitch guarantees clearance for 100+ devices. UAV and
+    // USV layers may share horizontal cells because altitude separates them.
+    const jitterEast = (random() - .5) * spacing * .18
+    const jitterNorth = (random() - .5) * spacing * .18
+    // Capture missions start as a pursuit, not as an almost-complete ring.
+    // Keep the closest craft well behind the target and expand the staging
+    // depth with fleet size. The target is placed symmetrically ahead of the
+    // fleet below, so even 3+3 starts with more than 100 m of separation.
+    const columnDirection = frontEastOffset >= 0 ? 1 : -1
+    const eastM = origin.eastM + frontEastOffset + column * spacing * columnDirection + jitterEast
+    const northM = origin.northM + (row - (rows - 1) / 2) * spacing + jitterNorth
+    occupied.push({ eastM, northM })
+
+    poses.push({
+      deviceCode: `${type}-${String(index + 1).padStart(3, '0')}`,
+      deviceType: type,
+      eastM,
+      northM,
+      upM: origin.upM + (type === 'UAV' ? 20 + (index % 4) * 2 : 0),
+      headingDeg: random() * 360,
+      speedMps,
+      state: type === 'UAV' ? 'AIRBORNE' : 'SAILING',
+      valid: true,
+    })
+  }
+}
+
 export function buildVirtualFleetGridLayout(
   options: GridLayoutOptions,
 ): GridScenarioPose[] {
   const poses: GridScenarioPose[] = []
-  appendGrid(
-    poses,
-    'UAV',
-    Math.max(1, Math.min(100, Math.trunc(options.uavCount))),
-    -50,
-    0,
-    options.uavSpeedMps,
-    options.fleetOrigin,
-  )
-  appendGrid(
-    poses,
-    'USV',
-    Math.max(1, Math.min(100, Math.trunc(options.usvCount))),
-    0,
-    50,
-    options.usvSpeedMps,
-    options.fleetOrigin,
-  )
-  poses.push({
-    deviceCode: 'TARGET-001',
-    deviceType: 'TARGET',
-    // The single rendered target is the escort threat. Keep it outside the
-    // fleet ring so Unity and the escort adapter share the same initial pose.
-    eastM: options.fleetOrigin.eastM + 55,
-    northM: options.fleetOrigin.northM,
-    upM: options.fleetOrigin.upM,
-    headingDeg: 0,
-    speedMps: 0,
-    state: 'THREAT_TARGET',
-    valid: true,
+  const captureMode = options.captureMode === true
+  const uavCount = Math.max(1, Math.min(128, Math.trunc(options.uavCount)))
+  const usvCount = Math.max(1, Math.min(128, Math.trunc(options.usvCount)))
+  const captureColumns = Math.ceil(Math.sqrt(Math.max(uavCount, usvCount)))
+  const captureCorridorHalfLength = 55 + Math.max(0, captureColumns - 2) * 4
+  if (captureMode) {
+    const random = createSeededRandom(options.seed)
+    const occupied: PlanarPoint[] = []
+    // Stage the friendly fleet east of the hostile target. The target's
+    // initial escape therefore points west into the long open-water corridor,
+    // rather than east toward Catalina and its bases.
+    appendRandomStaging(poses, 'UAV', uavCount, options.uavSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength)
+    appendRandomStaging(poses, 'USV', usvCount, options.usvSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength)
+  } else {
+    appendGrid(poses, 'UAV', uavCount, -50, 0, options.uavSpeedMps, options.fleetOrigin)
+    appendGrid(poses, 'USV', usvCount, 0, 50, options.usvSpeedMps, options.fleetOrigin)
+  }
+  const plan = deriveAdaptiveScenarioPlan(uavCount, usvCount)
+  const targetTypes = captureMode
+    ? Array.from({ length: plan.threatCount }, () => 'CAPTURE_TARGET')
+    : [
+        ...Array.from({ length: plan.protectedCount }, () => 'ESCORT_TARGET'),
+        ...Array.from({ length: plan.threatCount }, () => 'THREAT_TARGET'),
+      ]
+  targetTypes.forEach((targetType, index) => {
+    const angle = 2 * Math.PI * index / Math.max(1, targetTypes.length)
+    const radius = captureMode ? 0 : Math.min(plan.worldWidth, plan.worldHeight) * .34
+    // Multi-target capture starts with every hostile clearly separated in
+    // open water.  A single target remains on the corridor centreline.
+    const captureSpread = Math.min(90, plan.worldHeight * .26)
+    const captureTargetNorth = captureMode
+      ? gridAxis(index, targetTypes.length, -captureSpread, captureSpread)
+      : 0
+    const captureTargetEast = captureMode
+      ? -captureCorridorHalfLength - Math.abs(captureTargetNorth) * .12
+      : 0
+    poses.push({
+      deviceCode: `TARGET-${String(index + 1).padStart(3, '0')}`,
+      deviceType: 'TARGET',
+      targetType,
+      eastM: options.fleetOrigin.eastM + captureTargetEast + Math.cos(angle) * radius,
+      northM: options.fleetOrigin.northM + captureTargetNorth + Math.sin(angle) * radius,
+      upM: options.fleetOrigin.upM,
+      headingDeg: (angle * 180 / Math.PI + 180) % 360,
+      speedMps: 0,
+      state: targetType,
+      valid: true,
+    })
   })
   return poses
 }

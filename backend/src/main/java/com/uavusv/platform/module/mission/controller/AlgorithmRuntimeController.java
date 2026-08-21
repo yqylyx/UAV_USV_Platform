@@ -43,6 +43,14 @@ public class AlgorithmRuntimeController {
         return ApiResponse.success(manager.placeThreat(runId, request.x(), request.y()));
     }
 
+    @PostMapping("/{runId}/active-capture")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<AlgorithmRuntimeStatusResponse> activateCapture(
+            @PathVariable Long runId,
+            @RequestParam(required = false) String threatCode) {
+        return ApiResponse.success(manager.activateCapture(runId, threatCode));
+    }
+
     @GetMapping("/{runId}/status")
     public ApiResponse<AlgorithmRuntimeStatusResponse> status(@PathVariable Long runId) {
         return ApiResponse.success(manager.status(runId));

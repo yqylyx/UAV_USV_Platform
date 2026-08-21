@@ -68,10 +68,9 @@ function normalizeHeading(value: number) {
   return ((value % 360) + 360) % 360
 }
 
-function canonicalDeviceCode(code: string, type: 'UAV' | 'USV' | 'TARGET') {
+function canonicalDeviceCode(code: string, type: 'UAV' | 'USV') {
   const normalized = code.trim().toUpperCase()
   const match = normalized.match(/(\d+)$/)
-  if (type === 'TARGET') return 'TARGET-001'
   const number = match ? Number(match[1]) : 1
   return `${type}-${String(Math.max(1, number)).padStart(3, '0')}`
 }
@@ -168,11 +167,18 @@ function poseFromAgent(
 
 function poseFromTarget(
   target: AlgorithmTargetFrame,
+  targetIndex: number,
   frame: AlgorithmRuntimeFrame,
   previous: VirtualPoseStateMap,
   origin: EnuOrigin,
 ): VirtualPoseInput {
-  const deviceCode = canonicalDeviceCode(target.code, 'TARGET')
+  // Runtime targets are created in the exact same protected-then-threat order
+  // as the initial Unity scene. Never re-sort this list: doing so changed the
+  // hostile capture target from TARGET-001 to the nonexistent TARGET-002.
+  const canonical = target.code.trim().toUpperCase()
+  const deviceCode = /^TARGET-\d+$/.test(canonical)
+    ? `TARGET-${String(Number(canonical.split('-')[1])).padStart(3, '0')}`
+    : `TARGET-${String(targetIndex + 1).padStart(3, '0')}`
   const eastM = finiteOr(target.x, 0) + origin.eastM
   const northM = finiteOr(target.y, 0) + origin.northM
   const upM = finiteOr(target.z, 0) + origin.upM
@@ -182,6 +188,10 @@ function poseFromTarget(
   const heading = Math.hypot(deltaEast, deltaNorth) > 0.0001
     ? Math.atan2(deltaEast, deltaNorth) * 180 / Math.PI
     : finiteOr(target.heading, prior?.headingDeg ?? 0)
+  const speedMps = Math.min(
+    USV_MAX_SPEED_MPS,
+    Math.max(0, speedFromDelta(deviceCode, eastM, northM, upM, frame.timestamp, previous)),
+  )
 
   return {
     deviceCode,
@@ -190,9 +200,9 @@ function poseFromTarget(
     northM,
     upM,
     headingDeg: normalizeHeading(heading),
-    speedMps: 0,
-    state: target.visible === false ? 'HIDDEN' : target.type,
-    valid: target.visible !== false,
+    speedMps,
+    state: target.visible === false ? 'HIDDEN' : (target.state || target.type),
+    valid: true,
   }
 }
 
@@ -230,14 +240,9 @@ export function adaptVirtualAlgorithmFrame(
   const vehicles = frame.agents.map(
     agent => poseFromAgent(agent, frame, previous, fleetOrigin),
   )
-  const visibleTargets = frame.targets.filter(target => target.visible !== false)
-  const hasThreatTarget = visibleTargets.some(target => target.type === 'THREAT_TARGET')
-  const targets = visibleTargets
-    // Unity currently exposes one target device. During escort runs the
-    // threat owns TARGET-001; ESCORT_TARGET remains an internal algorithm
-    // reference and must not overwrite or duplicate the rendered enemy.
-    .filter(target => !hasThreatTarget || target.type !== 'ESCORT_TARGET')
-    .map(target => poseFromTarget(target, frame, previous, fleetOrigin))
+  const targets = frame.targets.map(
+    (target, index) => poseFromTarget(target, index, frame, previous, fleetOrigin),
+  )
 
   for (const pose of [...vehicles, ...targets]) rememberPose(nextState, pose, frame.timestamp)
 

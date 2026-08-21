@@ -196,6 +196,8 @@ export interface AlgorithmAgentFrame {
   heading: number
   role: string
   status: string
+  groupId?: string
+  assignedTargetCode?: string
 }
 
 export interface AlgorithmTargetFrame {
@@ -206,6 +208,9 @@ export interface AlgorithmTargetFrame {
   z: number
   heading: number
   visible: boolean
+  groupId?: string
+  state?: string
+  threatLevel?: number
 }
 
 export interface AlgorithmRuntimeFrame {
