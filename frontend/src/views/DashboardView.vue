@@ -484,7 +484,7 @@ async function handleOverviewMissionToggle() {
   if (!overviewDeploymentAcknowledged.value) {
     await handleMissionGroupAction('deploy')
   }
-  if (overviewDeploymentAcknowledged.value) {
+  if (overviewDeploymentAcknowledged.value && !overviewMissionRunning.value) {
     await handleMissionGroupAction('start')
   }
 }
@@ -900,19 +900,35 @@ async function runOverviewDemoCommand(action: 'start' | 'pause' | 'resume' | 'ca
   }[action] as MissionStatus
 }
 
+function sendRealOverviewScenario(detail?: MissionDetail | null) {
+  const missionId = detail?.mission.id ?? overviewMissionId.value
+  if (!missionId) return
+  const runId = detail?.currentRun?.id ?? null
+  unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', {
+    runtimeMode: 'REAL',
+    algorithmCode: detail?.mission.algorithmCode ?? selectedOverviewAlgorithm.value,
+    missionId,
+    runId: runId ?? undefined,
+  })
+}
+
 async function startOverviewMission() {
   if (overviewRuntimeMode.value === 'REAL') {
     if (!realValidationReady.value) {
       throw new Error('真实验证链路未就绪：等待 ROS Gateway、Unity 控制桥和 6 路真实位姿数据')
     }
-    if (!overviewMissionId.value) await loadOverviewMission()
+    const current = await loadOverviewMission()
     if (!overviewMissionId.value) throw new Error('未找到真实任务')
-    unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', {
-      runtimeMode: 'REAL',
-      algorithmCode: selectedOverviewAlgorithm.value,
-      missionId: overviewMissionId.value,
-    })
-    await runOverviewMissionAction('start')
+    if (overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED') {
+      overviewDeploymentAcknowledged.value = true
+      sendRealOverviewScenario(current)
+      return
+    }
+    if (overviewMissionStatus.value !== 'READY') {
+      throw new Error(`当前真实任务状态为 ${overviewMissionStatus.value}，不能启动`)
+    }
+    const confirmed = await runOverviewMissionAction('start')
+    sendRealOverviewScenario(confirmed)
     return
   }
   sendVirtualScenario()
