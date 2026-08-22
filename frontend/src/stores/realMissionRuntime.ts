@@ -148,6 +148,8 @@ export const useRealMissionRuntimeStore = defineStore('realMissionRuntime', {
         return 'RUNNING'
       }
 
+      if (backendStatus === 'RUNNING' || backendStatus === 'PAUSED') return 'RUNNING'
+
       if (
         state.lifecycleAction === 'START'
         || startStatus === 'ACCEPTED'
