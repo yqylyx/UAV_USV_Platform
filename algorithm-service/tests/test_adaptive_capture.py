@@ -95,6 +95,39 @@ class AdaptiveCaptureAdapterTest(unittest.TestCase):
                 break
         self.assertGreaterEqual(minimum_margin, -0.05, worst_pair)
 
+    def test_twelve_to_fourteen_two_targets_close_both_rings(self):
+        for count in (12, 13, 14):
+            with self.subTest(count=count):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    adapter = AdaptiveCaptureAdapter(9000 + count, {
+                        "uavCount": count,
+                        "usvCount": count,
+                        "targetCount": 2,
+                        "seed": 20260814,
+                    })
+                adapter.set_mission_active(True)
+                final = None
+                for _ in range(1000):
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        final = adapter.step()
+                    if final.terminalStatus == "COMPLETED":
+                        break
+
+                self.assertIsNotNone(final)
+                self.assertEqual("COMPLETED", final.terminalStatus)
+                self.assertEqual(1.0, final.metrics["progress"])
+                self.assertEqual(2, final.metrics["capturedTargetCount"])
+                self.assertEqual("NONE", final.metrics["captureBlocker"])
+                self.assertTrue(final.metrics["formationReady"])
+                self.assertTrue(final.metrics["ringGeometryReady"])
+                for group in final.metrics["captureGroups"]:
+                    self.assertEqual("CAPTURED", group["state"])
+                    self.assertEqual(3, group["stage"])
+                    self.assertEqual(1.0, group["arrivalRatio"])
+                    self.assertGreaterEqual(group["holdFrames"], group["holdRequiredFrames"])
+                    self.assertEqual("NONE", group["captureBlocker"])
+                    self.assertLessEqual(group["holdFrames"], group["holdRequiredFrames"])
+
 
 if __name__ == "__main__":
     unittest.main()

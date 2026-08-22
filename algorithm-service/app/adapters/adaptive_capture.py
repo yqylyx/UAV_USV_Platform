@@ -24,14 +24,23 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
 
     def __init__(self, run_id: int, config: Dict[str, object] | None = None) -> None:
         super().__init__(run_id, config)
-        uav_count = max(1, int(self.config.get("uavCount", 3)))
-        usv_count = max(1, int(self.config.get("usvCount", 3)))
+        uav_count = max(1, min(15, int(self.config.get("uavCount", 3))))
+        usv_count = max(1, min(15, int(self.config.get("usvCount", 3))))
         requested_targets = max(1, int(self.config.get("targetCount", 1)))
         geometric_limit = max(1, (uav_count + usv_count) // 3)
         self.target_count = min(requested_targets, uav_count, usv_count, geometric_limit)
         self.children: List[CaptureAdapter] = []
         self.agent_code_maps: List[Dict[str, str]] = []
-        self.safety = SceneSafetyFilter(TASK_CENTER_SCENE_MAP)
+        # Child capture solvers operate in the expanded adaptive scenario
+        # (roughly 360x280 m for the realtime tiers), not the legacy
+        # Task-Center 72x60 m presentation box.  Applying the latter bounds
+        # to the merged fleet clamps multi-target agents near the initial
+        # staging area, producing the “分组后原地不动” symptom and preventing
+        # 9+9 from ever closing its ring.
+        self.safety = SceneSafetyFilter({
+            "bounds": [-260.0, 260.0, -190.0, 190.0],
+            "obstacles": list(TASK_CENTER_SCENE_MAP.get("obstacles", [])),
+        })
         self.previous_scene: Dict[str, tuple[float, float, float]] = {}
         initial = self.initial_pose_map()
 
@@ -103,6 +112,15 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             target_code = f"TARGET-{index + 1:03d}"
             group_id = f"CAPTURE-{index + 1:03d}"
             code_map = self.agent_code_maps[index]
+            # A child latches `metrics.captured` at the exact frame where the
+            # ring is confirmed; its presentation terminal flag can arrive
+            # one polling frame later.  Use the latched signal consistently
+            # for group state, progress and aggregate completion so the UI
+            # cannot show "stage 3 / hold 0 / ENCIRCLEMENT" for one target.
+            child_captured = (
+                frame.terminalStatus == "COMPLETED"
+                or bool(frame.metrics.get("captured", False))
+            )
             for agent in frame.agents:
                 agents.append(AgentFrame(
                     code_map.get(agent.code, agent.code), agent.type,
@@ -110,25 +128,46 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                     agent.status, group_id, target_code,
                 ))
             target = frame.targets[0]
+            raw_stage = int(frame.metrics.get("captureStage", 1) or 1)
+            # Stage 3 is reserved for a latched capture.  Older child
+            # frames can carry a stale stage value for one poll after a
+            # geometry replan; clamp that value so the UI never presents
+            # "ENCIRCLEMENT · stage 3/3".
+            group_stage = 3 if child_captured else min(2, max(1, raw_stage))
             targets.append(TargetFrame(
                 target_code, "CAPTURE_TARGET", target.x, target.y, target.z,
                 target.heading, target.visible, group_id,
-                "CAPTURED" if frame.terminalStatus == "COMPLETED" else str(frame.metrics.get("targetBehavior", frame.phase)),
+                "CAPTURED" if child_captured else str(frame.metrics.get("targetBehavior", frame.phase)),
                 3,
             ))
             groups.append({
                 "threatCode": target_code,
-                "state": "CAPTURED" if frame.terminalStatus == "COMPLETED" else frame.phase,
+                "state": "CAPTURED" if child_captured else frame.phase,
                 "memberCount": len(frame.agents),
                 "uavCount": sum(item.type == "UAV" for item in frame.agents),
                 "usvCount": sum(item.type == "USV" for item in frame.agents),
-                "progress": frame.metrics.get("progress", 0.0),
+                "progress": 1.0 if child_captured else frame.metrics.get("progress", 0.0),
+                # Preserve the child solver's real closure diagnostics.  The
+                # previous coordinator only copied progress and blocker, so
+                # the UI rendered every multi-target group as stage 1/3,
+                # arrival 0% and hold 0/0 even after the ring was complete.
+                "stage": group_stage,
+                "arrivalRatio": 1.0 if child_captured else frame.metrics.get("arrivalRatio", 0.0),
+                "holdFrames": (
+                    max(
+                        int(frame.metrics.get("captureHoldFrames", 0)),
+                        int(frame.metrics.get("requiredCaptureHoldFrames", 0)),
+                    )
+                    if child_captured
+                    else int(frame.metrics.get("captureHoldFrames", 0))
+                ),
+                "holdRequiredFrames": frame.metrics.get("requiredCaptureHoldFrames", 0),
                 "pursuitDistanceM": frame.metrics.get("targetTravelDistanceM", 0.0),
                 "requiredPursuitDistanceM": frame.metrics.get("requiredPursuitDistanceM", 0.0),
                 "targetSpeedMps": frame.metrics.get("targetSpeedMps", 0.0),
                 "targetBehavior": frame.metrics.get("targetBehavior", ""),
                 "ringGeometryReady": frame.metrics.get("ringGeometryReady", False),
-                "captureBlocker": frame.metrics.get("captureBlocker", ""),
+                "captureBlocker": "NONE" if child_captured else frame.metrics.get("captureBlocker", ""),
                 "containmentConfidence": frame.metrics.get("containmentConfidence", 0.0),
             })
 
@@ -184,7 +223,15 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                         )
                         break
 
-        completed = [frame.terminalStatus == "COMPLETED" for frame in child_frames]
+        # A child may have already latched its capture state in the vendor
+        # environment while the adapter terminal flag is delayed by one
+        # presentation frame.  Use both signals so the aggregate progress
+        # cannot remain below 100% after every target has actually closed.
+        completed = [
+            frame.terminalStatus == "COMPLETED"
+            or bool(frame.metrics.get("captured", False))
+            for frame in child_frames
+        ]
         all_completed = all(completed)
         phases = [frame.phase for frame in child_frames]
         if all(phase == "PREVIEW" for phase in phases):
@@ -204,7 +251,8 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         blockers = [
             f"TARGET-{index + 1:03d}:{item.get('captureBlocker')}"
             for index, item in enumerate(metrics_list)
-            if item.get("captureBlocker") not in {None, "", "NONE"}
+            if not completed[index]
+            and item.get("captureBlocker") not in {None, "", "NONE"}
         ]
         ring_diagnostics: Dict[str, object] = {}
         for index, item in enumerate(metrics_list):
@@ -218,10 +266,22 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             "visibleTargetCount": len(targets),
             "capturedTargetCount": sum(completed),
             "capturedThreatCount": sum(completed),
-            "progress": 1.0 if all_completed else mean_metric("progress"),
+            "progress": 1.0 if all_completed else min(
+                0.999,
+                sum(
+                    1.0 if done else float(metrics_list[index].get("progress", 0.0))
+                    for index, done in enumerate(completed)
+                ) / max(1, len(completed)),
+            ),
             "captured": all_completed,
-            "formationReady": all(bool(item.get("formationReady", False)) for item in metrics_list),
-            "ringGeometryReady": all(bool(item.get("ringGeometryReady", False)) for item in metrics_list),
+            "formationReady": all(
+                completed[index] or bool(item.get("formationReady", False))
+                for index, item in enumerate(metrics_list)
+            ),
+            "ringGeometryReady": all(
+                completed[index] or bool(item.get("ringGeometryReady", False))
+                for index, item in enumerate(metrics_list)
+            ),
             "captureAgents": sum(int(item.get("captureAgents", 0)) for item in metrics_list),
             "requiredCaptureAgents": sum(int(item.get("requiredCaptureAgents", 0)) for item in metrics_list),
             "targetTravelDistanceM": min(float(item.get("targetTravelDistanceM", 0.0)) for item in metrics_list),
@@ -233,7 +293,17 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             "replanCount": sum(int(item.get("replanCount", 0)) for item in metrics_list),
             "avoidanceCount": sum(int(item.get("avoidanceCount", 0)) for item in metrics_list) + global_adjustments,
             "globalAvoidanceCount": global_adjustments,
-            "captureHoldFrames": min(int(item.get("captureHoldFrames", 0)) for item in metrics_list),
+            "captureHoldFrames": min(
+                (
+                    max(
+                        int(item.get("captureHoldFrames", 0)),
+                        int(item.get("requiredCaptureHoldFrames", 0)),
+                    )
+                    if completed[index]
+                    else int(item.get("captureHoldFrames", 0))
+                )
+                for index, item in enumerate(metrics_list)
+            ),
             "requiredCaptureHoldFrames": max(int(item.get("requiredCaptureHoldFrames", 0)) for item in metrics_list),
             "captureGroups": groups,
             "ringDiagnostics": ring_diagnostics,

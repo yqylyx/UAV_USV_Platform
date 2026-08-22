@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import {
-  Camera,
   CheckCircle2,
   CircleStop,
   Maximize2,
@@ -10,7 +9,6 @@ import {
   Play,
   RefreshCw,
   Send,
-  SquareStack,
 } from '@lucide/vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
@@ -69,10 +67,8 @@ type CaptureGroupMetric = {
 
 const unityPanel = ref<InstanceType<typeof UnityWebglPanel> | null>(null)
 const unityReady = ref(false)
-const lastMessage = ref<UnityMessage | null>(null)
 const selectedDevice = ref('')
 const cameraMode = ref('overview')
-const logs = ref<string[]>([])
 const scenarioReadyRunId = ref<number | null>(null)
 const scenarioLoading = ref(false)
 const algorithmPrepared = ref(false)
@@ -101,6 +97,15 @@ const captureRemainingSeconds = computed(() => Math.max(0, Math.ceil(Number(miss
 const captureGroups = computed(() => Array.isArray(missionMetrics.value.captureGroups)
   ? missionMetrics.value.captureGroups as CaptureGroupMetric[]
   : [])
+const displayCaptureStage = (stage: unknown) => {
+  const value = Number(stage ?? 0)
+  if (state.algorithm === 'GB_SFLA_CS') {
+    // The capture adapter already exposes its user-facing stages as 1/2/3.
+    return Math.min(3, Math.max(1, value || 1))
+  }
+  // Escort capture groups retain the legacy internal 0/1/2 convention.
+  return Math.min(3, Math.max(1, value + 1))
+}
 const roleSummary = computed(() => {
   const roles = missionMetrics.value.roles
   if (!roles || typeof roles !== 'object') return ''
@@ -143,14 +148,8 @@ const speedValid = computed(() =>
   && state.usvSpeed >= 0
   && state.usvSpeed <= 4)
 
-const vehicleCodes = computed(() => [
-  ...Array.from({ length: state.uavCount }, (_, index) => `UAV-${String(index + 1).padStart(3, '0')}`),
-  ...Array.from({ length: state.usvCount }, (_, index) => `USV-${String(index + 1).padStart(3, '0')}`),
-])
-
 function addLog(message: string) {
-  logs.value.unshift(`${new Date().toLocaleTimeString()}  ${message}`)
-  logs.value = logs.value.slice(0, 12)
+  void message
 }
 
 function send(type: string, payload: Record<string, unknown> = {}) {
@@ -176,9 +175,6 @@ function onUnityError(message: string) {
 }
 
 function onUnityMessage(message: UnityMessage) {
-  if (message.type !== 'vueCommandReceived') {
-    lastMessage.value = message
-  }
   if (message.type === 'vueCommandReceived' && message.payload?.type === 'loadScenario') {
     addLog(
       `bridge loadScenario: sent=${message.payload.bridgeSent === true}`
@@ -284,7 +280,7 @@ function validateSpeed(value: number, max: number) {
 }
 
 function validateFleetCount(value: number) {
-  return Math.max(1, Math.min(128, Math.trunc(Number.isFinite(value) ? value : 1)))
+  return Math.max(1, Math.min(15, Math.trunc(Number.isFinite(value) ? value : 1)))
 }
 
 function generateScenario() {
@@ -403,7 +399,7 @@ async function startMission() {
     || scenarioReadyRunId.value !== state.runId
   ) {
     missionActionMessage.value = scenarioLoading.value || scenarioReadyRunId.value !== state.runId
-      ? '场景仍在等待 Unity 确认，请重新生成场景或查看回执日志。'
+      ? '场景仍在等待 Unity 确认，请重新生成场景后再试。'
       : !unityReady.value
         ? 'Unity WebGL 尚未就绪，暂时不能启动算法。'
         : '速度配置无效，请修正后再启动。'
@@ -413,13 +409,13 @@ async function startMission() {
   if (!algorithmPrepared.value) {
     addLog(`missionStart: preparing algorithm runId=${state.runId}`)
     if (!(await prepareExternalAlgorithm())) {
-      missionActionMessage.value = '算法准备失败，请查看回执日志中的具体错误。'
+      missionActionMessage.value = '算法准备失败，请稍后重试。'
       return
     }
   }
   const initialFrameSynced = await synchronizeInitialAlgorithmFrame()
   if (!initialFrameSynced) {
-    missionActionMessage.value = '算法首帧未返回，任务未启动；请查看回执日志。'
+    missionActionMessage.value = '算法首帧未返回，任务未启动，请稍后重试。'
     addLog(`missionStart blocked: ${missionActionMessage.value}`)
     return
   }
@@ -515,7 +511,6 @@ async function resetMission() {
   initialScenarioPoses.value = []
   scenarioReadyRunId.value = null
   selectedDevice.value = ''
-  logs.value = []
   addLog('missionReset: 清理算法、轨迹和 Unity 运行实例')
   send('missionReset', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
   unityPanel.value?.reload()
@@ -637,20 +632,6 @@ function stopAlgorithmPolling() {
   }
 }
 
-function selectDevice(code: string) {
-  selectedDevice.value = code
-  cameraMode.value = 'device-follow'
-  send('selectDevice', { deviceCode: code })
-}
-
-function followSelectedDevice() {
-  if (!selectedDevice.value) return
-  send('setCameraMode', {
-    mode: 'device-follow',
-    deviceCode: selectedDevice.value,
-  })
-}
-
 function setOverviewCamera() {
   send('setCameraMode', { mode: 'overview' })
 }
@@ -681,14 +662,14 @@ onBeforeUnmount(() => {
             <div v-if="state.algorithm === 'ESCORT_GUARD'" class="vf-plan-summary">
               <strong>{{ scenarioPlan.protectedCount }} 护航目标 · {{ scenarioPlan.threatCount }} 敌船</strong>
               <span>同时来袭 {{ scenarioPlan.simultaneousThreats }} · 世界 {{ scenarioPlan.worldWidth }}×{{ scenarioPlan.worldHeight }} m</span>
-              <small>{{ scenarioPlan.realtimeTier === 'PHASE_TWO_REALTIME' ? '30+30 内实时验收档' : '31–128 容量档（不承诺实时帧率）' }}</small>
+              <small>15+15 内实时验收档</small>
             </div>
             <div class="vf-two-col">
               <label>UAV 数量
-                <input v-model.number="state.uavCount" type="number" min="1" max="128" :disabled="sceneLocked">
+                <input v-model.number="state.uavCount" type="number" min="1" max="15" :disabled="sceneLocked">
               </label>
               <label>USV 数量
-                <input v-model.number="state.usvCount" type="number" min="1" max="128" :disabled="sceneLocked">
+                <input v-model.number="state.usvCount" type="number" min="1" max="15" :disabled="sceneLocked">
               </label>
               <label>UAV 巡航速度 m/s
                 <input v-model.number="state.uavSpeed" type="number" min="0" max="15" step="0.1" :disabled="sceneLocked">
@@ -729,13 +710,6 @@ onBeforeUnmount(() => {
             <p v-if="missionActionMessage" class="vf-action-message">{{ missionActionMessage }}</p>
           </section>
 
-          <section class="vf-panel">
-            <div class="vf-panel-head"><h3>回执日志</h3><span>{{ logs.length }} EVENTS</span></div>
-            <div class="vf-log">
-              <div v-for="entry in logs" :key="entry">{{ entry }}</div>
-              <span v-if="!logs.length">等待 Unity 回执...</span>
-            </div>
-          </section>
         </aside>
 
         <section class="vf-stage-panel" :class="{ expanded: webglExpanded }">
@@ -788,7 +762,7 @@ onBeforeUnmount(() => {
           <div v-if="captureGroups.length" class="vf-capture-rail">
             <span v-for="group in captureGroups" :key="group.threatCode">
               <strong>{{ group.threatCode }}</strong>
-              {{ group.state }} · 阶段 {{ Number(group.stage ?? 0) + 1 }}/3 ·
+              {{ group.state }} · 阶段 {{ displayCaptureStage(group.stage) }}/3 ·
               意图 {{ group.intent || '-' }} ·
               {{ group.uavCount }} UAV + {{ group.usvCount }} USV ·
               追逃 {{ Number(group.pursuitDistanceM ?? 0).toFixed(0) }}/{{ Number(group.requiredPursuitDistanceM ?? 0).toFixed(0) }} m ·
@@ -798,63 +772,8 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="roleSummary" class="vf-role-rail">角色分工：{{ roleSummary }}</div>
           <div class="vf-camera-tip">滚轮以指针位置缩放 · 左键/中键拖动平移 · 右键拖动旋转 · 双指缩放 · 双击恢复全局</div>
-          <div class="vf-device-strip">
-            <div class="vf-strip-head"><h3>设备选择</h3><span>点击设备后可切换跟随视角</span></div>
-            <div class="vf-device-list">
-              <button
-                v-for="code in vehicleCodes.slice(0, 12)"
-                :key="code"
-                class="vf-device"
-                :class="{ selected: selectedDevice === code, usv: code.startsWith('USV-') }"
-                type="button"
-                @click="selectDevice(code)"
-              >
-                <SquareStack :size="14" />
-                {{ code }}
-              </button>
-            </div>
-            <button class="vf-follow" type="button" :disabled="!selectedDevice || !unityReady" @click="followSelectedDevice">
-              <Camera :size="15" /> 跟随 {{ selectedDevice || '选中设备' }}
-            </button>
-            <button
-              class="vf-follow"
-              :class="{ active: cameraMode === 'overview' }"
-              type="button"
-              :disabled="!unityReady"
-              :aria-pressed="cameraMode === 'overview'"
-              @click="setOverviewCamera"
-            >
-              <Camera :size="15" /> 全局俯视
-            </button>
-          </div>
         </section>
 
-        <aside class="vf-column">
-          <section class="vf-panel">
-            <div class="vf-panel-head"><h3>协议状态</h3><span>LIVE</span></div>
-            <dl class="vf-status-list">
-              <div><dt>运行模式</dt><dd>VIRTUAL_SIMULATION</dd></div>
-              <div><dt>算法</dt><dd>{{ state.algorithm }}</dd></div>
-              <div><dt>任务状态</dt><dd>{{ state.mission }}</dd></div>
-              <div><dt>序列号</dt><dd>{{ state.sequence }}</dd></div>
-              <div><dt>选中设备</dt><dd>{{ selectedDevice || '无' }}</dd></div>
-            </dl>
-          </section>
-          <section class="vf-panel vf-debug-panel">
-            <details>
-              <summary>调试回执 <span>{{ lastMessage?.type || 'NONE' }}</span></summary>
-              <pre>{{ JSON.stringify(lastMessage || {}, null, 2) }}</pre>
-            </details>
-          </section>
-          <section class="vf-panel">
-            <div class="vf-panel-head"><h3>物理速度规则</h3><span>m/s</span></div>
-            <div class="vf-speed-rule"><strong>UAV</strong><span>{{ state.uavSpeed.toFixed(1) }} / 15</span></div>
-            <div class="vf-speed-bar"><i :style="{ width: `${Math.min(100, state.uavSpeed / 15 * 100)}%` }"></i></div>
-            <div class="vf-speed-rule"><strong>USV</strong><span>{{ state.usvSpeed.toFixed(1) }} / 4</span></div>
-            <div class="vf-speed-bar usv"><i :style="{ width: `${Math.min(100, state.usvSpeed / 4 * 100)}%` }"></i></div>
-            <p class="vf-note">Unity 内部按 PresentationCoordinateScale = 0.18 转换。</p>
-          </section>
-        </aside>
       </div>
     </div>
   </ConsoleLayout>
@@ -862,13 +781,13 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .virtual-fleet-page { display: grid; gap: 14px; }
-.vf-grid { display: grid; grid-template-columns: 270px minmax(620px, 1fr) 250px; gap: 12px; align-items: start; }
+.vf-grid { display: grid; grid-template-columns: 270px minmax(620px, 1fr); gap: 12px; align-items: start; }
 .vf-column { display: grid; gap: 14px; }
 .vf-panel, .vf-stage-panel { min-width: 0; padding: 15px; color: #dff8f4; background: rgba(8, 25, 30, .94); border: 1px solid rgba(108, 228, 213, .18); border-radius: 8px; }
-.vf-panel-head, .vf-stage-head, .vf-strip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.vf-panel-head, .vf-stage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .vf-panel-head { margin-bottom: 13px; }
-.vf-panel-head h3, .vf-stage-head h3, .vf-strip-head h3 { margin: 0; color: #effffd; font-size: 15px; }
-.vf-panel-head span, .vf-stage-head span, .vf-strip-head span { color: #6f9697; font-size: 10px; }
+.vf-panel-head h3, .vf-stage-head h3 { margin: 0; color: #effffd; font-size: 15px; }
+.vf-panel-head span, .vf-stage-head span { color: #6f9697; font-size: 10px; }
 .vf-panel label { display: grid; gap: 6px; margin-top: 11px; color: #9cc1bd; font-size: 11px; letter-spacing: 0; text-transform: none; }
 .vf-panel input, .vf-panel select { min-height: 36px; padding: 0 9px; color: #eafffb; background: #07171c; border: 1px solid #28515a; border-radius: 4px; }
 .vf-panel input:disabled, .vf-panel select:disabled { opacity: .55; }
@@ -879,14 +798,13 @@ onBeforeUnmount(() => {
 .vf-plan-summary strong { color: #eafffb; font-size: 12px; }
 .vf-plan-summary span, .vf-plan-summary small { color: #78aaa9; font-size: 10px; }
 .vf-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
-.vf-button, .vf-follow, .vf-device { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 0 10px; color: #dff8f4; background: rgba(108, 228, 213, .06); border: 1px solid rgba(108, 228, 213, .24); border-radius: 4px; cursor: pointer; }
-.vf-button:hover:not(:disabled), .vf-follow:hover:not(:disabled), .vf-device:hover { border-color: #6ce4d5; color: #6ce4d5; }
-.vf-follow.active { border-color: #6ce4d5; color: #6ce4d5; background: rgba(108, 228, 213, .14); }
+.vf-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 0 10px; color: #dff8f4; background: rgba(108, 228, 213, .06); border: 1px solid rgba(108, 228, 213, .24); border-radius: 4px; cursor: pointer; }
+.vf-button:hover:not(:disabled) { border-color: #6ce4d5; color: #6ce4d5; }
 .vf-button.primary { color: #061113; background: #6ce4d5; border-color: #6ce4d5; font-weight: 800; }
 .vf-button.success { color: #68e6a8; border-color: rgba(104, 230, 168, .45); }
 .vf-button.danger { color: #ff8179; border-color: rgba(255, 129, 121, .44); }
 .vf-button.capture { color: #ffcf72; border-color: rgba(255,207,114,.5); }
-.vf-button:disabled, .vf-follow:disabled { cursor: not-allowed; opacity: .4; }
+.vf-button:disabled { cursor: not-allowed; opacity: .4; }
 .vf-error { margin-top: 10px; color: #ff8179; font-size: 11px; }
 .vf-action-message { margin: 10px 0 0; color: #9fe8df; font-size: 11px; line-height: 1.5; }
 .vf-stage-panel { padding: 0; overflow: hidden; }
@@ -908,25 +826,9 @@ onBeforeUnmount(() => {
 .vf-capture-rail strong { color: #ffd963; }
 .vf-role-rail { padding: 7px 14px; overflow: hidden; color: #86aaa8; background: #06171d; border-bottom: 1px solid rgba(108,228,213,.1); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .vf-camera-tip { padding: 6px 12px; color: #6f9697; background: #041318; border-top: 1px solid rgba(108,228,213,.1); font-size: 10px; text-align: center; }
-.vf-device-strip { padding: 12px; background: #06171d; border-top: 1px solid rgba(108, 228, 213, .15); }
-.vf-device-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.vf-device { min-height: 29px; padding: 0 8px; color: #f5ce6b; font-size: 10px; }
-.vf-device.usv { color: #63d9e7; }
-.vf-device.selected { color: #061113; background: #6ce4d5; border-color: #6ce4d5; }
-.vf-follow { margin-top: 10px; min-height: 34px; }
-.vf-status-list { display: grid; gap: 9px; margin: 0; }
-.vf-status-list div { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(141, 165, 169, .13); }
-.vf-status-list dt { color: #719397; font-size: 11px; }
-.vf-status-list dd { margin: 0; color: #dff8f4; font-size: 11px; text-align: right; }
 pre { max-height: 260px; overflow: auto; margin: 0; padding: 10px; color: #bde8e0; background: #061116; border: 1px solid #203c43; font: 10px/1.5 Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
 .vf-debug-panel summary { display: flex; justify-content: space-between; cursor: pointer; color: #9cc1bd; font-size: 12px; }
 .vf-debug-panel details[open] summary { margin-bottom: 10px; }
 .vf-log { max-height: 160px; overflow: auto; color: #8fb4b2; font: 10px/1.7 Consolas, monospace; }
-.vf-speed-rule { display: flex; justify-content: space-between; gap: 8px; margin-top: 11px; color: #dff8f4; font-size: 11px; }
-.vf-speed-rule span { color: #8fb4b2; }
-.vf-speed-bar { height: 5px; margin-top: 5px; overflow: hidden; background: #18343a; border-radius: 3px; }
-.vf-speed-bar i { display: block; height: 100%; background: #f5ce6b; }
-.vf-speed-bar.usv i { background: #63d9e7; }
-@media (max-width: 1600px) { .vf-grid { grid-template-columns: 270px minmax(0, 1fr); } .vf-grid > .vf-column:last-child { grid-column: 1 / -1; grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 800px) { .vf-grid, .vf-grid > .vf-column:last-child { grid-template-columns: 1fr; } .vf-grid > .vf-column:last-child { grid-column: auto; } .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 360px; height: 360px; } .vf-two-col { grid-template-columns: 1fr; } }
+@media (max-width: 800px) { .vf-grid { grid-template-columns: 1fr; } .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 360px; height: 360px; } .vf-two-col { grid-template-columns: 1fr; } }
 </style>

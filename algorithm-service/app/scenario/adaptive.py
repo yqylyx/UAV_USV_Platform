@@ -31,8 +31,11 @@ def derive_scenario_plan(uav_count: int, usv_count: int) -> AdaptiveScenarioPlan
     versa), so the smaller domain determines how many concurrent tasks are
     safe to create.
     """
-    uav = max(1, min(128, int(uav_count)))
-    usv = max(1, min(128, int(usv_count)))
+    # Phase-two realtime support is intentionally bounded to the tested
+    # 15+15 envelope.  Larger requests are clamped instead of creating
+    # scenarios whose target count and geometry are not validated.
+    uav = max(1, min(15, int(uav_count)))
+    usv = max(1, min(15, int(usv_count)))
     scale = min(uav, usv)
     if scale <= 5:
         # A 120 m threat offset plus an 80 m visible escape cannot fit inside
@@ -44,25 +47,10 @@ def derive_scenario_plan(uav_count: int, usv_count: int) -> AdaptiveScenarioPlan
         values = (1, 1, 1, 360.0, 280.0)
     elif scale <= 14:
         values = (1, 2, 2, 360.0, 280.0)
-    elif scale <= 19:
+    elif scale <= 15:
         values = (1, 3, 2, 420.0, 320.0)
-    elif scale <= 24:
-        values = (2, 3, 2, 520.0, 400.0)
-    elif scale <= 30:
-        values = (2, 4, 3, 600.0, 460.0)
     else:
-        # Protocol capacity remains 128 per domain.  Above the phase-two
-        # realtime tier, keep bounded target growth for later performance work.
-        protected = min(4, 2 + (scale - 31) // 32)
-        threats = min(8, 4 + (scale - 31) // 16)
-        simultaneous = min(4, max(2, (threats + 1) // 2))
-        values = (
-            protected,
-            threats,
-            simultaneous,
-            600.0 + min(600.0, (scale - 30) * 8.0),
-            460.0 + min(440.0, (scale - 30) * 6.0),
-        )
+        values = (1, 3, 2, 420.0, 320.0)
     protected, threats, simultaneous, width, height = values
     return AdaptiveScenarioPlan(
         uav_count=uav,
@@ -73,5 +61,5 @@ def derive_scenario_plan(uav_count: int, usv_count: int) -> AdaptiveScenarioPlan
         simultaneous_threats=int(simultaneous),
         world_width=float(width),
         world_height=float(height),
-        realtime_tier="PHASE_TWO_REALTIME" if scale <= 30 else "CAPACITY_ONLY",
+        realtime_tier="PHASE_TWO_REALTIME",
     )

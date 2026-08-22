@@ -408,6 +408,30 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 chosen.group_id = f"CAPTURE-{threat_index + 1:03d}"
                 available.remove(chosen)
                 round_index += 1
+            minimum = 2
+            for threat_index, threat in ordered_threats:
+                members = [item for item in self.vehicles if item.kind == kind and item.assigned_threat == threat_index]
+                while len(members) < minimum:
+                    donors = sorted(
+                        (
+                            item for item in self.vehicles
+                            if item.kind == kind
+                            and item.assigned_threat in selected_indices
+                            and item.assigned_threat != threat_index
+                            and item.role == "INTERCEPTOR"
+                            and sum(
+                                other.kind == kind and other.assigned_threat == item.assigned_threat
+                                for other in self.vehicles
+                            ) > minimum
+                        ),
+                        key=lambda item: _length(item.x - threat.x, item.y - threat.y),
+                    )
+                    if not donors:
+                        break
+                    donor = donors[0]
+                    donor.assigned_threat = threat_index
+                    donor.group_id = f"CAPTURE-{threat_index + 1:03d}"
+                    members.append(donor)
 
     def _release_capture_group(self, threat_index: int) -> None:
         for item in self.vehicles:

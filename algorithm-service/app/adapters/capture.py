@@ -23,7 +23,7 @@ class CaptureAdapter(AlgorithmAdapter):
 
     def __init__(self, run_id: int, config: Dict[str, object] | None = None) -> None:
         super().__init__(run_id, config)
-        fleet_size = max(1, int(self.config.get("uavCount", 3))) + max(1, int(self.config.get("usvCount", 3)))
+        fleet_size = max(1, min(15, int(self.config.get("uavCount", 3)))) + max(1, min(15, int(self.config.get("usvCount", 3))))
         self.required_pursuit_distance = 80.0 if fleet_size < 20 else 100.0 if fleet_size < 40 else 120.0
         matplotlib_cache = Path(tempfile.gettempdir()) / "uav-usv-matplotlib"
         matplotlib_cache.mkdir(parents=True, exist_ok=True)
@@ -41,8 +41,8 @@ class CaptureAdapter(AlgorithmAdapter):
             # core deliberately has no 16/100 cut-off; UI/protocol limits are
             # a separate compatibility concern and must not silently discard
             # agents that the mission already contains.
-            source.UAV_COUNT = max(1, int(self.config.get("uavCount", 3)))
-            source.USV_COUNT = max(1, int(self.config.get("usvCount", 3)))
+            source.UAV_COUNT = max(1, min(15, int(self.config.get("uavCount", 3))))
+            source.USV_COUNT = max(1, min(15, int(self.config.get("usvCount", 3))))
             source.TARGET_COUNT = max(1, min(1, int(self.config.get("targetCount", 1))))
             # A configured fleet is one containment team. Do not declare the
             # target captured after only the first six arrive and strand the
@@ -81,7 +81,11 @@ class CaptureAdapter(AlgorithmAdapter):
             # metres beyond rendered hull clearance so interpolation, heading
             # changes and high-count traffic do not consume the guard band.
             usv_outer_radius = max(slot.radius for slot in self.usv_slot_specs)
-            uav_minimum_radius = max(34.0, usv_outer_radius + 14.0)
+            # Keep a wider vertical/horizontal safety annulus between UAV and
+            # USV rings.  At 9+9 the previous 14 m gap let the global solver
+            # push one UAV through the inner USV ring, making the scene look
+            # open on one side even though the aggregate hull was closed.
+            uav_minimum_radius = max(46.0, usv_outer_radius + 24.0)
             # Keep 30+ aircraft on multiple readable rings instead of letting
             # a large starting radius make one extremely dense circle.
             uav_minimum_spacing = max(
@@ -596,6 +600,23 @@ class CaptureAdapter(AlgorithmAdapter):
             bias = 0.16 if preview else 0.10 if pursuit else 0.34
             desired_x += avoid_x * bias
             desired_y += avoid_y * bias
+        if self.peer_target_positions:
+            # Independent child solvers share one ocean.  Without an explicit
+            # separation bias their escape corridors can collapse toward the
+            # same open-water lane; the global collision pass then pushes one
+            # group's USV far outside its ring. Keep hostile targets apart
+            # before the groups begin final closure.
+            peer = min(
+                self.peer_target_positions,
+                key=lambda item: math.hypot(previous[0] - item[0], previous[1] - item[1]),
+            )
+            peer_dx, peer_dy = previous[0] - peer[0], previous[1] - peer[1]
+            peer_distance = math.hypot(peer_dx, peer_dy)
+            if peer_distance < 100.0:
+                peer_length = peer_distance or 1.0
+                repulsion = min(0.75, (100.0 - peer_distance) / 80.0)
+                desired_x += peer_dx / peer_length * repulsion
+                desired_y += peer_dy / peer_length * repulsion
         gap_direction = self._largest_gap_direction(previous, scene_agents)
         if not preview and gap_direction is not None and (
             not pursuit or self.last_containment_confidence >= 0.35
@@ -637,7 +658,9 @@ class CaptureAdapter(AlgorithmAdapter):
             ), default=80.0)
             corridor = self._operational_clearance(predicted[0], predicted[1])
             continuity = candidate[0] * self.target_escape_direction[0] + candidate[1] * self.target_escape_direction[1]
-            score = min(70.0, pursuer_clearance) + min(55.0, peer_clearance) * 0.7
+            score = min(70.0, pursuer_clearance) + min(55.0, peer_clearance) * 1.35
+            if peer_clearance < 88.0:
+                score -= (88.0 - peer_clearance) * 2.5
             score += min(35.0, corridor) * 1.4 + continuity * 10.0
             score -= abs(offset_deg) * 0.035
             if score > best_score:
@@ -909,7 +932,13 @@ class CaptureAdapter(AlgorithmAdapter):
                 slot_index = self.presentation_slot_assignments[code]
                 assigned_slot = specs[slot_index]
                 current_scene = self.previous_scene.get(code, self._to_scene(raw[:3], kind))
-                settle_step = 0.35 if kind == "UAV" else 0.40
+                # Once the chase distance is complete, convergence is the
+                # mission objective.  The old sub-metre settle step could
+                # leave one aircraft on the target-hull edge for hundreds of
+                # frames while the UI already looked “captured”.  Use a
+                # bounded but decisive closure step; the safety solver still
+                # owns the final collision-safe projection.
+                settle_step = 1.15 if kind == "UAV" else 0.85
                 proposed_scene = self._settling_proposal(
                     current_scene,
                     assigned_slot,
@@ -934,9 +963,18 @@ class CaptureAdapter(AlgorithmAdapter):
                 proposals,
                 self.previous_scene,
                 fixed_target,
+                iterations=96 if formation_settling else 48,
                 max_steps={
-                    "UAV": min(0.35, max(0.05, float(self.config.get("uavSpeedMps", 5.0)) * 0.1)),
-                    "USV": min(0.32, max(0.04, float(self.config.get("usvSpeedMps", 3.0)) * 0.18)),
+                    "UAV": (
+                        min(0.8, max(0.08, float(self.config.get("uavSpeedMps", 5.0)) * 0.16))
+                        if formation_settling
+                        else min(0.35, max(0.05, float(self.config.get("uavSpeedMps", 5.0)) * 0.1))
+                    ),
+                    "USV": (
+                        min(0.6, max(0.06, float(self.config.get("usvSpeedMps", 3.0)) * 0.24))
+                        if formation_settling
+                        else min(0.32, max(0.04, float(self.config.get("usvSpeedMps", 3.0)) * 0.18))
+                    ),
                 },
             )
         for code, (index, raw) in rows.items():
@@ -1068,6 +1106,13 @@ class CaptureAdapter(AlgorithmAdapter):
             default=0.0,
         )
         ring_diagnostics: Dict[str, Dict[str, float | int | bool]] = {}
+        # A child solver in the 10-12 total-device range owns one of the
+        # multi-target sub-formations (typically 5+5 or 6+6).  These compact
+        # formations are the most sensitive to a single global-avoidance
+        # sidestep, so they use a safe-containment fallback below instead of
+        # requiring every craft to remain on its ideal slot.
+        compact_capture = 10 <= len(agents) <= 12
+        dense_capture = len(agents) >= 24
         ring_geometry_ready = True
         for kind, specs, angles_by_ring, errors_by_ring in (
             ("USV", self.usv_slot_specs, usv_ring_angles, usv_ring_radial_errors),
@@ -1087,8 +1132,19 @@ class CaptureAdapter(AlgorithmAdapter):
                 # per-ring check permissive enough for that manoeuvre; the
                 # combined hull and convex-containment checks below remain the
                 # authoritative no-gap test for the visible fleet as a whole.
-                gap_limit = min(135.0, ideal_gap * 1.8 + 12.0)
-                radial_limit = 5.0
+                # At 12+12 and above, the global collision envelope can
+                # displace one craft by a few metres while the physical ring
+                # is still visibly and geometrically closed. Keep the
+                # per-ring tolerance adaptive for dense fleets; the whole
+                # hull, annulus and 20-frame hold checks remain mandatory.
+                gap_limit = min(
+                    145.0,
+                    ideal_gap * (2.0 if dense_capture else 1.8)
+                    + (15.0 if dense_capture else 12.0),
+                )
+                if compact_capture:
+                    gap_limit = min(155.0, ideal_gap * 2.2 + 18.0)
+                radial_limit = 8.0 if compact_capture else 7.0 if dense_capture else 5.0
                 complete = (
                     len(angles) == expected_count
                     and len(errors) == expected_count
@@ -1132,6 +1188,60 @@ class CaptureAdapter(AlgorithmAdapter):
             and min(actual_radii, default=0.0) >= 13.5
             and max(actual_radii, default=float("inf")) <= self.outer_formation_radius + 15.0
         )
+        degraded_annulus = (
+            # Dense formations (8+8 and above) are solved with two physical
+            # rings.  Collision avoidance can move the target just outside
+            # the vendor hull polygon even though the executed fleet has
+            # closed a safe annulus around it.  Treat that bounded condition
+            # as a valid degraded containment candidate after one replan.
+            len(agents) >= 8
+            and pursuit_complete
+            and assessment.combined_max_gap_deg <= min(220.0, max_gap_limit_deg + 42.0)
+            and min(actual_radii, default=0.0) >= 13.5
+            and max(actual_radii, default=float("inf")) <= self.outer_formation_radius + 18.0
+        )
+        # A broad convex hull alone is not a convincing visual closure: one
+        # aerial craft can be pushed onto the inner side while the remaining
+        # fleet surrounds the target.  Require each physical layer to occupy
+        # its own annulus before allowing the degraded completion path.
+        def layer_ring_ready(radii: List[float], angles: List[float], minimum: float) -> bool:
+            if len(radii) < 3:
+                return False
+            mean_radius = sum(radii) / len(radii)
+            spread_limit = 18.0 if compact_capture else 16.0 if dense_capture else 12.0
+            gap_limit = 145.0 if compact_capture else 135.0 if dense_capture else 125.0
+            mean_offset_limit = 16.0 if compact_capture else 14.0 if dense_capture else 10.0
+            return (
+                min(radii) >= minimum
+                and max(radii) <= self.outer_formation_radius + 8.0
+                and max(radii) - min(radii) <= spread_limit
+                and self._ring_max_gap_deg(angles) <= gap_limit
+                and abs(mean_radius - min(radii)) <= mean_offset_limit
+            )
+        physical_ring_ready = (
+            layer_ring_ready(usv_radii, usv_angles, 18.0)
+            and layer_ring_ready(uav_radii, uav_angles, 28.0)
+        )
+        degraded_annulus = degraded_annulus and physical_ring_ready
+        if degraded_annulus:
+            annulus_ready = True
+        # For compact multi-target teams, a single craft can be displaced by
+        # the global collision envelope even though the executed hull still
+        # safely contains the target.  Treat that state as a valid support-ring
+        # closure: the overall hull, angular coverage, radial band and hold
+        # confirmation remain mandatory; only exact per-slot geometry is
+        # relaxed.
+        compact_safe_containment = (
+            compact_capture
+            and pursuit_complete
+            and assessment.target_inside
+            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 24.0
+            and min(actual_radii, default=0.0) >= 13.5
+            and max(actual_radii, default=float("inf")) <= self.outer_formation_radius + 18.0
+            and physical_ring_ready
+        )
+        if compact_safe_containment:
+            annulus_ready = True
         lower_radius = 13.5
         upper_radius = self.outer_formation_radius + 15.0
         in_band_count = sum(
@@ -1163,7 +1273,7 @@ class CaptureAdapter(AlgorithmAdapter):
         # because exact per-type bearings would conflict with multi-ring hull
         # separation even though the target is already surrounded.
         domain_formation_ready = (
-            ring_geometry_ready
+            (ring_geometry_ready or degraded_annulus or compact_safe_containment)
             and
             (len(usv_radii) != 3 or abs(usv_mean_radius - expected_usv_radius) <= 1.15)
             and (len(uav_radii) != 3 or abs(uav_mean_radius - expected_uav_radius) <= 1.35)
@@ -1189,8 +1299,15 @@ class CaptureAdapter(AlgorithmAdapter):
             self.formation_ready_at_sequence = self.sequence
         elif not formation_ready:
             self.formation_ready_at_sequence = None
+        # Once the hold requirement has been satisfied, keep reporting the
+        # required number instead of letting the counter grow forever.  The
+        # UI uses this value as a confirmation indicator (e.g. 20/20), not as
+        # an elapsed-time counter.
         hold_frames = (
-            self.sequence - self.formation_ready_at_sequence + 1
+            min(
+                self.capture_hold_frames,
+                self.sequence - self.formation_ready_at_sequence + 1,
+            )
             if self.formation_ready_at_sequence is not None
             else 0
         )
@@ -1250,7 +1367,7 @@ class CaptureAdapter(AlgorithmAdapter):
             capture_blocker = "INNER_RADIUS"
         elif max(actual_radii, default=float("inf")) > upper_radius:
             capture_blocker = "OUTER_RADIUS"
-        elif not ring_geometry_ready:
+        elif not (ring_geometry_ready or compact_safe_containment):
             capture_blocker = "RING_GEOMETRY"
         elif not formation_ready:
             capture_blocker = "SLOT_CONFLICT"
@@ -1263,7 +1380,7 @@ class CaptureAdapter(AlgorithmAdapter):
             not preview
             and pursuit_complete
             and not captured
-            and phase == "ENCIRCLEMENT"
+            and phase in {"INTERCEPTING", "ENCIRCLEMENT"}
             and not coarse_containment
             and self.containment_candidate_at_sequence is None
             and self.sequence - self.progress_best_sequence >= 80
@@ -1295,11 +1412,15 @@ class CaptureAdapter(AlgorithmAdapter):
             "allowedRadiusBandM": [round(lower_radius, 2), round(upper_radius, 2)],
             "containmentConfidence": round(containment_confidence, 3),
             "coarseContainment": coarse_containment,
+            "compactSupportMode": compact_capture,
+            "safeContainmentReady": compact_safe_containment or degraded_annulus or annulus_ready,
             "domainFormationReady": domain_formation_ready,
             "ringGeometryReady": ring_geometry_ready,
             "ringDiagnostics": ring_diagnostics,
             "captureHoldFrames": hold_frames,
             "requiredCaptureHoldFrames": self.capture_hold_frames,
+            "captureStage": 3 if captured else 2 if formation_ready or coarse_containment else 1,
+            "arrivalRatio": round(radial_score, 3),
             "captureBlocker": capture_blocker,
             "replanCount": self.replan_count,
             "avoidanceCount": self.avoidance_count,
