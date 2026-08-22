@@ -1171,6 +1171,12 @@ class CaptureAdapter(AlgorithmAdapter):
             math.hypot(agent.x - safe_target.x, agent.y - safe_target.y)
             for agent in agents
         ]
+        lower_radius = 13.5
+        upper_radius = self.outer_formation_radius + 15.0
+        in_band_count = sum(
+            lower_radius <= radius <= upper_radius
+            for radius in actual_radii
+        )
         max_gap_limit_deg = math.degrees(min(
             math.pi * 0.84,
             max(29.0 * math.pi / 36.0, 2.7 * math.pi / max(1, len(agents))),
@@ -1242,12 +1248,23 @@ class CaptureAdapter(AlgorithmAdapter):
         )
         if compact_safe_containment:
             annulus_ready = True
-        lower_radius = 13.5
-        upper_radius = self.outer_formation_radius + 15.0
-        in_band_count = sum(
-            lower_radius <= radius <= upper_radius
-            for radius in actual_radii
+        # Small asymmetric fleets (for example 1 UAV + 5 USV) and compact
+        # 4+4 fleets cannot make two independent type-specific rings.  Their
+        # executed poses are nevertheless valid when the combined fleet forms
+        # one collision-safe closed hull around the target.  Keep this path
+        # separate from the broad annulus fallback so a large visual gap can
+        # never be promoted to completion.
+        joint_safe_containment = (
+            len(agents) >= 6
+            and pursuit_complete
+            and assessment.target_inside
+            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 1e-6
+            and min(actual_radii, default=0.0) >= lower_radius
+            and max(actual_radii, default=float("inf")) <= upper_radius
+            and in_band_count == len(agents)
         )
+        if joint_safe_containment:
+            annulus_ready = True
         gap_score = max(
             0.0,
             min(1.0, 1.0 - assessment.combined_max_gap_deg / max(180.0, max_gap_limit_deg)),
@@ -1273,12 +1290,12 @@ class CaptureAdapter(AlgorithmAdapter):
         # because exact per-type bearings would conflict with multi-ring hull
         # separation even though the target is already surrounded.
         domain_formation_ready = (
-            (ring_geometry_ready or degraded_annulus or compact_safe_containment)
+            (ring_geometry_ready or degraded_annulus or compact_safe_containment or joint_safe_containment)
             and
             (len(usv_radii) != 3 or abs(usv_mean_radius - expected_usv_radius) <= 1.15)
             and (len(uav_radii) != 3 or abs(uav_mean_radius - expected_uav_radius) <= 1.35)
-            and (len(usv_angles) != 4 or math.degrees(usv_angular_error) <= 18.0)
-            and (len(uav_angles) != 4 or math.degrees(uav_angular_error) <= 18.0)
+            and (joint_safe_containment or len(usv_angles) != 4 or math.degrees(usv_angular_error) <= 18.0)
+            and (joint_safe_containment or len(uav_angles) != 4 or math.degrees(uav_angular_error) <= 18.0)
         )
         visible_chase_complete = (
             self.target_travelled_distance >= self.required_pursuit_distance + 20.0
@@ -1367,7 +1384,7 @@ class CaptureAdapter(AlgorithmAdapter):
             capture_blocker = "INNER_RADIUS"
         elif max(actual_radii, default=float("inf")) > upper_radius:
             capture_blocker = "OUTER_RADIUS"
-        elif not (ring_geometry_ready or compact_safe_containment):
+        elif not (ring_geometry_ready or compact_safe_containment or joint_safe_containment):
             capture_blocker = "RING_GEOMETRY"
         elif not formation_ready:
             capture_blocker = "SLOT_CONFLICT"
@@ -1413,7 +1430,7 @@ class CaptureAdapter(AlgorithmAdapter):
             "containmentConfidence": round(containment_confidence, 3),
             "coarseContainment": coarse_containment,
             "compactSupportMode": compact_capture,
-            "safeContainmentReady": compact_safe_containment or degraded_annulus or annulus_ready,
+            "safeContainmentReady": compact_safe_containment or joint_safe_containment or degraded_annulus or annulus_ready,
             "domainFormationReady": domain_formation_ready,
             "ringGeometryReady": ring_geometry_ready,
             "ringDiagnostics": ring_diagnostics,

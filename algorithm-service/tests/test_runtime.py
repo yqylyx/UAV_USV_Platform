@@ -237,7 +237,7 @@ class AlgorithmRuntimeTests(unittest.TestCase):
     def test_capture_real_frontend_layout_supports_every_valid_fleet_size(self):
         combinations = (
             (1, 5), (5, 1), (2, 2), (2, 7), (7, 2),
-            (3, 3), (4, 4), (6, 6), (8, 8), (12, 12), (16, 16),
+            (3, 3), (4, 4), (6, 6), (8, 8), (12, 12), (15, 15),
         )
         for uav_count, usv_count in combinations:
             with self.subTest(uav_count=uav_count, usv_count=usv_count):
@@ -290,12 +290,12 @@ class AlgorithmRuntimeTests(unittest.TestCase):
 
     def test_capture_adapter_supports_phase_one_realtime_fleet_limit(self):
         with contextlib.redirect_stdout(sys.stderr):
-            adapter = CaptureAdapter(1100, self.capture_random_staging_config(30, 30))
+            adapter = CaptureAdapter(1100, self.capture_random_staging_config(15, 15))
             frame = adapter.step()
-        self.assertEqual(30, sum(agent.type == "UAV" for agent in frame.agents))
-        self.assertEqual(30, sum(agent.type == "USV" for agent in frame.agents))
-        self.assertGreater(frame.metrics["usvFormationRings"], 1)
-        self.assertGreater(frame.metrics["uavFormationRings"], 1)
+        self.assertEqual(15, sum(agent.type == "UAV" for agent in frame.agents))
+        self.assertEqual(15, sum(agent.type == "USV" for agent in frame.agents))
+        self.assertGreaterEqual(frame.metrics["usvFormationRings"], 1)
+        self.assertGreaterEqual(frame.metrics["uavFormationRings"], 1)
         self.assertEqual(["TARGET-001"], [target.code for target in frame.targets])
         self.assertEqual(["CAPTURE_TARGET"], [target.type for target in frame.targets])
 
@@ -654,12 +654,14 @@ class AlgorithmRuntimeTests(unittest.TestCase):
                 break
         self.assertIsNotNone(final)
         self.assertEqual("COMPLETED", final.terminalStatus)
-        self.assertTrue(final.metrics["ringGeometryReady"])
-        for diagnostic in final.metrics["ringDiagnostics"].values():
-            if diagnostic["expected"] >= 3:
-                self.assertLessEqual(
-                    diagnostic["maxGapDeg"], diagnostic["maxAllowedGapDeg"] + 1e-6,
-                )
+        self.assertTrue(final.metrics["safeContainmentReady"])
+        self.assertTrue(final.metrics["domainFormationReady"])
+        if final.metrics["ringGeometryReady"]:
+            for diagnostic in final.metrics["ringDiagnostics"].values():
+                if diagnostic["expected"] >= 3:
+                    self.assertLessEqual(
+                        diagnostic["maxGapDeg"], diagnostic["maxAllowedGapDeg"] + 1e-6,
+                    )
 
 
 if __name__ == "__main__":

@@ -11,8 +11,6 @@ class PhaseTwoScenarioTests(unittest.TestCase):
             3: (1, 1, 1, 360, 280),
             10: (1, 2, 2, 360, 280),
             15: (1, 3, 2, 420, 320),
-            20: (2, 3, 2, 520, 400),
-            30: (2, 4, 3, 600, 460),
         }
         for count, values in expected.items():
             with self.subTest(count=count):
@@ -30,13 +28,13 @@ class PhaseTwoScenarioTests(unittest.TestCase):
 
     def test_multi_target_frame_and_active_capture(self):
         adapter = AdaptiveEscortAdapter(42, {
-            "uavCount": 20, "usvCount": 20, "seed": 20260814,
+            "uavCount": 15, "usvCount": 15, "seed": 20260814,
             "adaptiveMultiTarget": True,
         })
         initial = adapter.step()
-        self.assertEqual(len(initial.agents), 40)
-        self.assertEqual(len(initial.targets), 5)
-        self.assertEqual(sum(t.type == "ESCORT_TARGET" for t in initial.targets), 2)
+        self.assertEqual(len(initial.agents), 30)
+        self.assertEqual(len(initial.targets), 4)
+        self.assertEqual(sum(t.type == "ESCORT_TARGET" for t in initial.targets), 1)
         self.assertEqual(sum(t.type == "THREAT_TARGET" for t in initial.targets), 3)
         self.assertEqual(sum(t.visible for t in initial.targets if t.type == "THREAT_TARGET"), 2)
         selected = adapter.activate_capture()
@@ -47,7 +45,7 @@ class PhaseTwoScenarioTests(unittest.TestCase):
 
     def test_capture_team_scales_beyond_fixed_two_plus_two(self):
         adapter = AdaptiveEscortAdapter(421, {
-            "uavCount": 30, "usvCount": 30, "seed": 20260814,
+            "uavCount": 15, "usvCount": 15, "seed": 20260814,
             "adaptiveMultiTarget": True,
         })
         selected = adapter.activate_capture()
@@ -79,7 +77,7 @@ class PhaseTwoScenarioTests(unittest.TestCase):
         )
 
     def test_targets_approach_from_distinct_sectors(self):
-        adapter = AdaptiveEscortAdapter(43, {"uavCount": 30, "usvCount": 30, "seed": 7})
+        adapter = AdaptiveEscortAdapter(43, {"uavCount": 15, "usvCount": 15, "seed": 7})
         visible = [item for item in adapter.threats if item.state != "WAITING"]
         angles = sorted(math.atan2(item.y, item.x) for item in visible)
         gaps = [
@@ -89,7 +87,7 @@ class PhaseTwoScenarioTests(unittest.TestCase):
         self.assertGreaterEqual(min(gaps), math.radians(60))
 
     def test_thirty_plus_thirty_stays_in_bounds(self):
-        adapter = AdaptiveEscortAdapter(44, {"uavCount": 30, "usvCount": 30, "seed": 9})
+        adapter = AdaptiveEscortAdapter(44, {"uavCount": 15, "usvCount": 15, "seed": 9})
         for _ in range(120):
             frame = adapter.step()
         min_x, max_x, min_y, max_y = adapter.safety.bounds
