@@ -26,19 +26,25 @@ import { useActiveExperimentStore } from '@/stores/activeExperiment'
 import { useMissionTrajectorySessionStore } from '@/stores/missionTrajectorySession'
 import { useMonitoringStore } from '@/stores/monitoring'
 import { useRealtimeStore } from '@/stores/realtime'
+import { useRealMissionRuntimeStore } from '@/stores/realMissionRuntime'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
-import type { TrajectoryAgentType, UnityTrajectoryFrame } from '@/stores/trajectory'
+import type { UnityTrajectoryFrame } from '@/stores/trajectory'
+import {
+  isRealtimeEnvelopeApplicable,
+  poseBatchToTrajectoryFrame,
+  trajectoryFrameToMissionCenterPoseFrame,
+} from '@/services/realtimeTrajectoryAdapter'
 import type { AlgorithmRuntimeFrame, Mission, MissionDetail } from '@/types/mission'
 import type { RuntimeNode } from '@/types/monitoring'
-import type { VehiclePoseSample } from '@/types/realtime'
 
 const route = useRoute()
 const missionStore = useMissionStore()
 const activeExperimentStore = useActiveExperimentStore()
 const monitoringStore = useMonitoringStore()
 const realtimeStore = useRealtimeStore()
+const realMissionRuntimeStore = useRealMissionRuntimeStore()
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const sessionStore = useMissionTrajectorySessionStore()
@@ -55,6 +61,7 @@ const currentRunId = computed(() => detail.value?.currentRun?.id ?? null)
 const activeAlgorithmCode = computed(() => detail.value?.mission.algorithmCode ?? '')
 const activeMission = computed(() => detail.value?.mission ?? null)
 const activeRun = computed(() => ['RUNNING', 'PAUSED'].includes(activeMission.value?.status ?? ''))
+const workspaceRuntimeState = computed(() => realMissionRuntimeStore.runtimeState)
 const rosOnline = computed(() =>
   monitoringStore.nodes.some(node => node.type === 'ROS_NODE' && node.status === 'ONLINE'),
 )
@@ -62,6 +69,17 @@ const onlineVehicleCount = computed(() =>
   runtimeNodes.value.filter(node => node.status === 'ONLINE').length,
 )
 const statusLabel = computed(() => {
+  const runtimeLabels: Record<string, string> = {
+    IDLE: '待执行',
+    READY: '待执行',
+    STARTING: '启动中',
+    RUNNING: '运行中',
+    CANCELLING: '终止中',
+    CANCELLED: '已终止',
+    FAILED: '异常',
+    COMPLETED: '已完成',
+  }
+  if (runtimeLabels[workspaceRuntimeState.value]) return runtimeLabels[workspaceRuntimeState.value]
   const status = activeMission.value?.status
   if (status === 'RUNNING') return '运行中'
   if (status === 'PAUSED') return '已暂停'
@@ -80,58 +98,21 @@ let algorithmAbortController: AbortController | null = null
 let loadedScenarioKey = ''
 let lastRealtimePoseFrameKey = ''
 
-function poseDeviceType(deviceCode: string): TrajectoryAgentType {
-  return deviceCode.toLowerCase().startsWith('usv') ? 'USV' : 'UAV'
-}
-
-function validPoseSample(sample: VehiclePoseSample) {
-  const position = sample.localPositionEnuM
-  return !!position
-    && Number.isFinite(position.x)
-    && Number.isFinite(position.y)
-    && Number.isFinite(position.z)
-}
-
-function poseState(sample: VehiclePoseSample) {
-  if (sample.fresh === false || sample.positionValid === false) return 'STALE'
-  return 'ACTIVE'
-}
-
 const realtimeTrajectoryFrame = computed<UnityTrajectoryFrame | null>(() => {
   const envelope = realtimeStore.poseBatch
-  const vehicles = envelope?.payload.vehicles?.filter(validPoseSample) ?? []
-  if (!envelope || !vehicles.length) return null
-  if (envelope.runId) {
-    if (String(envelope.runId) !== String(currentRunId.value ?? '')) return null
-  } else if (!currentRunId.value) {
-    return null
-  }
-  return {
-    sequence: envelope.sequence,
-    source: envelope.source,
-    coordinateSystem: 'ROS_ENU',
-    mission: {
-      phase: realtimeStore.missionStatus?.payload.phase ?? realtimeStore.missionStatus?.payload.state ?? 'ROS_GATEWAY_V1',
-      elapsed: 0,
-      captureRadius: 16,
-      defenseRadius: 18,
-      captureReady: false,
-      formationHolding: false,
-    },
-    agents: vehicles.map((vehicle) => {
-      const position = vehicle.localPositionEnuM!
-      return {
-        code: vehicle.deviceCode.trim().toLowerCase(),
-        type: poseDeviceType(vehicle.deviceCode),
-        x: position.x,
-        y: position.z,
-        z: position.y,
-        yaw: vehicle.headingDeg ?? 0,
-        state: poseState(vehicle),
-      }
-    }),
-    receivedAt: Date.parse(envelope.timestamp) || Date.now(),
-  }
+  if (!isRealtimeEnvelopeApplicable(envelope, { runId: currentRunId.value }, 'ALLOW_MISSING')) return null
+  const missionStatus = isRealtimeEnvelopeApplicable(
+    realtimeStore.missionStatus,
+    { runId: currentRunId.value },
+    'ALLOW_MISSING',
+  )
+    ? realtimeStore.missionStatus?.payload
+    : null
+  return poseBatchToTrajectoryFrame(envelope, {
+    missionId: detail.value?.mission.id ?? null,
+    runId: currentRunId.value,
+    phase: missionStatus?.phase ?? missionStatus?.state ?? 'ROS_GATEWAY_V1',
+  })
 })
 
 const trajectoryFrame = computed<UnityTrajectoryFrame | null>(() =>
@@ -249,35 +230,12 @@ function sendRealtimePoseFrameToUnity(frame: UnityTrajectoryFrame | null) {
   const frameKey = `${run.id}:${frame.source}:${frame.sequence}`
   if (frameKey === lastRealtimePoseFrameKey) return
   lastRealtimePoseFrameKey = frameKey
-  unityBridgeStore.sendFor('MISSION_CENTER', 'poseFrame', {
+  const payload = trajectoryFrameToMissionCenterPoseFrame(frame, {
     algorithmCode: mission.algorithmCode,
     runId: run.id,
-    sequence: frame.sequence,
-    timestamp: frame.receivedAt,
-    phase: frame.mission.phase,
-    agents: frame.agents
-      .filter(agent => agent.type === 'UAV' || agent.type === 'USV')
-      .map(agent => ({
-        code: agent.code,
-        type: agent.type,
-        x: agent.x,
-        y: agent.z,
-        z: agent.y,
-        heading: agent.yaw,
-      })),
-    targets: frame.agents
-      .filter(agent => agent.type === 'TARGET')
-      .map(agent => ({
-        code: agent.code,
-        type: 'TARGET',
-        x: agent.x,
-        y: agent.z,
-        z: agent.y,
-        heading: agent.yaw,
-        visible: true,
-      })),
     route: [],
   })
+  if (payload) unityBridgeStore.sendFor('MISSION_CENTER', 'poseFrame', payload)
 }
 
 function ensureMissionScenarioLoaded() {
@@ -391,6 +349,12 @@ async function loadMissionWorkspace(mission: Mission, requestedRunId?: number | 
   if (loaded.currentRun?.id !== currentRunId.value) clearRunFrames()
   detail.value = loaded
   activeExperimentStore.sync(loaded)
+  realMissionRuntimeStore.syncContext({
+    missionId: loaded.mission.id,
+    runId: loaded.currentRun?.id ?? null,
+    backendMissionStatus: loaded.mission.status,
+    runScopePolicy: 'ALLOW_MISSING',
+  })
   sessionStore.bind(loaded.mission.id, loaded.currentRun?.id ?? null)
   unityViewportStore.prepareMission(
     loaded.mission.id,

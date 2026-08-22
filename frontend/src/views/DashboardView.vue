@@ -24,9 +24,15 @@ import type { RuntimeCommandStatus, RuntimeCommandType } from '@/api/runtimeCont
 import { useMonitoringStore } from '@/stores/monitoring'
 import { useRealtimeStore } from '@/stores/realtime'
 import { useActiveExperimentStore } from '@/stores/activeExperiment'
+import { useRealMissionRuntimeStore } from '@/stores/realMissionRuntime'
 import { useTrajectoryStore } from '@/stores/trajectory'
 import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
+import {
+  isPoseBatchLive,
+  poseBatchToTrajectoryPayload,
+  trajectoryFrameToSystemOverviewPoseFrame,
+} from '@/services/realtimeTrajectoryAdapter'
 import type { RuntimeNode } from '@/types/monitoring'
 import { normalizeOperationalState } from '@/utils/runtimeOperationalState'
 import type { AlgorithmDefinition, MissionDetail, MissionStatus } from '@/types/mission'
@@ -43,6 +49,7 @@ type OverviewRuntimeMode = 'VIRTUAL_SIMULATION' | 'REAL'
 const monitoringStore = useMonitoringStore()
 const realtimeStore = useRealtimeStore()
 const activeExperimentStore = useActiveExperimentStore()
+const realMissionRuntimeStore = useRealMissionRuntimeStore()
 const overviewAlgorithmFallbacks: AlgorithmDefinition[] = [
   {
     id: -1,
@@ -90,6 +97,7 @@ const cameraZoomPercent = ref(100)
 const cameraToolsVisible = ref(false)
 let selectedDeviceSyncedToUnity = ''
 let overviewCameraInitialized = false
+let lastOverviewRealtimePoseFrameKey = ''
 const commandFeedback = ref<Record<string, RuntimeCommandStatus | undefined>>({})
 const operationalStates = ref<Record<string, string | undefined>>({
   'uav-01': 'UNKNOWN',
@@ -335,26 +343,45 @@ const selectedOverviewDevice = computed(() =>
   overviewFleetCards.value.find((device) => device.code === normalizeDeviceCode(selectedDeviceCode.value))
   ?? overviewFleetCards.value[0],
 )
-const overviewMissionRunning = computed(() =>
-  overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED',
-)
+const overviewRuntimeState = computed(() => realMissionRuntimeStore.runtimeState)
+const overviewMissionRunning = computed(() => realMissionRuntimeStore.isRunning)
+const overviewMissionTerminal = computed(() => realMissionRuntimeStore.isTerminal)
 const overviewRosMissionPhase = computed(() => {
   const payload = realtimeStore.missionStatus?.payload
   return String(payload?.phase ?? payload?.state ?? '').trim().toUpperCase()
 })
-const overviewOperatorStartPending = computed(() =>
-  overviewRuntimeMode.value === 'REAL'
-  && overviewMissionRunning.value
-  && overviewRosMissionPhase.value === 'TRACKING',
-)
-const overviewMissionButtonLabel = computed(() =>
-  overviewOperatorStartPending.value
-    ? '启动围捕'
-    : overviewMissionRunning.value ? '终止任务' : '启动任务',
-)
 const overviewRuntimeModeLabel = computed(() =>
   overviewRuntimeMode.value === 'VIRTUAL_SIMULATION' ? '虚拟仿真' : '真实任务',
 )
+const overviewMissionActionLabel = computed(() =>
+  overviewRuntimeState.value === 'STARTING'
+    ? '启动中'
+    : overviewRuntimeState.value === 'CANCELLING'
+      ? '终止中'
+      : overviewMissionTerminal.value
+        ? '再次执行'
+        : overviewMissionRunning.value ? '终止任务' : '启动任务',
+)
+const overviewMissionStateText = computed(() => {
+  const labels: Record<string, string> = {
+    IDLE: '任务未启动',
+    READY: '任务待执行',
+    STARTING: '启动命令已确认',
+    RUNNING: '围捕执行中',
+    CANCELLING: '终止中',
+    CANCELLED: '任务已终止',
+    FAILED: '任务失败',
+    COMPLETED: '任务完成',
+  }
+  return labels[overviewRuntimeState.value] ?? overviewRuntimeState.value
+})
+const overviewMissionActionDisabled = computed(() => {
+  if (commandBusy.value) return true
+  if (overviewRuntimeState.value === 'STARTING' || overviewRuntimeState.value === 'CANCELLING') return true
+  if (realMissionRuntimeStore.canRetry) return false
+  return !unityControlReady.value || (!realMissionRuntimeStore.canStart && !realMissionRuntimeStore.canCancel)
+})
+
 const realValidationReady = computed(() =>
   rosBridgeOnline.value
   && unityControlReady.value
@@ -488,18 +515,15 @@ async function issueSelectedQuickCommand(action: OverviewQuickAction) {
 }
 
 async function handleOverviewMissionToggle() {
-  if (overviewOperatorStartPending.value) {
-    await handleMissionGroupAction('start')
+  if (realMissionRuntimeStore.canRetry) {
+    await retryOverviewMission()
     return
   }
-  if (overviewMissionRunning.value) {
+  if (realMissionRuntimeStore.canCancel) {
     await handleMissionGroupAction('abort')
     return
   }
-  if (!overviewDeploymentAcknowledged.value) {
-    await handleMissionGroupAction('deploy')
-  }
-  if (overviewDeploymentAcknowledged.value && !overviewMissionRunning.value) {
+  if (realMissionRuntimeStore.canStart) {
     await handleMissionGroupAction('start')
   }
 }
@@ -526,6 +550,7 @@ function toUnityPose(node: RuntimeNode) {
 }
 
 function pushPoseFrameToUnity() {
+  if (isPoseBatchLive(realtimeStore.poseBatch)) return
   const poses = monitoringStore.nodes
     .filter((node) => ['UAV', 'USV', 'LIGHTHOUSE'].includes(node.type))
     .filter((node) => node.status === 'ONLINE')
@@ -542,6 +567,30 @@ function pushPoseFrameToUnity() {
   })
 }
 
+function pushRealtimePoseFrameToUnity() {
+  if (!isPoseBatchLive(realtimeStore.poseBatch)) {
+    pushPoseFrameToUnity()
+    return
+  }
+  const payload = poseBatchToTrajectoryPayload(realtimeStore.poseBatch, {
+    missionId: realMissionRuntimeStore.currentMissionId,
+    runId: realMissionRuntimeStore.currentRunId,
+    phase: overviewRosMissionPhase.value,
+  })
+  if (!payload) return
+  const frameKey = `${payload.runId ?? 'no-run'}:${payload.source}:${payload.sequence}`
+  if (frameKey === lastOverviewRealtimePoseFrameKey) return
+  lastOverviewRealtimePoseFrameKey = frameKey
+  trajectoryStore.ingestFor('SYSTEM_OVERVIEW', payload)
+  const frame = trajectoryStore.channels.SYSTEM_OVERVIEW.frame
+  const poseFrame = trajectoryFrameToSystemOverviewPoseFrame(frame, {
+    missionId: realMissionRuntimeStore.currentMissionId,
+    runId: payload.runId ?? realMissionRuntimeStore.currentRunId,
+  })
+  if (!poseFrame) return
+  unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'poseFrame', poseFrame)
+}
+
 function applyOverviewMissionDetail(detail: MissionDetail) {
   activeExperimentStore.sync(detail)
   const missionChanged = overviewMissionId.value !== null && overviewMissionId.value !== detail.mission.id
@@ -551,6 +600,11 @@ function applyOverviewMissionDetail(detail: MissionDetail) {
   overviewMissionId.value = detail.mission.id
   overviewMissionName.value = detail.mission.name
   overviewMissionStatus.value = detail.mission.status
+  realMissionRuntimeStore.syncContext({
+    missionId: detail.mission.id,
+    runId: detail.currentRun?.id ?? null,
+    backendMissionStatus: detail.mission.status,
+  })
   const currentRunId = detail.currentRun?.id
   const latestControlEvent = detail.events.find((event) =>
     event.runId === currentRunId && /^(MISSION_CONTROL|SYSTEM_OVERVIEW):/.test(event.source ?? ''),
@@ -610,6 +664,8 @@ async function runOverviewMissionAction(action: MissionAction) {
   applyOverviewMissionDetail(result.detail)
 
   if (result.command) {
+    if (action === 'start') realMissionRuntimeStore.noteStartCommand(result.command.commandKey)
+    if (action === 'cancel') realMissionRuntimeStore.noteCancelCommand(result.command.commandKey)
     if (result.command.status === 'FAILED' || result.command.status === 'TIMEOUT') {
       throw new Error(result.command.detail || '任务指令未能下发')
     }
@@ -640,6 +696,23 @@ async function runOverviewMissionAction(action: MissionAction) {
   const confirmed = await fetchMission(missionId)
   applyOverviewMissionDetail(confirmed)
   return confirmed
+}
+
+async function retryOverviewMission() {
+  if (commandBusy.value) return
+  commandBusy.value = true
+  try {
+    const missionId = overviewMissionId.value ?? (await loadOverviewMission())?.mission.id
+    if (!missionId) throw new Error('未找到可再次执行的真实任务')
+    const result = await executeMissionAction(missionId, 'ready', 'SYSTEM_OVERVIEW')
+    applyOverviewMissionDetail(result.detail)
+    overviewDeploymentAcknowledged.value = true
+    ElMessage.success('任务已进入待执行状态，可重新启动')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '再次执行准备失败')
+  } finally {
+    commandBusy.value = false
+  }
 }
 
 async function recordRuntimeCommand(
@@ -963,9 +1036,6 @@ async function startOverviewMission() {
     if (overviewMissionStatus.value === 'RUNNING' || overviewMissionStatus.value === 'PAUSED') {
       overviewDeploymentAcknowledged.value = true
       sendRealOverviewScenario(current)
-      if (current && overviewOperatorStartPending.value) {
-        await triggerRealOverviewMissionStart(current)
-      }
       return
     }
     if (overviewMissionStatus.value !== 'READY') {
@@ -1021,7 +1091,26 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
     ElMessage.error('Unity 控制桥尚未就绪，任务指令未下发')
     return
   }
-  if (action === 'return' || action === 'abort') {
+  if (action === 'abort' && overviewRuntimeMode.value === 'REAL') {
+    try {
+      await ElMessageBox.confirm(
+        '继续终止将发送 MISSION.CANCEL，并停止当前 ROS 围捕任务。',
+        '确认终止任务',
+        {
+          confirmButtonText: '确认终止',
+          cancelButtonText: '取消',
+          type: 'warning',
+          customClass: 'mission-confirm-message-box',
+          center: true,
+          closeOnClickModal: false,
+          closeOnPressEscape: false,
+          distinguishCancelAndClose: true,
+        },
+      )
+    } catch {
+      return
+    }
+  } else if (action === 'return' || action === 'abort') {
     try {
       await confirmReturn(action)
     } catch {
@@ -1055,13 +1144,15 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
     }
 
     if (action === 'start') {
-      if (!overviewDeploymentAcknowledged.value) {
+      if (!overviewDeploymentAcknowledged.value && overviewRuntimeMode.value !== 'REAL') {
         throw new Error('请先点击“编组部署”，确认三机三艇加入围捕编组')
       }
       await startOverviewMission()
-      ElMessage.success(overviewRuntimeMode.value === 'REAL'
-        ? '任务启动命令已确认，围捕执行中'
-        : `${overviewMissionName.value}已启动`)
+      if (overviewRuntimeMode.value === 'REAL') {
+        ElMessage.success(realMissionRuntimeStore.runtimeState === 'RUNNING' ? '围捕执行中' : '启动命令已确认，等待围捕执行')
+        return
+      }
+      ElMessage.success(`${overviewMissionName.value}已启动`)
       return
     }
 
@@ -1094,7 +1185,7 @@ function handleUnityCommand(message: UnityMessage) {
 function handleUnityReady() {
   unityConnection.value = 'Unity WebGL 已连接'
   lastUnityEvent.value = 'sceneLoaded'
-  pushPoseFrameToUnity()
+  pushRealtimePoseFrameToUnity()
 }
 
 function handleUnityMessage(message: UnityMessage) {
@@ -1193,6 +1284,7 @@ onMounted(() => {
   freshnessTimer = window.setInterval(() => { freshnessClock.value = Date.now() }, 500)
   void monitoringStore.refresh({}, true).then(pushPoseFrameToUnity)
   monitoringStore.connectEvents()
+  void loadOverviewMission().catch(() => undefined)
   void fetchAlgorithms().then((items) => {
     overviewAlgorithms.value = items.length ? items : [...overviewAlgorithmFallbacks]
     const preferred = items.find(item => item.enabled && item.code === selectedOverviewAlgorithm.value)
@@ -1217,6 +1309,18 @@ onBeforeUnmount(() => {
   if (cameraToolsTimer !== null) window.clearTimeout(cameraToolsTimer)
   monitoringStore.disconnectEvents()
 })
+
+watch(
+  () => [
+    realtimeStore.poseBatch?.runId ?? '',
+    realtimeStore.poseBatch?.source ?? '',
+    realtimeStore.poseBatch?.sequence ?? 0,
+    realtimeStore.poseBatch?.timestamp ?? '',
+    overviewRosMissionPhase.value,
+  ] as const,
+  () => pushRealtimePoseFrameToUnity(),
+  { immediate: true },
+)
 
 watch(
   () =>
@@ -1354,15 +1458,15 @@ watch(
             </button>
           </div>
           <div class="overview-mission-toggle">
-            <span>{{ overviewOperatorStartPending ? '等待启动围捕' : overviewMissionRunning ? '任务运行中' : '任务未启动' }}</span>
+            <span>{{ overviewMissionStateText }}</span>
             <button
               type="button"
-              :class="{ danger: overviewMissionRunning && !overviewOperatorStartPending }"
-              :disabled="commandBusy || !unityControlReady"
+              :class="{ danger: overviewMissionRunning }"
+              :disabled="overviewMissionActionDisabled"
               @click="handleOverviewMissionToggle"
             >
-              <component :is="overviewMissionRunning && !overviewOperatorStartPending ? CircleStop : Play" :size="18" />
-              {{ overviewMissionButtonLabel }}
+              <component :is="overviewMissionRunning ? CircleStop : Play" :size="18" />
+              {{ overviewMissionActionLabel }}
             </button>
           </div>
         </div>
