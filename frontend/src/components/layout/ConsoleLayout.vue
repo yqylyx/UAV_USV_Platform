@@ -25,10 +25,12 @@ const props = withDefaults(defineProps<{
   showRefresh?: boolean
   immersive?: boolean
   collapsibleSidebar?: boolean
+  defaultSidebarCollapsed?: boolean
 }>(), {
   showRefresh: true,
   immersive: false,
   collapsibleSidebar: true,
+  defaultSidebarCollapsed: false,
 })
 
 const SIDEBAR_STORAGE_KEY = 'uav-usv:sidebar-collapsed'
@@ -39,9 +41,10 @@ const monitoringStore = useMonitoringStore()
 function readSidebarPreference() {
   if (!props.collapsibleSidebar || typeof window === 'undefined') return false
   try {
-    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true'
+    const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY)
+    return stored === null ? props.defaultSidebarCollapsed : stored === 'true'
   } catch {
-    return false
+    return props.defaultSidebarCollapsed
   }
 }
 

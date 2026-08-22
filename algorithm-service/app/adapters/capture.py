@@ -212,6 +212,7 @@ class CaptureAdapter(AlgorithmAdapter):
         self.previous_scene: Dict[str, Tuple[float, float, float]] = {}
         self.avoidance_count = 0
         self.captured_at_sequence: int | None = None
+        self.settling_started_at_sequence: int | None = None
         self.containment_candidate_at_sequence: int | None = None
         self.formation_ready_at_sequence: int | None = None
         self.presentation_slot_assignments: Dict[str, int] = {}
@@ -229,6 +230,8 @@ class CaptureAdapter(AlgorithmAdapter):
         self.progress_best_sequence = 0
         self.replan_count = 0
         self.last_replan_sequence = 0
+        self.stalled_frames = 0
+        self.last_capture_blocker = "PREVIEW_NOT_STARTED"
         self.preview_frame = 0
         self.preview_centers: Dict[str, Tuple[float, float, float]] = {}
         uav_no = usv_no = 0
@@ -266,6 +269,7 @@ class CaptureAdapter(AlgorithmAdapter):
             self.target_behavior_state = "ESCAPE"
             self.last_containment_confidence = 0.0
             self.captured_at_sequence = None
+            self.settling_started_at_sequence = None
             self.containment_candidate_at_sequence = None
             self.formation_ready_at_sequence = None
             self.presentation_slot_assignments.clear()
@@ -274,6 +278,8 @@ class CaptureAdapter(AlgorithmAdapter):
             self.progress_best_sequence = self.sequence
             self.replan_count = 0
             self.last_replan_sequence = self.sequence
+            self.stalled_frames = 0
+            self.last_capture_blocker = "PURSUIT_DISTANCE"
             self.initial_mean_distance = float(np.mean([
                 math.hypot(
                     self._to_scene(raw[:3], "UAV" if int(raw[6]) == 0 else "USV")[0] - target[0],
@@ -720,17 +726,27 @@ class CaptureAdapter(AlgorithmAdapter):
         vx += max(-accel, min(accel, desired_vx - vx))
         vy += max(-accel, min(accel, desired_vy - vy))
         velocity_length = math.hypot(vx, vy)
-        containment_settling = (
+        confirmed_containment = (
             self.containment_candidate_at_sequence is not None
             and self.target_travelled_distance >= self.required_pursuit_distance + 20.0
         )
-        if containment_settling and velocity_length > 0.12:
-            settle_scale = 0.12 / velocity_length
+        if confirmed_containment:
+            # Do not visually stop the target on the first candidate frame.
+            # The cap decays across the same confirmation window used by the
+            # capture latch, so a ring that opens again immediately restores a
+            # real breakout instead of leaving the target parked at 0.1 m/s.
+            held = max(0, self.sequence - self.containment_candidate_at_sequence)
+            decay = min(1.0, held / max(1, self.capture_hold_frames))
+            velocity_cap = max(0.12, self.target_cruise_mps * (1.0 - 0.92 * decay))
+        else:
+            velocity_cap = float("inf")
+        if confirmed_containment and velocity_length > velocity_cap:
+            settle_scale = velocity_cap / velocity_length
             vx, vy = vx * settle_scale, vy * settle_scale
-            velocity_length = 0.12
+            velocity_length = velocity_cap
         if (
             self.formation_ready_at_sequence is None
-            and not containment_settling
+            and not confirmed_containment
             and velocity_length < 0.36
         ):
             # Turning at the coast must change heading rather than visually
@@ -908,11 +924,12 @@ class CaptureAdapter(AlgorithmAdapter):
             not preview
             and self.target_travelled_distance >= self.required_pursuit_distance + 20.0
         )
-        if formation_settling and self.containment_candidate_at_sequence is None:
-            # Enter interception pressure after the mandatory visible chase.
-            # The target still moves and attempts the largest gap, but slows
-            # enough for surface craft to redistribute around a moving centre.
-            self.containment_candidate_at_sequence = self.sequence
+        if formation_settling and self.settling_started_at_sequence is None:
+            # Reaching the visible chase distance only starts slot convergence.
+            # It is deliberately not a containment candidate: the latter is
+            # latched below only after the executed, collision-safe positions
+            # form a real closed annulus around the target.
+            self.settling_started_at_sequence = self.sequence
         if formation_settling and not self.presentation_slot_assignments:
             self._align_capture_slots_to_open_water((safe_target.x, safe_target.y, safe_target.z))
             self._assign_presentation_slots((safe_target.x, safe_target.y, safe_target.z))
@@ -1278,8 +1295,6 @@ class CaptureAdapter(AlgorithmAdapter):
         )
         self.last_containment_confidence = containment_confidence
         coarse_containment = self.mission_active and pursuit_complete and annulus_ready
-        if coarse_containment and self.containment_candidate_at_sequence is None:
-            self.containment_candidate_at_sequence = self.sequence
         expected_usv_radius = sum(slot.radius for slot in self.usv_slot_specs) / max(1, len(self.usv_slot_specs))
         expected_uav_radius = sum(slot.radius for slot in self.uav_slot_specs) / max(1, len(self.uav_slot_specs))
         usv_mean_radius = sum(usv_radii) / max(1, len(usv_radii))
@@ -1312,6 +1327,13 @@ class CaptureAdapter(AlgorithmAdapter):
             and annulus_ready
             and domain_formation_ready
         )
+        if formation_ready:
+            if self.containment_candidate_at_sequence is None:
+                self.containment_candidate_at_sequence = self.sequence
+        elif self.captured_at_sequence is None:
+            # Candidate continuity is strict. If the executed ring opens, the
+            # target resumes breakout and the 20-frame confirmation restarts.
+            self.containment_candidate_at_sequence = None
         if formation_ready and self.formation_ready_at_sequence is None:
             self.formation_ready_at_sequence = self.sequence
         elif not formation_ready:
@@ -1393,20 +1415,28 @@ class CaptureAdapter(AlgorithmAdapter):
         else:
             capture_blocker = "NONE"
 
+        if not preview and not captured and capture_blocker == self.last_capture_blocker:
+            self.stalled_frames += 1
+        else:
+            self.stalled_frames = 0
+        self.last_capture_blocker = capture_blocker
+
         stalled = (
             not preview
             and pursuit_complete
             and not captured
             and phase in {"INTERCEPTING", "ENCIRCLEMENT"}
-            and not coarse_containment
-            and self.containment_candidate_at_sequence is None
-            and self.sequence - self.progress_best_sequence >= 80
+            and self.stalled_frames >= 80
         )
         if stalled and self.sequence - self.last_replan_sequence >= 80:
             self.replan_count += 1
             self.last_replan_sequence = self.sequence
             self.progress_best_sequence = self.sequence
             self._rotate_capture_slots()
+            self.presentation_slot_assignments.clear()
+            self.containment_candidate_at_sequence = None
+            self.formation_ready_at_sequence = None
+            self.stalled_frames = 0
             gap_direction = self._largest_gap_direction(
                 (safe_target.x, safe_target.y, safe_target.z),
                 [(agent.x, agent.y, agent.z) for agent in agents],
@@ -1439,6 +1469,9 @@ class CaptureAdapter(AlgorithmAdapter):
             "captureStage": 3 if captured else 2 if formation_ready or coarse_containment else 1,
             "arrivalRatio": round(radial_score, 3),
             "captureBlocker": capture_blocker,
+            "settlingStarted": self.settling_started_at_sequence is not None,
+            "containmentCandidate": self.containment_candidate_at_sequence is not None,
+            "stalledFrames": self.stalled_frames,
             "replanCount": self.replan_count,
             "avoidanceCount": self.avoidance_count,
             "totalDistance": round(float(self.env.total_travel_distance), 3),

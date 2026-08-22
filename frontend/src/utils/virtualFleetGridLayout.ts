@@ -129,8 +129,8 @@ export function buildVirtualFleetGridLayout(
 ): GridScenarioPose[] {
   const poses: GridScenarioPose[] = []
   const captureMode = options.captureMode === true
-  const uavCount = Math.max(1, Math.min(15, Math.trunc(options.uavCount)))
-  const usvCount = Math.max(1, Math.min(15, Math.trunc(options.usvCount)))
+  const uavCount = Math.max(1, Math.min(128, Math.trunc(options.uavCount)))
+  const usvCount = Math.max(1, Math.min(128, Math.trunc(options.usvCount)))
   const captureColumns = Math.ceil(Math.sqrt(Math.max(uavCount, usvCount)))
   const captureCorridorHalfLength = 55 + Math.max(0, captureColumns - 2) * 4
   if (captureMode) {

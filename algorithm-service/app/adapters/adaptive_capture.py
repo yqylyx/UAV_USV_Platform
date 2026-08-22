@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from typing import Dict, List, Mapping
 
@@ -90,6 +91,65 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         super().set_mission_active(active)
         for child in self.children:
             child.set_mission_active(active)
+
+    @staticmethod
+    def _executed_containment(
+        child: CaptureAdapter,
+        agents: List[AgentFrame],
+        target: TargetFrame,
+    ) -> Dict[str, object]:
+        """Assess the poses that Unity actually receives after global safety."""
+        if len(agents) < 3:
+            return {
+                "ready": False,
+                "targetInside": False,
+                "maxGapDeg": 360.0,
+                "maxAllowedGapDeg": 0.0,
+                "minimumRadiusM": 0.0,
+                "maximumRadiusM": 0.0,
+                "blocker": "POST_GLOBAL_INSUFFICIENT_AGENTS",
+            }
+        angles = sorted(
+            math.atan2(agent.y - target.y, agent.x - target.x) % (2.0 * math.pi)
+            for agent in agents
+        )
+        max_gap_deg = math.degrees(max(
+            (angles[(index + 1) % len(angles)] - angles[index]) % (2.0 * math.pi)
+            for index in range(len(angles))
+        ))
+        radii = [math.hypot(agent.x - target.x, agent.y - target.y) for agent in agents]
+        lower_radius = 13.5
+        upper_radius = child.outer_formation_radius + 15.0
+        max_gap_limit_deg = math.degrees(min(
+            math.pi * 0.84,
+            max(29.0 * math.pi / 36.0, 2.7 * math.pi / max(1, len(agents))),
+        ))
+        target_inside = max_gap_deg < 180.0 - 1e-6
+        visible_chase_complete = (
+            child.target_travelled_distance
+            >= child.required_pursuit_distance + 20.0
+        )
+        if not visible_chase_complete:
+            blocker = "PURSUIT_DISTANCE"
+        elif not target_inside:
+            blocker = "POST_GLOBAL_TARGET_OUTSIDE_HULL"
+        elif max_gap_deg > max_gap_limit_deg + 1e-6:
+            blocker = "POST_GLOBAL_ANGULAR_GAP"
+        elif min(radii) < lower_radius:
+            blocker = "POST_GLOBAL_INNER_RADIUS"
+        elif max(radii) > upper_radius:
+            blocker = "POST_GLOBAL_OUTER_RADIUS"
+        else:
+            blocker = "NONE"
+        return {
+            "ready": blocker == "NONE",
+            "targetInside": target_inside,
+            "maxGapDeg": round(max_gap_deg, 2),
+            "maxAllowedGapDeg": round(max_gap_limit_deg, 2),
+            "minimumRadiusM": round(min(radii), 2),
+            "maximumRadiusM": round(max(radii), 2),
+            "blocker": blocker,
+        }
 
     def step(self) -> RuntimeFrame:
         self.sequence += 1
@@ -189,11 +249,18 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             fixed_targets,
         )
         global_adjustments = 0
+        global_adjustments_by_target = {
+            f"TARGET-{index + 1:03d}": 0
+            for index in range(self.target_count)
+        }
         agents_by_code = {agent.code: agent for agent in agents}
         for agent in agents:
             safe = globally_resolved[agent.code]
             if safe.adjusted:
                 global_adjustments += 1
+                global_adjustments_by_target[agent.assignedTargetCode] = (
+                    global_adjustments_by_target.get(agent.assignedTargetCode, 0) + 1
+                )
             agent.x, agent.y, agent.z = safe.x, safe.y, safe.z
             self.previous_scene[agent.code] = (safe.x, safe.y, safe.z)
         for target in targets:
@@ -222,6 +289,53 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                             executed.type,
                         )
                         break
+
+        # Child metrics are computed before this coordinator resolves
+        # cross-target collisions. Recheck each ring from the executed global
+        # poses and invalidate a candidate/hold if global safety opened it.
+        # This keeps the UI, the child state machine and Unity on one geometry.
+        for index, (child, frame, target, group) in enumerate(zip(
+            self.children, child_frames, targets, groups
+        )):
+            target_code = f"TARGET-{index + 1:03d}"
+            executed_agents = [
+                agent for agent in agents
+                if agent.assignedTargetCode == target_code
+            ]
+            executed = self._executed_containment(child, executed_agents, target)
+            frame.metrics["postGlobalContainmentReady"] = executed["ready"]
+            frame.metrics["postGlobalTargetInsideFormation"] = executed["targetInside"]
+            frame.metrics["postGlobalCombinedMaxGapDeg"] = executed["maxGapDeg"]
+            frame.metrics["postGlobalMaxAllowedGapDeg"] = executed["maxAllowedGapDeg"]
+            frame.metrics["postGlobalMinimumRadiusM"] = executed["minimumRadiusM"]
+            frame.metrics["postGlobalMaximumRadiusM"] = executed["maximumRadiusM"]
+            frame.metrics["globalAvoidanceCount"] = global_adjustments_by_target.get(target_code, 0)
+            group["postGlobalContainmentReady"] = executed["ready"]
+            group["postGlobalMaxGapDeg"] = executed["maxGapDeg"]
+            group["postGlobalMaxAllowedGapDeg"] = executed["maxAllowedGapDeg"]
+            group["globalAvoidanceCount"] = global_adjustments_by_target.get(target_code, 0)
+            if bool(executed["ready"]):
+                continue
+            child.containment_candidate_at_sequence = None
+            child.formation_ready_at_sequence = None
+            if child.captured_at_sequence is not None:
+                child.captured_at_sequence = None
+                child.env.permanently_captured.discard(0)
+                child.env.guarding_agents.pop(0, None)
+                child.target_behavior_state = "BREAKOUT"
+            frame.terminalStatus = None
+            if frame.phase == "CAPTURED":
+                frame.phase = "ENCIRCLEMENT"
+            frame.metrics["captured"] = False
+            frame.metrics["formationReady"] = False
+            frame.metrics["captureHoldFrames"] = 0
+            frame.metrics["captureStage"] = 1
+            frame.metrics["captureBlocker"] = executed["blocker"]
+            group["state"] = frame.phase
+            group["stage"] = 1
+            group["holdFrames"] = 0
+            group["captureBlocker"] = executed["blocker"]
+            target.state = child.target_behavior_state
 
         # A child may have already latched its capture state in the vendor
         # environment while the adapter terminal flag is delayed by one
