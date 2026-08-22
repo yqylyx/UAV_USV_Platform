@@ -72,6 +72,9 @@ public class MissionRuntimeReconciler {
         }
         if (event.status() == CommandStatus.SUCCEEDED) {
             reconcileSucceededCommand(mission, run, event);
+        } else if (event.commandType() == CommandType.CANCEL_MISSION && event.status() == CommandStatus.CANCELLED) {
+            reconcileTerminal(mission, run, MissionRunStatus.CANCELLED, MissionStatus.CANCELLED,
+                    MissionStage.EVALUATION, null, commandDescription(event), "command:" + event.commandKey());
         } else if (event.status() == CommandStatus.FAILED || event.status() == CommandStatus.TIMEOUT
                 || event.status() == CommandStatus.CANCELLED || event.status() == CommandStatus.REJECTED) {
             reconcileRejectedCommand(mission, run, event);

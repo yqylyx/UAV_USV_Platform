@@ -74,6 +74,19 @@ class MissionRuntimeReconcilerTests {
     }
 
     @Test
+    void cancelMissionCommandCancelledTerminatesMatchingRun() {
+        Fixture fixture = fixture(MissionStatus.RUNNING, MissionRunStatus.RUNNING, 20L);
+
+        fixture.reconciler.reconcileCommandStatus(commandEvent(
+                20L, CommandType.CANCEL_MISSION, CommandStatus.CANCELLED));
+
+        assertEquals(MissionStatus.CANCELLED, fixture.mission.getStatus());
+        assertEquals(MissionRunStatus.CANCELLED, fixture.run.getStatus());
+        assertNotNull(fixture.run.getEndedAt());
+        verify(fixture.eventRepository).save(any(MissionEvent.class));
+    }
+
+    @Test
     void duplicateTerminalStatusIsNoOpAndKeepsFinishedAt() {
         Fixture fixture = fixture(MissionStatus.CANCELLED, MissionRunStatus.CANCELLED, 20L);
         LocalDateTime endedAt = fixture.run.getEndedAt();
