@@ -9,7 +9,9 @@ import com.uavusv.platform.module.mission.entity.MissionType;
 import com.uavusv.platform.module.mission.repository.MissionEventRepository;
 import com.uavusv.platform.module.mission.repository.MissionRunRepository;
 import com.uavusv.platform.module.mission.repository.MissionTaskRepository;
+import com.uavusv.platform.module.mission.service.MissionRuntimeReconciler;
 import com.uavusv.platform.module.mission.service.MissionCommandCoordinator;
+import com.uavusv.platform.module.runtimecontrol.repository.ControlCommandRepository;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandStatus;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.event.ControlCommandStatusChangedEvent;
@@ -76,6 +78,7 @@ class MissionCommandCoordinatorTests {
         MissionRunRepository runRepository = mock(MissionRunRepository.class);
         MissionTaskRepository taskRepository = mock(MissionTaskRepository.class);
         MissionEventRepository eventRepository = mock(MissionEventRepository.class);
+        ControlCommandRepository commandRepository = mock(ControlCommandRepository.class);
         MissionTask mission = new MissionTask("MT-TEST");
         mission.update(
                 "MT-TEST", "测试任务", MissionType.COOPERATIVE_ENCIRCLEMENT,
@@ -85,7 +88,9 @@ class MissionCommandCoordinatorTests {
         MissionRun run = new MissionRun(10L, null, 1, MissionStage.TARGET_DETECTED, "admin");
         when(runRepository.findById(20L)).thenReturn(Optional.of(run));
         when(taskRepository.findById(10L)).thenReturn(Optional.of(mission));
-        MissionCommandCoordinator coordinator = new MissionCommandCoordinator(runRepository, taskRepository, eventRepository);
+        MissionRuntimeReconciler reconciler = new MissionRuntimeReconciler(
+                runRepository, taskRepository, eventRepository, commandRepository);
+        MissionCommandCoordinator coordinator = new MissionCommandCoordinator(reconciler);
         return new Fixture(coordinator, mission, run, eventRepository);
     }
 
