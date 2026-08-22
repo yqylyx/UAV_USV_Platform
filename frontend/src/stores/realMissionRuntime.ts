@@ -29,8 +29,9 @@ type RuntimeContext = {
 }
 
 const terminalStates = new Set(['CANCELLED', 'FAILED', 'COMPLETED'])
-const runningStates = new Set(['RUNNING', 'EXECUTING', 'ACTIVE', 'STARTED'])
+const runningStates = new Set(['RUNNING', 'EXECUTING', 'ACTIVE', 'STARTED', 'ENCIRCLING'])
 const runningPhases = new Set([
+  'ENCIRCLING',
   'FORMATION_CONVERGING',
   'ENCIRCLEMENT',
   'CAPTURE',
@@ -43,6 +44,14 @@ const failedCommandStates = new Set(['FAILED', 'REJECTED', 'TIMEOUT', 'EXPIRED']
 
 function normalizeState(value: unknown) {
   return String(value ?? '').trim().toUpperCase()
+}
+
+function terminalRuntimeState(value: unknown): RealMissionRuntimeState | null {
+  const state = normalizeState(value)
+  if (state === 'SUCCESS' || state === 'SUCCEEDED') return 'COMPLETED'
+  if (state === 'ABORTED') return 'CANCELLED'
+  if (terminalStates.has(state)) return state as RealMissionRuntimeState
+  return null
 }
 
 function commandStatus(commandKey: string, statuses: Record<string, string>) {
@@ -106,12 +115,14 @@ export const useRealMissionRuntimeStore = defineStore('realMissionRuntime', {
       const startStatus = commandStatus(state.lastStartCommandKey, realtimeStore.commandStatuses)
       const cancelStatus = commandStatus(state.lastCancelCommandKey, realtimeStore.commandStatuses)
 
-      if (terminalStates.has(backendStatus)) return backendStatus as RealMissionRuntimeState
-      if (terminalStates.has(rosState)) return rosState as RealMissionRuntimeState
+      const backendTerminal = terminalRuntimeState(backendStatus)
+      if (backendTerminal) return backendTerminal
+      const rosTerminal = terminalRuntimeState(rosState) ?? terminalRuntimeState(rosPhase)
+      if (rosTerminal) return rosTerminal
 
       if (
         state.lifecycleAction === 'CANCEL'
-        && !terminalStates.has(cancelStatus)
+        && !terminalRuntimeState(cancelStatus)
         && !failedCommandStates.has(cancelStatus)
       ) {
         return 'CANCELLING'
@@ -165,7 +176,7 @@ export const useRealMissionRuntimeStore = defineStore('realMissionRuntime', {
         this.lastCancelCommandKey = ''
         this.lifecycleAction = null
       }
-      if (context.backendMissionStatus && terminalStates.has(context.backendMissionStatus)) {
+      if (terminalRuntimeState(context.backendMissionStatus)) {
         this.lifecycleAction = null
       }
     },

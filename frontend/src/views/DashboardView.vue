@@ -117,6 +117,7 @@ const overviewDeploymentAcknowledged = ref(false)
 let poseFrameSequence = 0
 let freshnessTimer: number | null = null
 const unityInstanceId = 'overview-unity-01'
+let lastRealOverviewScenarioKey = ''
 
 const cameraModes = [
   { label: '全局态势', value: 'overview' },
@@ -997,13 +998,31 @@ async function runOverviewDemoCommand(action: 'start' | 'pause' | 'resume' | 'ca
 function sendRealOverviewScenario(detail?: MissionDetail | null) {
   const missionId = detail?.mission.id ?? overviewMissionId.value
   if (!missionId) return
-  const runId = detail?.currentRun?.id ?? null
+  const runId = detail?.currentRun?.id ?? realMissionRuntimeStore.currentRunId ?? null
+  const algorithmCode = detail?.mission.algorithmCode ?? selectedOverviewAlgorithm.value
+  const scenarioKey = `${missionId}:${runId ?? 'missing-run'}:${algorithmCode}`
+  const channel = unityBridgeStore.channels.SYSTEM_OVERVIEW
+  if (
+    scenarioKey === lastRealOverviewScenarioKey
+    && channel.platformReady
+    && channel.scenarioRunId === (runId ?? null)
+  ) {
+    return
+  }
+  lastRealOverviewScenarioKey = scenarioKey
   unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'loadScenario', {
     runtimeMode: 'REAL',
-    algorithmCode: detail?.mission.algorithmCode ?? selectedOverviewAlgorithm.value,
+    algorithmCode,
     missionId,
     runId: runId ?? undefined,
   })
+}
+
+function syncRealOverviewUnityScene() {
+  if (overviewRuntimeMode.value !== 'REAL') return
+  if (!overviewMissionId.value) return
+  sendRealOverviewScenario()
+  pushRealtimePoseFrameToUnity()
 }
 
 async function triggerRealOverviewMissionStart(detail: MissionDetail) {
@@ -1319,6 +1338,42 @@ watch(
     overviewRosMissionPhase.value,
   ] as const,
   () => pushRealtimePoseFrameToUnity(),
+  { immediate: true },
+)
+
+watch(
+  () => [
+    realtimeStore.missionStatus?.runId ?? '',
+    realtimeStore.missionStatus?.payload?.missionId ?? '',
+    realtimeStore.missionStatus?.payload?.runId ?? '',
+    realtimeStore.missionStatus?.payload?.state ?? '',
+    realtimeStore.missionStatus?.payload?.phase ?? '',
+  ] as const,
+  () => {
+    const envelope = realtimeStore.missionStatus
+    if (!envelope || !overviewMissionId.value) return
+    const missionId = Number(envelope.payload?.missionId)
+    if (!Number.isFinite(missionId) || missionId !== overviewMissionId.value) return
+    const runId = Number(envelope.runId ?? envelope.payload?.runId)
+    if (!Number.isFinite(runId) || runId <= 0) return
+    realMissionRuntimeStore.syncContext({
+      missionId,
+      runId,
+      runScopePolicy: 'ALLOW_MISSING',
+    })
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [
+    overviewRuntimeMode.value,
+    overviewMissionId.value ?? 0,
+    realMissionRuntimeStore.currentRunId ?? 0,
+    overviewUnityChannel.value.connected,
+    overviewUnityChannel.value.platformReady,
+  ] as const,
+  () => syncRealOverviewUnityScene(),
   { immediate: true },
 )
 
