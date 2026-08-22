@@ -385,6 +385,7 @@ const overviewMissionActionDisabled = computed(() => {
   if (commandBusy.value) return true
   if (overviewRuntimeState.value === 'STARTING' || overviewRuntimeState.value === 'CANCELLING') return true
   if (overviewMissionCanPrepare.value) return false
+  if (overviewRuntimeMode.value === 'REAL' && overviewRuntimeState.value === 'IDLE' && realValidationReady.value) return false
   if (realMissionRuntimeStore.canRetry) return false
   return !unityControlReady.value || (!realMissionRuntimeStore.canStart && !realMissionRuntimeStore.canCancel)
 })
@@ -524,6 +525,27 @@ async function issueSelectedQuickCommand(action: OverviewQuickAction) {
 async function handleOverviewMissionToggle() {
   if (overviewMissionCanPrepare.value) {
     await retryOverviewMission()
+    return
+  }
+  if (overviewRuntimeMode.value === 'REAL' && overviewRuntimeState.value === 'IDLE') {
+    const current = await loadOverviewMission()
+    if (!current) {
+      ElMessage.error('未找到可执行的真实任务')
+      return
+    }
+    if (overviewMissionStatus.value === 'DRAFT') {
+      await retryOverviewMission()
+      return
+    }
+    if (overviewMissionStatus.value === 'READY') {
+      await handleMissionGroupAction('start')
+      return
+    }
+    if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(overviewMissionStatus.value)) {
+      await retryOverviewMission()
+      return
+    }
+    ElMessage.error(`当前真实任务状态为 ${overviewMissionStatus.value}，不能启动`)
     return
   }
   if (realMissionRuntimeStore.canRetry) {
