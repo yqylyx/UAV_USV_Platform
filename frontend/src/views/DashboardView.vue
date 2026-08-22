@@ -1177,7 +1177,14 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
       }
       await startOverviewMission()
       if (overviewRuntimeMode.value === 'REAL') {
-        ElMessage.success(realMissionRuntimeStore.runtimeState === 'RUNNING' ? '围捕执行中' : '启动命令已确认，等待围捕执行')
+        const state = realMissionRuntimeStore.runtimeState
+        ElMessage.success(
+          state === 'COMPLETED'
+            ? '围捕条件已满足，任务已完成'
+            : state === 'RUNNING'
+              ? '围捕执行中'
+              : '启动命令已确认，等待围捕执行',
+        )
         return
       }
       ElMessage.success(`${overviewMissionName.value}已启动`)
