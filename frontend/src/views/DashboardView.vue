@@ -347,6 +347,9 @@ const selectedOverviewDevice = computed(() =>
 const overviewRuntimeState = computed(() => realMissionRuntimeStore.runtimeState)
 const overviewMissionRunning = computed(() => realMissionRuntimeStore.isRunning)
 const overviewMissionTerminal = computed(() => realMissionRuntimeStore.isTerminal)
+const overviewMissionCanPrepare = computed(() =>
+  overviewMissionId.value !== null && overviewMissionStatus.value === 'DRAFT',
+)
 const overviewRosMissionPhase = computed(() => {
   const payload = realtimeStore.missionStatus?.payload
   return String(payload?.phase ?? payload?.state ?? '').trim().toUpperCase()
@@ -355,7 +358,9 @@ const overviewRuntimeModeLabel = computed(() =>
   overviewRuntimeMode.value === 'VIRTUAL_SIMULATION' ? '虚拟仿真' : '真实任务',
 )
 const overviewMissionActionLabel = computed(() =>
-  overviewRuntimeState.value === 'STARTING'
+  overviewMissionCanPrepare.value
+    ? '进入待执行'
+    : overviewRuntimeState.value === 'STARTING'
     ? '启动中'
     : overviewRuntimeState.value === 'CANCELLING'
       ? '终止中'
@@ -379,6 +384,7 @@ const overviewMissionStateText = computed(() => {
 const overviewMissionActionDisabled = computed(() => {
   if (commandBusy.value) return true
   if (overviewRuntimeState.value === 'STARTING' || overviewRuntimeState.value === 'CANCELLING') return true
+  if (overviewMissionCanPrepare.value) return false
   if (realMissionRuntimeStore.canRetry) return false
   return !unityControlReady.value || (!realMissionRuntimeStore.canStart && !realMissionRuntimeStore.canCancel)
 })
@@ -516,6 +522,10 @@ async function issueSelectedQuickCommand(action: OverviewQuickAction) {
 }
 
 async function handleOverviewMissionToggle() {
+  if (overviewMissionCanPrepare.value) {
+    await retryOverviewMission()
+    return
+  }
   if (realMissionRuntimeStore.canRetry) {
     await retryOverviewMission()
     return
