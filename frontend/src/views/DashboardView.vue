@@ -614,8 +614,14 @@ async function runOverviewMissionAction(action: MissionAction) {
       throw new Error(result.command.detail || '任务指令未能下发')
     }
     if (overviewRuntimeMode.value === 'REAL') {
-      const rosStatus = await realtimeStore.waitForCommandResult(result.command.commandKey, 90000)
-      if (rosStatus !== 'SUCCEEDED') {
+      const rosStatus = action === 'start'
+        ? await realtimeStore.waitForCommandStart(result.command.commandKey, 90000)
+        : await realtimeStore.waitForCommandResult(result.command.commandKey, 90000)
+      if (action === 'start') {
+        if (['FAILED', 'REJECTED', 'CANCELLED', 'TIMEOUT', 'EXPIRED'].includes(rosStatus)) {
+          throw new Error(`真实任务启动指令未确认：${rosStatus}`)
+        }
+      } else if (rosStatus !== 'SUCCEEDED') {
         throw new Error(`真实任务指令未收到成功结果：${rosStatus}`)
       }
     } else {
@@ -941,9 +947,9 @@ async function triggerRealOverviewMissionStart(detail: MissionDetail) {
   if (result.status === 'FAILED' || result.status === 'TIMEOUT') {
     throw new Error(result.detail || '真实任务启动指令未能下发')
   }
-  const rosStatus = await realtimeStore.waitForCommandResult(result.commandKey, 90000)
-  if (rosStatus !== 'SUCCEEDED') {
-    throw new Error(`真实任务启动指令未收到成功结果：${rosStatus}`)
+  const rosStatus = await realtimeStore.waitForCommandStart(result.commandKey, 90000)
+  if (['FAILED', 'REJECTED', 'CANCELLED', 'TIMEOUT', 'EXPIRED'].includes(rosStatus)) {
+    throw new Error(`真实任务启动指令未确认：${rosStatus}`)
   }
 }
 
@@ -1053,7 +1059,9 @@ async function handleMissionGroupAction(action: 'deploy' | 'start' | 'pause' | '
         throw new Error('请先点击“编组部署”，确认三机三艇加入围捕编组')
       }
       await startOverviewMission()
-      ElMessage.success(`${overviewMissionName.value}已启动`)
+      ElMessage.success(overviewRuntimeMode.value === 'REAL'
+        ? '任务启动命令已确认，围捕执行中'
+        : `${overviewMissionName.value}已启动`)
       return
     }
 
