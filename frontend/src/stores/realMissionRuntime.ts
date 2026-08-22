@@ -67,6 +67,7 @@ export const useRealMissionRuntimeStore = defineStore('realMissionRuntime', {
     lastStartCommandKey: '',
     lastCancelCommandKey: '',
     lifecycleAction: null as LifecycleAction,
+    suppressedRosTerminalKey: '',
   }),
   getters: {
     currentMissionId(state) {
@@ -112,13 +113,24 @@ export const useRealMissionRuntimeStore = defineStore('realMissionRuntime', {
         : null
       const rosState = normalizeState(missionStatus?.state)
       const rosPhase = normalizeState(missionStatus?.phase)
+      const rosTerminalKey = [
+        this.currentMissionId ?? 'missing-mission',
+        currentRunId ?? 'missing-run',
+        rosState,
+        rosPhase,
+      ].join(':')
       const startStatus = commandStatus(state.lastStartCommandKey, realtimeStore.commandStatuses)
       const cancelStatus = commandStatus(state.lastCancelCommandKey, realtimeStore.commandStatuses)
 
       const backendTerminal = terminalRuntimeState(backendStatus)
       if (backendTerminal) return backendTerminal
       const rosTerminal = terminalRuntimeState(rosState) ?? terminalRuntimeState(rosPhase)
-      if (rosTerminal) return rosTerminal
+      if (
+        rosTerminal
+        && !(backendStatus === 'READY' && state.suppressedRosTerminalKey === rosTerminalKey)
+      ) {
+        return rosTerminal
+      }
 
       if (
         state.lifecycleAction === 'CANCEL'
@@ -175,6 +187,7 @@ export const useRealMissionRuntimeStore = defineStore('realMissionRuntime', {
         this.lastStartCommandKey = ''
         this.lastCancelCommandKey = ''
         this.lifecycleAction = null
+        this.suppressedRosTerminalKey = ''
       }
       if (terminalRuntimeState(context.backendMissionStatus)) {
         this.lifecycleAction = null
@@ -183,10 +196,37 @@ export const useRealMissionRuntimeStore = defineStore('realMissionRuntime', {
     noteStartCommand(commandKey: string) {
       this.lastStartCommandKey = commandKey
       this.lifecycleAction = 'START'
+      this.suppressedRosTerminalKey = ''
     },
     noteCancelCommand(commandKey: string) {
       this.lastCancelCommandKey = commandKey
       this.lifecycleAction = 'CANCEL'
+      this.suppressedRosTerminalKey = ''
+    },
+    acknowledgeTerminalForRetry() {
+      const realtimeStore = useRealtimeStore()
+      const activeExperimentStore = useActiveExperimentStore()
+      const currentRunId = this.runId ?? activeExperimentStore.runId
+      const missionStatus = isRealtimeEnvelopeApplicable(
+        realtimeStore.missionStatus,
+        { runId: currentRunId },
+        this.runScopePolicy,
+      )
+        ? realtimeStore.missionStatus?.payload
+        : null
+      const rosState = normalizeState(missionStatus?.state)
+      const rosPhase = normalizeState(missionStatus?.phase)
+      if (terminalRuntimeState(rosState) || terminalRuntimeState(rosPhase)) {
+        this.suppressedRosTerminalKey = [
+          this.currentMissionId ?? 'missing-mission',
+          currentRunId ?? 'missing-run',
+          rosState,
+          rosPhase,
+        ].join(':')
+      }
+      this.lastStartCommandKey = ''
+      this.lastCancelCommandKey = ''
+      this.lifecycleAction = null
     },
     clearLifecycleAction() {
       this.lifecycleAction = null

@@ -705,9 +705,18 @@ async function retryOverviewMission() {
   try {
     const missionId = overviewMissionId.value ?? (await loadOverviewMission())?.mission.id
     if (!missionId) throw new Error('未找到可再次执行的真实任务')
+    if (overviewMissionStatus.value === 'READY' || realMissionRuntimeStore.backendMissionStatus === 'READY') {
+      realMissionRuntimeStore.acknowledgeTerminalForRetry()
+      overviewDeploymentAcknowledged.value = true
+      syncRealOverviewUnityScene()
+      ElMessage.success('任务已处于待执行状态，可重新启动')
+      return
+    }
     const result = await executeMissionAction(missionId, 'ready', 'SYSTEM_OVERVIEW')
     applyOverviewMissionDetail(result.detail)
+    realMissionRuntimeStore.acknowledgeTerminalForRetry()
     overviewDeploymentAcknowledged.value = true
+    syncRealOverviewUnityScene()
     ElMessage.success('任务已进入待执行状态，可重新启动')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '再次执行准备失败')
