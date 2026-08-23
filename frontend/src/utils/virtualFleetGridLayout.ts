@@ -153,6 +153,11 @@ export function buildVirtualFleetGridLayout(
         ...Array.from({ length: plan.threatCount }, () => 'THREAT_TARGET'),
       ]
   targetTypes.forEach((targetType, index) => {
+    const targetCode = captureMode
+      ? `TARGET-${String(index + 1).padStart(3, '0')}`
+      : index < plan.protectedCount
+        ? `PROTECTED-${String(index + 1).padStart(3, '0')}`
+        : `THREAT-${String(index - plan.protectedCount + 1).padStart(3, '0')}`
     const angle = 2 * Math.PI * index / Math.max(1, targetTypes.length)
     const radius = captureMode ? 0 : Math.min(plan.worldWidth, plan.worldHeight) * .34
     // Multi-target capture starts with every hostile clearly separated in
@@ -165,7 +170,10 @@ export function buildVirtualFleetGridLayout(
       ? -captureCorridorHalfLength - Math.abs(captureTargetNorth) * .12
       : 0
     poses.push({
-      deviceCode: `TARGET-${String(index + 1).padStart(3, '0')}`,
+      // Keep initial scene identity identical to the algorithm runtime frames.
+      // Otherwise Unity creates TARGET-* objects during scene generation and
+      // later rejects PROTECTED-* / THREAT-* updates as unknown devices.
+      deviceCode: targetCode,
       deviceType: 'TARGET',
       targetType,
       eastM: options.fleetOrigin.eastM + captureTargetEast + Math.cos(angle) * radius,

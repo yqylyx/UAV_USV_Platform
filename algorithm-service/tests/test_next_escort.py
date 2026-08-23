@@ -39,6 +39,20 @@ class NextEscortAcceptanceTests(unittest.TestCase):
                         112.0,
                     )
 
+    def test_threat_speed_contract_is_seeded_and_chase_cap_remains_catchable(self):
+        for count in (3, 10, 20, 30):
+            with self.subTest(count=count):
+                adapter = AdaptiveEscortAdapter(9070 + count, {
+                    "uavCount": count,
+                    "usvCount": count,
+                    "seed": 20260814,
+                    "usvSpeedMps": 1.0,
+                })
+                self.assertTrue(all(1.5 <= item.cruise_speed <= 2.2 for item in adapter.threats))
+                self.assertTrue(all(item.maximum_speed == 2.8 for item in adapter.threats))
+                active = [item for item in adapter.threats if item.state != "WAITING"]
+                self.assertTrue(all(math.hypot(item.vx, item.vy) >= item.cruise_speed - 1e-6 for item in active))
+
     def test_active_capture_keeps_mixed_close_guards(self):
         for count in (3, 4, 10, 20, 30):
             with self.subTest(count=count):
@@ -238,6 +252,29 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         self.assertTrue(all(item.state == "CAPTURED" for item in adapter.threats))
         self.assertEqual(2, frame.metrics["capturedThreatCount"])
         self.assertEqual(1.0, frame.metrics["escortProgress"])
+
+    def test_seeded_first_line_breach_is_reintercepted_and_sparse_ring_closes(self):
+        adapter = AdaptiveEscortAdapter(9257, {
+            "uavCount": 3, "usvCount": 3, "seed": 1,
+            "uavSpeedMps": 5, "usvSpeedMps": 3,
+        })
+        breach_seen = False
+        gap_filler_seen = False
+        frame = None
+        for _ in range(adapter.timeout_frames):
+            frame = adapter.step()
+            breach_seen = breach_seen or frame.metrics.get("firstLineBreachCount", 0) > 0
+            gap_filler_seen = gap_filler_seen or any(
+                bool(group.get("gapFillerCode"))
+                for group in frame.metrics.get("captureGroups", [])
+            )
+            if frame.terminalStatus:
+                break
+        self.assertTrue(breach_seen, "seeded scenario must demonstrate a first-line breach")
+        self.assertTrue(gap_filler_seen, "a sparse ring must assign a temporary gap blocker")
+        self.assertEqual("COMPLETED", frame.terminalStatus, frame.metrics)
+        self.assertTrue(all(item.state == "CAPTURED" for item in adapter.threats))
+        self.assertLessEqual(adapter.threats[0].capture_max_gap_deg, 90.5)
 
     def test_surface_and_target_speeds_use_the_raised_dynamic_profile(self):
         adapter = AdaptiveEscortAdapter(9255, {

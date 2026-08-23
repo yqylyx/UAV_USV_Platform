@@ -525,6 +525,19 @@ function sendPoseFrame(payload: Record<string, unknown>) {
   postToUnity('poseFrame', payload)
 }
 
+function syncViewport() {
+  // CSS grid transitions can resize an iframe dozens of times. Unity only
+  // needs the settled viewport; two animation frames ensure layout and device
+  // pixels are final before its resize handler reads the canvas dimensions.
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      const frameWindow = iframeRef.value?.contentWindow
+      frameWindow?.dispatchEvent(new Event('resize'))
+      frameWindow?.postMessage({ source: 'vue-console', type: 'viewportSettled' }, window.location.origin)
+    })
+  })
+}
+
 async function reportHeartbeat(
   state: HeartbeatReport['state'],
   detail: string,
@@ -583,6 +596,7 @@ defineExpose({
   toggleTrajectory,
   sendControlCommand,
   sendPoseFrame,
+  syncViewport,
 })
 
 onMounted(() => {
@@ -658,3 +672,16 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.unity-webgl-panel {
+  contain: layout paint;
+}
+
+.unity-webgl-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+</style>

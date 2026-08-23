@@ -86,6 +86,7 @@ const missionActionMessage = ref('')
 const webglExpanded = ref(false)
 const leftPanelCollapsed = ref(false)
 const rightPanelCollapsed = ref(false)
+const panelTransitioning = ref(false)
 const inspectorTab = ref<InspectorTab>('status')
 const logEntries = ref<string[]>([])
 const lastUnityMessage = ref<UnityMessage | null>(null)
@@ -114,6 +115,22 @@ const captureRemainingSeconds = computed(() => Math.max(0, Math.ceil(Number(miss
 const captureGroups = computed(() => Array.isArray(missionMetrics.value.captureGroups)
   ? missionMetrics.value.captureGroups as CaptureGroupMetric[]
   : [])
+
+function setLeftPanelCollapsed(collapsed: boolean) {
+  panelTransitioning.value = true
+  leftPanelCollapsed.value = collapsed
+}
+
+function setRightPanelCollapsed(collapsed: boolean) {
+  panelTransitioning.value = true
+  rightPanelCollapsed.value = collapsed
+}
+
+function handleWorkbenchTransitionEnd(event: TransitionEvent) {
+  if (event.propertyName !== 'grid-template-columns') return
+  panelTransitioning.value = false
+  unityPanel.value?.syncViewport()
+}
 const displayCaptureStage = (stage: unknown) => {
   const value = Number(stage ?? 0)
   if (state.algorithm === 'GB_SFLA_CS') {
@@ -582,7 +599,7 @@ async function applyAlgorithmFrame(
   currentAlgorithmFrame.value = frame
   state.sequence = frame.sequence
   const trackedPose = adapted.payload.vehicles.find((pose) => pose.deviceCode === 'UAV-001')
-  const targetPose = adapted.payload.targets.find((pose) => pose.deviceCode === 'TARGET-001')
+  const targetPose = adapted.payload.targets[0]
   addLog(
     `algorithm frame: sequence=${frame.sequence}`
     + (trackedPose
@@ -591,7 +608,7 @@ async function applyAlgorithmFrame(
         + ` heading=${trackedPose.headingDeg.toFixed(1)}`
       : '')
     + (targetPose
-      ? ` TARGET-001 pos=(${targetPose.eastM.toFixed(2)},`
+      ? ` ${targetPose.deviceCode} pos=(${targetPose.eastM.toFixed(2)},`
         + `${targetPose.northM.toFixed(2)},${targetPose.upM.toFixed(2)})`
       : ''),
   )
@@ -628,12 +645,12 @@ async function synchronizeInitialAlgorithmFrame(): Promise<boolean> {
       firstFrame,
       new Map(),
       { fleetOrigin: fleetOriginEnu },
-    ).payload.targets.find(pose => pose.deviceCode === 'TARGET-001')
+    ).payload.targets[0]
     addLog(
       `latest preview pose synchronized before missionStart`
       + (targetPose
-        ? ` TARGET-001=(${targetPose.eastM.toFixed(2)},${targetPose.northM.toFixed(2)},${targetPose.upM.toFixed(2)})`
-        : ' TARGET-001=missing'),
+        ? ` ${targetPose.deviceCode}=(${targetPose.eastM.toFixed(2)},${targetPose.northM.toFixed(2)},${targetPose.upM.toFixed(2)})`
+        : ' mission target=missing'),
     )
     return true
   } catch (error) {
@@ -733,23 +750,25 @@ onBeforeUnmount(() => {
         :class="{
           'left-collapsed': leftPanelCollapsed,
           'right-collapsed': rightPanelCollapsed,
+          'panel-transitioning': panelTransitioning,
         }"
+        @transitionend="handleWorkbenchTransitionEnd"
       >
-        <aside class="vf-config-drawer">
+        <aside class="vf-config-drawer" :class="{ collapsed: leftPanelCollapsed }">
           <button
-            v-if="leftPanelCollapsed"
             class="vf-drawer-reopen"
             type="button"
             title="展开场景配置"
-            @click="leftPanelCollapsed = false"
+            :tabindex="leftPanelCollapsed ? 0 : -1"
+            @click="setLeftPanelCollapsed(false)"
           >
             <ChevronRight :size="18" />
             <span>场景配置</span>
           </button>
-          <section v-else class="vf-panel vf-config-panel">
+          <section class="vf-panel vf-config-panel">
             <div class="vf-panel-head">
               <div><h3>场景配置</h3><span>V3 PROTOCOL</span></div>
-              <button type="button" title="收起场景配置" @click="leftPanelCollapsed = true">
+              <button type="button" title="收起场景配置" @click="setLeftPanelCollapsed(true)">
                 <ChevronLeft :size="17" />
               </button>
             </div>
@@ -868,23 +887,23 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <aside class="vf-inspector-drawer">
+        <aside class="vf-inspector-drawer" :class="{ collapsed: rightPanelCollapsed }">
           <button
-            v-if="rightPanelCollapsed"
             class="vf-drawer-reopen right"
             type="button"
             title="展开任务检查区"
-            @click="rightPanelCollapsed = false"
+            :tabindex="rightPanelCollapsed ? 0 : -1"
+            @click="setRightPanelCollapsed(false)"
           >
             <ChevronLeft :size="18" />
             <span>任务态势</span>
           </button>
-          <section v-else class="vf-panel vf-inspector-panel">
+          <section class="vf-panel vf-inspector-panel">
             <div class="vf-inspector-tabs">
               <button :class="{ active: inspectorTab === 'status' }" type="button" @click="inspectorTab = 'status'">任务态势</button>
               <button :class="{ active: inspectorTab === 'protocol' }" type="button" @click="inspectorTab = 'protocol'">协议状态</button>
               <button :class="{ active: inspectorTab === 'logs' }" type="button" @click="inspectorTab = 'logs'">运行日志</button>
-              <button class="collapse" type="button" title="收起检查区" @click="rightPanelCollapsed = true"><ChevronRight :size="17" /></button>
+              <button class="collapse" type="button" title="收起检查区" @click="setRightPanelCollapsed(true)"><ChevronRight :size="17" /></button>
             </div>
 
             <div v-if="inspectorTab === 'status'" class="vf-inspector-content">
@@ -976,7 +995,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.virtual-fleet-page { display: flex; min-height: calc(100vh - 70px); gap: 12px; flex-direction: column; }
+.virtual-fleet-page { display: flex; height: calc(100dvh - 70px); min-height: 0; gap: 12px; overflow: hidden; flex-direction: column; }
 .vf-app-header { display: grid; min-height: 58px; padding: 0 16px; align-items: center; color: #eafffb; background: rgba(5, 20, 25, .97); border: 1px solid rgba(108, 228, 213, .17); border-radius: 8px; grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr); }
 .vf-app-title { display: flex; align-items: baseline; gap: 14px; }
 .vf-app-title span { color: #8eb8b5; font-size: 11px; font-weight: 800; letter-spacing: .05em; }
@@ -988,13 +1007,19 @@ onBeforeUnmount(() => {
 .vf-instance-status i, .vf-unity-state i, .vf-live-strip i, .vf-protocol-health i { width: 7px; height: 7px; background: #62e4c9; border-radius: 50%; box-shadow: 0 0 9px rgba(98, 228, 201, .75); }
 .vf-instance-status.offline { color: #8aa8a5; }
 .vf-instance-status.offline i { background: #718987; box-shadow: none; }
-.vf-workbench { display: grid; min-height: 0; flex: 1; gap: 12px; grid-template-columns: clamp(238px, 15vw, 288px) minmax(540px, 1fr) clamp(248px, 15.6vw, 300px); transition: grid-template-columns 180ms ease; }
-.vf-workbench.left-collapsed { grid-template-columns: 44px minmax(620px, 1fr) minmax(260px, 300px); }
-.vf-workbench.right-collapsed { grid-template-columns: minmax(248px, 288px) minmax(620px, 1fr) 44px; }
-.vf-workbench.left-collapsed.right-collapsed { grid-template-columns: 44px minmax(620px, 1fr) 44px; }
-.vf-config-drawer, .vf-inspector-drawer { min-width: 0; min-height: 0; }
+.vf-workbench { --vf-left-width: clamp(238px, 15vw, 288px); --vf-right-width: clamp(248px, 15.6vw, 300px); --vf-current-left: var(--vf-left-width); --vf-current-right: var(--vf-right-width); display: grid; min-height: 0; overflow: hidden; flex: 1; gap: 12px; grid-template-rows: minmax(0, 1fr); grid-template-columns: var(--vf-current-left) minmax(0, 1fr) var(--vf-current-right); transition: grid-template-columns 240ms cubic-bezier(.22,.8,.3,1); }
+.vf-workbench.left-collapsed { --vf-current-left: 44px; }
+.vf-workbench.right-collapsed { --vf-current-right: 44px; }
+.vf-config-drawer, .vf-inspector-drawer { position: relative; min-width: 0; min-height: 0; overflow: hidden; contain: layout paint; }
+.vf-config-panel, .vf-inspector-panel, .vf-drawer-reopen { position: absolute; inset: 0; transition: opacity 150ms ease, transform 220ms cubic-bezier(.22,.8,.3,1), visibility 0s linear 0s; }
+.vf-config-drawer:not(.collapsed) .vf-config-panel, .vf-inspector-drawer:not(.collapsed) .vf-inspector-panel { opacity: 1; visibility: visible; transform: translateX(0); pointer-events: auto; }
+.vf-config-drawer:not(.collapsed) .vf-drawer-reopen, .vf-inspector-drawer:not(.collapsed) .vf-drawer-reopen { opacity: 0; visibility: hidden; pointer-events: none; }
+.vf-config-drawer.collapsed .vf-config-panel { opacity: 0; visibility: hidden; transform: translateX(-12px); pointer-events: none; }
+.vf-inspector-drawer.collapsed .vf-inspector-panel { opacity: 0; visibility: hidden; transform: translateX(12px); pointer-events: none; }
+.vf-config-drawer.collapsed .vf-drawer-reopen, .vf-inspector-drawer.collapsed .vf-drawer-reopen { opacity: 1; visibility: visible; transform: translateX(0); pointer-events: auto; transition-delay: 90ms; }
+.vf-workbench.panel-transitioning .vf-stage-panel { contain: layout paint; }
 .vf-panel, .vf-stage-panel { min-width: 0; color: #dff8f4; background: rgba(8, 25, 30, .94); border: 1px solid rgba(108, 228, 213, .18); border-radius: 8px; }
-.vf-config-panel, .vf-inspector-panel { height: 100%; overflow: auto; }
+.vf-config-panel, .vf-inspector-panel { width: 100%; height: 100%; overflow: auto; }
 .vf-config-panel { padding: 15px; }
 .vf-panel-head, .vf-stage-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .vf-panel-head { margin-bottom: 13px; }
@@ -1026,7 +1051,7 @@ onBeforeUnmount(() => {
 .vf-button:disabled { cursor: not-allowed; opacity: .4; }
 .vf-error { margin-top: 10px; color: #ff8179; font-size: 11px; }
 .vf-action-message { margin: 10px 0 0; color: #9fe8df; font-size: 11px; line-height: 1.5; }
-.vf-stage-panel { display: flex; min-height: 0; padding: 0; overflow: hidden; flex-direction: column; }
+.vf-stage-panel { display: flex; height: 100%; min-height: 0; padding: 0; overflow: hidden; flex-direction: column; }
 .vf-stage-head { padding: 14px 15px; border-bottom: 1px solid rgba(108, 228, 213, .15); }
 .vf-stage-head > div:first-child { display: grid; gap: 3px; }
 .vf-stage-head strong { color: #ffcf72; font-size: 12px; }
@@ -1039,8 +1064,8 @@ onBeforeUnmount(() => {
 .vf-stage-panel.expanded { position: fixed; inset: 10px; z-index: 2100; display: flex; flex-direction: column; background: #031015; box-shadow: 0 0 0 100vmax rgba(0,0,0,.82); }
 .vf-stage-panel.expanded .vf-unity-stage { flex: 1; min-height: 0; }
 .vf-stage-panel.expanded .vf-unity-stage :deep(.unity-webgl-panel) { height: 100%; }
-.vf-unity-stage { min-height: clamp(320px, calc(100vh - 360px), 760px); flex: 1; background: #031015; }
-.vf-unity-stage :deep(.unity-webgl-panel) { width: 100%; height: 100%; min-height: clamp(320px, calc(100vh - 360px), 760px); }
+.vf-unity-stage { height: 100%; min-height: 0; flex: 1; overflow: hidden; background: #031015; }
+.vf-unity-stage :deep(.unity-webgl-panel) { width: 100%; height: 100%; min-height: 0; }
 .vf-live-strip { display: flex; min-height: 34px; padding: 0 13px; align-items: center; flex-wrap: wrap; gap: 8px 18px; color: #7ea7a5; background: #06191f; border-top: 1px solid rgba(108,228,213,.16); border-bottom: 1px solid rgba(108,228,213,.1); font-size: 10px; }
 .vf-live-strip span { display: inline-flex; align-items: center; gap: 5px; }
 .vf-live-strip strong { color: #eafffb; font-size: 11px; }
@@ -1101,10 +1126,9 @@ onBeforeUnmount(() => {
 .vf-runtime-log ol { display: grid; max-height: 650px; overflow: auto; margin: 0; padding: 0; gap: 5px; list-style: none; }
 .vf-runtime-log li { padding: 7px 8px; color: #86aaa7; background: rgba(3,16,20,.55); border-left: 2px solid rgba(108,228,213,.25); font: 9px/1.45 Consolas, monospace; word-break: break-all; }
 @media (max-width: 1500px) {
-  .vf-workbench { grid-template-columns: 220px minmax(480px, 1fr) 232px; gap: 9px; }
-  .vf-workbench.left-collapsed { grid-template-columns: 42px minmax(480px, 1fr) 232px; }
-  .vf-workbench.right-collapsed { grid-template-columns: 220px minmax(480px, 1fr) 42px; }
-  .vf-workbench.left-collapsed.right-collapsed { grid-template-columns: 42px minmax(480px, 1fr) 42px; }
+  .vf-workbench { --vf-left-width: 220px; --vf-right-width: 232px; gap: 9px; }
+  .vf-workbench.left-collapsed { --vf-current-left: 42px; }
+  .vf-workbench.right-collapsed { --vf-current-right: 42px; }
   .vf-app-title span { display: none; }
   .vf-app-header { min-height: 52px; }
   .vf-workspace-switch a, .vf-workspace-switch span { min-width: 90px; padding: 7px 12px; }
@@ -1120,11 +1144,14 @@ onBeforeUnmount(() => {
   .vf-phase-stepper li:not(:last-child)::after { min-width: 8px; margin: 0 3px; }
   .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: clamp(300px, calc(100vh - 330px), 650px); }
 }
+@media (max-width: 1500px) and (min-width: 1201px) {
+  .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 0; }
+}
 @media (max-width: 1200px) {
-  .virtual-fleet-page { min-height: auto; }
+  .virtual-fleet-page { height: auto; min-height: calc(100dvh - 70px); overflow: visible; }
   .vf-app-header { grid-template-columns: 1fr auto; }
   .vf-workspace-switch { display: none; }
-  .vf-workbench, .vf-workbench.left-collapsed, .vf-workbench.right-collapsed, .vf-workbench.left-collapsed.right-collapsed { grid-template-columns: minmax(210px, 240px) minmax(440px, 1fr); }
+  .vf-workbench, .vf-workbench.left-collapsed, .vf-workbench.right-collapsed, .vf-workbench.left-collapsed.right-collapsed { overflow: visible; grid-template-columns: minmax(210px, 240px) minmax(440px, 1fr); grid-template-rows: auto; }
   .vf-inspector-drawer { grid-column: 1 / -1; min-height: 320px; }
   .vf-inspector-panel { max-height: 420px; }
   .vf-camera-actions button { width: auto; padding: 0 9px; }
@@ -1152,7 +1179,7 @@ onBeforeUnmount(() => {
   .vf-phase-stepper li em { display: none; }
 }
 @media (max-height: 850px) and (min-width: 1201px) {
-  .virtual-fleet-page { min-height: calc(100vh - 70px); gap: 8px; }
+  .virtual-fleet-page { height: calc(100dvh - 70px); min-height: 0; gap: 8px; }
   .vf-app-header { min-height: 46px; }
   .vf-workbench { gap: 8px; }
   .vf-config-panel { padding: 12px; }
@@ -1163,7 +1190,7 @@ onBeforeUnmount(() => {
   .vf-plan-summary { margin-top: 7px; padding: 7px; }
   .vf-actions { margin-top: 9px; }
   .vf-stage-head { padding: 9px 12px; }
-  .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 285px; }
+  .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 0; }
   .vf-live-strip { min-height: 29px; }
   .vf-command-bar { min-height: 52px; padding-top: 5px; padding-bottom: 5px; }
   .vf-status-card, .vf-inspector-section { padding: 11px; }

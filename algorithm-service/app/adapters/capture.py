@@ -13,7 +13,12 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 from app.adapters.base import AlgorithmAdapter
-from app.capture import FormationSlot, assess_capture, build_formation_slots
+from app.capture import (
+    FormationSlot,
+    assess_capture,
+    build_formation_slots,
+    maximum_capture_gap_deg,
+)
 from app.navigation import TASK_CENTER_SCENE_MAP, SafePoint, SceneSafetyFilter
 from app.schemas import AgentFrame, RuntimeFrame, TargetFrame
 
@@ -23,7 +28,7 @@ class CaptureAdapter(AlgorithmAdapter):
 
     def __init__(self, run_id: int, config: Dict[str, object] | None = None) -> None:
         super().__init__(run_id, config)
-        fleet_size = max(1, min(15, int(self.config.get("uavCount", 3)))) + max(1, min(15, int(self.config.get("usvCount", 3))))
+        fleet_size = max(1, min(128, int(self.config.get("uavCount", 3)))) + max(1, min(128, int(self.config.get("usvCount", 3))))
         self.required_pursuit_distance = 80.0 if fleet_size < 20 else 100.0 if fleet_size < 40 else 120.0
         matplotlib_cache = Path(tempfile.gettempdir()) / "uav-usv-matplotlib"
         matplotlib_cache.mkdir(parents=True, exist_ok=True)
@@ -41,8 +46,8 @@ class CaptureAdapter(AlgorithmAdapter):
             # core deliberately has no 16/100 cut-off; UI/protocol limits are
             # a separate compatibility concern and must not silently discard
             # agents that the mission already contains.
-            source.UAV_COUNT = max(1, min(15, int(self.config.get("uavCount", 3))))
-            source.USV_COUNT = max(1, min(15, int(self.config.get("usvCount", 3))))
+            source.UAV_COUNT = max(1, min(128, int(self.config.get("uavCount", 3))))
+            source.USV_COUNT = max(1, min(128, int(self.config.get("usvCount", 3))))
             source.TARGET_COUNT = max(1, min(1, int(self.config.get("targetCount", 1))))
             # A configured fleet is one containment team. Do not declare the
             # target captured after only the first six arrive and strand the
@@ -97,7 +102,11 @@ class CaptureAdapter(AlgorithmAdapter):
             self.uav_slot_specs = build_formation_slots(
                 source.UAV_COUNT,
                 kind="UAV",
-                phase=-math.pi / 2.0 + math.pi / max(3, source.UAV_COUNT),
+                # Stagger the aerial layer by half of one aerial slot.  The
+                # previous max(3, count) special case put a 2+2 fleet on two
+                # overlapping diagonals and created a 120-degree opening even
+                # after every craft reached its assigned pose.
+                phase=-math.pi / 2.0 + math.pi / max(2, source.UAV_COUNT),
                 minimum_radius=uav_minimum_radius,
                 minimum_spacing=uav_minimum_spacing,
                 altitude=26.0,
@@ -146,17 +155,24 @@ class CaptureAdapter(AlgorithmAdapter):
             # during final formation; these are transit limits, not a constant
             # animation multiplier.
             source.V_MAX_UAV = 2.0 * configured_uav_speed / 5.0
-            source.V_MAX_USV = 0.9 * configured_usv_speed
+            # The UI value is patrol cruise. During an escape chase a surface
+            # interceptor may accelerate, up to the existing 4 m/s physical
+            # limit, so a 1.5-2.8 m/s target remains catchable.
+            self.usv_pursuit_mps = min(4.0, max(3.2, configured_usv_speed))
+            source.V_MAX_USV = 0.9 * self.usv_pursuit_mps
             # Direct capture is an escape/chase experiment.  Historical
             # callers may still send targetBehavior=STATIC, but honouring it
             # made the pursuit-distance gate impossible to finish and brought
             # back the exact "enemy only spins in place" failure reported in
             # the WebGL view.  The target therefore always starts with a
             # visible, surface-speed-calibrated escape run.
-            self.target_cruise_mps = min(
-                2.2,
-                max(0.75, configured_usv_speed * 0.72),
-            )
+            # Enemy surface motion is independent from the friendly cruise
+            # slider.  Every run starts with a deterministic 1.5-2.2 m/s
+            # escape speed, while still leaving a useful speed advantage for
+            # the 3-4 m/s friendly USV fleet.
+            speed_seed = (source.SEED * 1103515245 + 12345) & 0xFFFF
+            self.target_cruise_mps = 1.5 + speed_seed / 65535.0 * 0.7
+            self.target_max_mps = 2.8
             # Target motion is executed in scene metres below. Letting the
             # vendor core also move it applied two unrelated motion models and
             # produced frequent heading changes with almost no net travel.
@@ -220,9 +236,16 @@ class CaptureAdapter(AlgorithmAdapter):
         target = self._to_scene(self.env.targets[0, :3], "TARGET")
         self.target_start_scene = (target[0], target[1])
         self.target_travelled_distance = 0.0
-        self.target_velocity = (0.0, 0.0)
         self.peer_target_positions: List[Tuple[float, float, float]] = []
         self.target_escape_direction = self._choose_target_escape_direction(target)
+        # Construction may be followed by either PREVIEW or an immediate
+        # mission start.  Seed a real cruise vector now so the first emitted
+        # frame never shows a stationary hostile simply because active=True
+        # was already the adapter default.
+        self.target_velocity = (
+            self.target_escape_direction[0] * self.target_cruise_mps,
+            self.target_escape_direction[1] * self.target_cruise_mps,
+        )
         self.target_behavior_state = "ESCAPE"
         self.last_containment_confidence = 0.0
         self.capture_hold_frames = max(10, int(self.config.get("captureHoldFrames", 20)))
@@ -266,6 +289,10 @@ class CaptureAdapter(AlgorithmAdapter):
             self.target_start_scene = (target[0], target[1])
             self.target_travelled_distance = 0.0
             self.target_escape_direction = self._choose_target_escape_direction(target)
+            self.target_velocity = (
+                self.target_escape_direction[0] * self.target_cruise_mps,
+                self.target_escape_direction[1] * self.target_cruise_mps,
+            )
             self.target_behavior_state = "ESCAPE"
             self.last_containment_confidence = 0.0
             self.captured_at_sequence = None
@@ -568,13 +595,21 @@ class CaptureAdapter(AlgorithmAdapter):
         # their exact configured radius once the bearing is aligned.
         lane_offset = 2.0 if slot.altitude > 0.0 else -2.5
         transit_radius = slot.radius + (lane_offset if abs(angle_error) > 0.10 else 0.0)
-        if abs(radius - transit_radius) > 0.75:
-            next_radius = radius + max(-step, min(step, transit_radius - radius))
-            next_angle = angle
-        elif abs(angle_error) > 0.025:
-            angular_step = min(abs(angle_error), step / max(8.0, radius))
+        if abs(angle_error) > 0.025:
+            # A moving centre continually perturbs radius. The former
+            # radial-first branch therefore froze bearing correction for some
+            # fleet sizes and left a permanent angular opening. Correct radius
+            # and bearing together, with a conservative arc budget that still
+            # keeps the path outside the target hull.
+            angular_step = min(
+                abs(angle_error),
+                step * 1.05 / max(8.0, max(radius, transit_radius)),
+            )
             next_angle = angle + math.copysign(angular_step, angle_error)
-            next_radius = radius + max(-step * 0.35, min(step * 0.35, transit_radius - radius))
+            next_radius = radius + max(
+                -step * 0.68,
+                min(step * 0.68, transit_radius - radius),
+            )
         else:
             next_angle = slot.angle
             next_radius = radius + max(-step, min(step, slot.radius - radius))
@@ -618,9 +653,13 @@ class CaptureAdapter(AlgorithmAdapter):
             )
             peer_dx, peer_dy = previous[0] - peer[0], previous[1] - peer[1]
             peer_distance = math.hypot(peer_dx, peer_dy)
-            if peer_distance < 100.0:
+            required_peer_clearance = self.outer_formation_radius * 2.0 + 28.0
+            if peer_distance < required_peer_clearance:
                 peer_length = peer_distance or 1.0
-                repulsion = min(0.75, (100.0 - peer_distance) / 80.0)
+                repulsion = min(
+                    1.15,
+                    (required_peer_clearance - peer_distance) / max(45.0, required_peer_clearance * 0.55),
+                )
                 desired_x += peer_dx / peer_length * repulsion
                 desired_y += peer_dy / peer_length * repulsion
         gap_direction = self._largest_gap_direction(previous, scene_agents)
@@ -665,8 +704,9 @@ class CaptureAdapter(AlgorithmAdapter):
             corridor = self._operational_clearance(predicted[0], predicted[1])
             continuity = candidate[0] * self.target_escape_direction[0] + candidate[1] * self.target_escape_direction[1]
             score = min(70.0, pursuer_clearance) + min(55.0, peer_clearance) * 1.35
-            if peer_clearance < 88.0:
-                score -= (88.0 - peer_clearance) * 2.5
+            required_peer_clearance = self.outer_formation_radius * 2.0 + 28.0
+            if peer_clearance < required_peer_clearance:
+                score -= (required_peer_clearance - peer_clearance) * 3.2
             score += min(35.0, corridor) * 1.4 + continuity * 10.0
             score -= abs(offset_deg) * 0.035
             if score > best_score:
@@ -683,53 +723,77 @@ class CaptureAdapter(AlgorithmAdapter):
             (desired_x, desired_y),
             scene_agents,
         )
+        if self.peer_target_positions:
+            peer = min(
+                self.peer_target_positions,
+                key=lambda item: math.hypot(previous[0] - item[0], previous[1] - item[1]),
+            )
+            peer_dx, peer_dy = previous[0] - peer[0], previous[1] - peer[1]
+            peer_distance = math.hypot(peer_dx, peer_dy)
+            required_peer_clearance = self.outer_formation_radius * 2.0 + 28.0
+            if peer_distance < required_peer_clearance:
+                peer_length = peer_distance or 1.0
+                pressure = min(
+                    0.88,
+                    0.42 + (required_peer_clearance - peer_distance) / max(1.0, required_peer_clearance),
+                )
+                desired_x = desired_x * (1.0 - pressure) + peer_dx / peer_length * pressure
+                desired_y = desired_y * (1.0 - pressure) + peer_dy / peer_length * pressure
+                desired_length = math.hypot(desired_x, desired_y) or 1.0
+                desired_x, desired_y = desired_x / desired_length, desired_y / desired_length
         self.target_escape_direction = (desired_x, desired_y)
+        nearest_pursuer_distance = min((
+            math.hypot(previous[0] - item[0], previous[1] - item[1])
+            for item in scene_agents
+        ), default=math.inf)
         if preview:
             speed = min(1.4, self.target_cruise_mps * 0.65)
             self.target_behavior_state = "CRUISE"
-        elif pursuit:
-            speed = (
-                max(0.55, self.target_cruise_mps * 0.78)
-                if coast_avoid else self.target_cruise_mps
+        elif self.containment_candidate_at_sequence is None:
+            # Travel distance and a nearby interceptor are not capture.  The
+            # target keeps at least its seeded cruise speed until the executed
+            # formation has become a genuinely closed ring.  Pressure may
+            # cause a bounded burst, including while turning along a coast.
+            pressure = 0.0 if math.isinf(nearest_pursuer_distance) else max(
+                0.0,
+                min(1.0, (72.0 - nearest_pursuer_distance) / 48.0),
+            )
+            # Burst while there is a usable escape sector. Once coverage is
+            # already high, return to (never below) cruise speed so faster
+            # interceptors can physically close the final angular gap.
+            escape_room = max(
+                0.0,
+                min(1.0, (0.78 - self.last_containment_confidence) / 0.43),
+            )
+            pressure *= escape_room
+            speed = min(
+                self.target_max_mps,
+                self.target_cruise_mps + pressure * 0.6,
             )
             self.target_behavior_state = "COAST_AVOID" if coast_avoid else "ESCAPE"
         else:
-            confidence = self.last_containment_confidence
-            # A nearby interceptor is not a closed ring. Keep attempting a
-            # breakout until angular coverage, radial closure and containment
-            # jointly show that escape space has really disappeared.
-            if (
-                self.containment_candidate_at_sequence is not None
-                and self.target_travelled_distance >= self.required_pursuit_distance + 20.0
-            ):
-                held = max(0, self.sequence - self.containment_candidate_at_sequence)
-                reduction = min(0.82, held / max(1, self.capture_hold_frames * 2) * 0.82)
-                speed = max(0.08, self.target_cruise_mps * (1.0 - reduction))
-                self.target_behavior_state = "CONTAINED"
-            else:
-                # After the mandatory visible chase the fleet has established
-                # interception pressure. Keep a real breakout attempt, but
-                # trim speed enough for a faster friendly USV fleet to close
-                # its ring. The former full-speed breakout could outrun moving
-                # slots indefinitely, especially near a shoreline.
-                # The target has already completed a visible 80-120 m escape
-                # at this point.  Interception pressure now reduces (but does
-                # not zero) its speed so mixed fleets of every valid size can
-                # close moving slots; the final stop remains tied to a held
-                # containment ring below.
-                reduction = 0.55 + max(0.0, min(0.27, (confidence - 0.45) / 0.55 * 0.27))
-                speed = max(0.38, self.target_cruise_mps * (1.0 - reduction))
-                self.target_behavior_state = "COAST_AVOID" if coast_avoid else "BREAKOUT"
+            held = max(0, self.sequence - self.containment_candidate_at_sequence)
+            reduction = min(0.94, held / max(1, self.capture_hold_frames) * 0.94)
+            speed = max(0.08, self.target_cruise_mps * (1.0 - reduction))
+            self.target_behavior_state = "CONTAINED"
         desired_vx, desired_vy = desired_x * speed, desired_y * speed
         vx, vy = self.target_velocity
-        accel = 0.065 if preview else 0.075
+        accel = 0.065 if preview else 0.05
         vx += max(-accel, min(accel, desired_vx - vx))
         vy += max(-accel, min(accel, desired_vy - vy))
         velocity_length = math.hypot(vx, vy)
-        confirmed_containment = (
-            self.containment_candidate_at_sequence is not None
-            and self.target_travelled_distance >= self.required_pursuit_distance + 20.0
-        )
+        confirmed_containment = self.containment_candidate_at_sequence is not None
+        if (
+            not preview
+            and not confirmed_containment
+            and velocity_length < self.target_cruise_mps
+        ):
+            # A sharp coast/gap turn can temporarily cancel old and new
+            # velocity components. Preserve the promised pre-containment
+            # speed floor instead of showing an unexplained slowdown.
+            vx = desired_x * self.target_cruise_mps
+            vy = desired_y * self.target_cruise_mps
+            velocity_length = self.target_cruise_mps
         if confirmed_containment:
             # Do not visually stop the target on the first candidate frame.
             # The cap decays across the same confirmation window used by the
@@ -757,7 +821,12 @@ class CaptureAdapter(AlgorithmAdapter):
         step = math.hypot(safe.x - previous[0], safe.y - previous[1])
         if safe.adjusted:
             self.target_escape_direction = self._choose_target_escape_direction((safe.x, safe.y, 0.0))
-            fallback_speed = min(speed, max(0.55, math.hypot(vx, vy)))
+            # A shoreline is a steering constraint, not a reason to surrender.
+            # Retain cruise speed after choosing the clearer tangent corridor.
+            fallback_speed = min(
+                self.target_max_mps,
+                max(self.target_cruise_mps, speed, math.hypot(vx, vy)),
+            )
             vx = self.target_escape_direction[0] * fallback_speed
             vy = self.target_escape_direction[1] * fallback_speed
         self.target_velocity = (vx, vy)
@@ -955,7 +1024,7 @@ class CaptureAdapter(AlgorithmAdapter):
                 # frames while the UI already looked “captured”.  Use a
                 # bounded but decisive closure step; the safety solver still
                 # owns the final collision-safe projection.
-                settle_step = 1.15 if kind == "UAV" else 0.85
+                settle_step = 1.35 if kind == "UAV" else 1.05
                 proposed_scene = self._settling_proposal(
                     current_scene,
                     assigned_slot,
@@ -983,12 +1052,12 @@ class CaptureAdapter(AlgorithmAdapter):
                 iterations=96 if formation_settling else 48,
                 max_steps={
                     "UAV": (
-                        min(0.8, max(0.08, float(self.config.get("uavSpeedMps", 5.0)) * 0.16))
+                        min(1.0, max(0.08, float(self.config.get("uavSpeedMps", 5.0)) * 0.20))
                         if formation_settling
                         else min(0.35, max(0.05, float(self.config.get("uavSpeedMps", 5.0)) * 0.1))
                     ),
                     "USV": (
-                        min(0.6, max(0.06, float(self.config.get("usvSpeedMps", 3.0)) * 0.24))
+                        min(0.72, max(0.06, float(self.config.get("usvSpeedMps", 3.0)) * 0.28))
                         if formation_settling
                         else min(0.32, max(0.04, float(self.config.get("usvSpeedMps", 3.0)) * 0.18))
                     ),
@@ -1154,19 +1223,13 @@ class CaptureAdapter(AlgorithmAdapter):
                 # is still visibly and geometrically closed. Keep the
                 # per-ring tolerance adaptive for dense fleets; the whole
                 # hull, annulus and 20-frame hold checks remain mandatory.
-                gap_limit = min(
-                    145.0,
-                    ideal_gap * (2.0 if dense_capture else 1.8)
-                    + (15.0 if dense_capture else 12.0),
-                )
-                if compact_capture:
-                    gap_limit = min(155.0, ideal_gap * 2.2 + 18.0)
+                gap_limit = maximum_capture_gap_deg(expected_count)
                 radial_limit = 8.0 if compact_capture else 7.0 if dense_capture else 5.0
                 complete = (
                     len(angles) == expected_count
                     and len(errors) == expected_count
                     and max(errors, default=float("inf")) <= radial_limit
-                    and (expected_count < 3 or max_gap <= gap_limit)
+                    and (expected_count < 3 or max_gap <= gap_limit + 0.5)
                 )
                 ring_geometry_ready = ring_geometry_ready and complete
                 ring_diagnostics[f"{kind}-{ring_index}"] = {
@@ -1194,10 +1257,7 @@ class CaptureAdapter(AlgorithmAdapter):
             lower_radius <= radius <= upper_radius
             for radius in actual_radii
         )
-        max_gap_limit_deg = math.degrees(min(
-            math.pi * 0.84,
-            max(29.0 * math.pi / 36.0, 2.7 * math.pi / max(1, len(agents))),
-        ))
+        max_gap_limit_deg = maximum_capture_gap_deg(len(agents))
         # Real collision avoidance owns the final centimetres of each pose.
         # Treat the configured concentric rings as one safe containment band:
         # every craft must be outside the target hull, none may remain on a
@@ -1207,7 +1267,7 @@ class CaptureAdapter(AlgorithmAdapter):
         annulus_ready = (
             len(agents) >= 3
             and assessment.target_inside
-            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 1e-6
+            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 0.5
             and min(actual_radii, default=0.0) >= 13.5
             and max(actual_radii, default=float("inf")) <= self.outer_formation_radius + 15.0
         )
@@ -1219,7 +1279,8 @@ class CaptureAdapter(AlgorithmAdapter):
             # as a valid degraded containment candidate after one replan.
             len(agents) >= 8
             and pursuit_complete
-            and assessment.combined_max_gap_deg <= min(220.0, max_gap_limit_deg + 42.0)
+            and assessment.target_inside
+            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 0.5
             and min(actual_radii, default=0.0) >= 13.5
             and max(actual_radii, default=float("inf")) <= self.outer_formation_radius + 18.0
         )
@@ -1232,13 +1293,13 @@ class CaptureAdapter(AlgorithmAdapter):
                 return False
             mean_radius = sum(radii) / len(radii)
             spread_limit = 18.0 if compact_capture else 16.0 if dense_capture else 12.0
-            gap_limit = 145.0 if compact_capture else 135.0 if dense_capture else 125.0
+            gap_limit = maximum_capture_gap_deg(len(angles))
             mean_offset_limit = 16.0 if compact_capture else 14.0 if dense_capture else 10.0
             return (
                 min(radii) >= minimum
                 and max(radii) <= self.outer_formation_radius + 8.0
                 and max(radii) - min(radii) <= spread_limit
-                and self._ring_max_gap_deg(angles) <= gap_limit
+                and self._ring_max_gap_deg(angles) <= gap_limit + 0.5
                 and abs(mean_radius - min(radii)) <= mean_offset_limit
             )
         physical_ring_ready = (
@@ -1258,7 +1319,7 @@ class CaptureAdapter(AlgorithmAdapter):
             compact_capture
             and pursuit_complete
             and assessment.target_inside
-            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 24.0
+            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 0.5
             and min(actual_radii, default=0.0) >= 13.5
             and max(actual_radii, default=float("inf")) <= self.outer_formation_radius + 18.0
             and physical_ring_ready
@@ -1275,7 +1336,7 @@ class CaptureAdapter(AlgorithmAdapter):
             len(agents) >= 6
             and pursuit_complete
             and assessment.target_inside
-            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 1e-6
+            and assessment.combined_max_gap_deg <= max_gap_limit_deg + 0.5
             and min(actual_radii, default=0.0) >= lower_radius
             and max(actual_radii, default=float("inf")) <= upper_radius
             and in_band_count == len(agents)
@@ -1400,7 +1461,7 @@ class CaptureAdapter(AlgorithmAdapter):
             capture_blocker = "PURSUIT_DISTANCE"
         elif not assessment.target_inside:
             capture_blocker = "TARGET_OUTSIDE_HULL"
-        elif assessment.combined_max_gap_deg > max_gap_limit_deg + 1e-6:
+        elif assessment.combined_max_gap_deg > max_gap_limit_deg + 0.5:
             capture_blocker = "ANGULAR_GAP"
         elif min(actual_radii, default=0.0) < lower_radius:
             capture_blocker = "INNER_RADIUS"

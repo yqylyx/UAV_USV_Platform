@@ -6,7 +6,9 @@ from typing import Dict, List, Mapping
 
 from app.adapters.base import AlgorithmAdapter
 from app.adapters.capture import CaptureAdapter
+from app.capture import maximum_capture_gap_deg
 from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
+from app.scenario import derive_scenario_plan
 from app.schemas import AgentFrame, RuntimeFrame, TargetFrame
 
 
@@ -25,8 +27,8 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
 
     def __init__(self, run_id: int, config: Dict[str, object] | None = None) -> None:
         super().__init__(run_id, config)
-        uav_count = max(1, min(15, int(self.config.get("uavCount", 3))))
-        usv_count = max(1, min(15, int(self.config.get("usvCount", 3))))
+        uav_count = max(1, min(128, int(self.config.get("uavCount", 3))))
+        usv_count = max(1, min(128, int(self.config.get("usvCount", 3))))
         requested_targets = max(1, int(self.config.get("targetCount", 1)))
         geometric_limit = max(1, (uav_count + usv_count) // 3)
         self.target_count = min(requested_targets, uav_count, usv_count, geometric_limit)
@@ -38,15 +40,35 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         # to the merged fleet clamps multi-target agents near the initial
         # staging area, producing the “分组后原地不动” symptom and preventing
         # 9+9 from ever closing its ring.
+        plan = derive_scenario_plan(uav_count, usv_count)
+        # Keep the complete outer ring inside the coordinator's water area.
+        # A fixed +/-190 m vertical bound clipped the north/south slots after
+        # a target had completed its visible escape run. Several UAVs were
+        # then projected onto the same boundary point, leaving an artificial
+        # 90+ degree opening that could never converge.
+        half_width = max(320.0, plan.world_width * 0.5 + 120.0)
+        half_height = max(260.0, plan.world_height * 0.5 + 120.0)
         self.safety = SceneSafetyFilter({
-            "bounds": [-260.0, 260.0, -190.0, 190.0],
+            "bounds": [-half_width, half_width, -half_height, half_height],
             "obstacles": list(TASK_CENTER_SCENE_MAP.get("obstacles", [])),
         })
         self.previous_scene: Dict[str, tuple[float, float, float]] = {}
+        # Hold counters for the collision-safe poses actually emitted to
+        # Unity. Child solvers assess before the cross-target safety pass, so
+        # their private hold cannot be authoritative for a merged scene.
+        self.executed_hold_frames: List[int] = [0 for _ in range(self.target_count)]
         initial = self.initial_pose_map()
 
-        uav_groups = self._partition_codes("UAV", uav_count, self.target_count)
-        usv_groups = self._partition_codes("USV", usv_count, self.target_count)
+        target_points = [
+            initial.get(f"TARGET-{index + 1:03d}")
+            for index in range(self.target_count)
+        ]
+        uav_groups = self._partition_codes(
+            "UAV", uav_count, self.target_count, initial, target_points,
+        )
+        usv_groups = self._partition_codes(
+            "USV", usv_count, self.target_count, initial, target_points,
+        )
         for target_index in range(self.target_count):
             global_uavs = uav_groups[target_index]
             global_usvs = usv_groups[target_index]
@@ -81,10 +103,51 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             self.agent_code_maps.append(code_map)
 
     @staticmethod
-    def _partition_codes(kind: str, count: int, groups: int) -> List[List[str]]:
+    def _partition_codes(
+        kind: str,
+        count: int,
+        groups: int,
+        initial: Mapping[str, Mapping[str, object]],
+        target_points: List[Mapping[str, object] | None],
+    ) -> List[List[str]]:
+        """Build balanced, distance-aware teams instead of round-robin lists.
+
+        The first pass guarantees one member per target where possible.  The
+        remaining devices are assigned by distance plus a load penalty so the
+        result remains balanced without sending a nearby craft across another
+        group's pursuit corridor.
+        """
         result: List[List[str]] = [[] for _ in range(groups)]
-        for index in range(count):
-            result[index % groups].append(f"{kind}-{index + 1:03d}")
+        codes = [f"{kind}-{index + 1:03d}" for index in range(count)]
+
+        def distance(code: str, group_index: int) -> float:
+            pose = initial.get(code)
+            target = target_points[group_index]
+            if pose is None or target is None:
+                return 0.0
+            dx = float(pose.get("eastM", 0.0)) - float(target.get("eastM", 0.0))
+            dy = float(pose.get("northM", 0.0)) - float(target.get("northM", 0.0))
+            return math.hypot(dx, dy)
+
+        unassigned = set(codes)
+        for group_index in range(groups):
+            if not unassigned:
+                break
+            chosen = min(unassigned, key=lambda code: (distance(code, group_index), code))
+            result[group_index].append(chosen)
+            unassigned.remove(chosen)
+        while unassigned:
+            code = min(unassigned)
+            group_index = min(
+                range(groups),
+                key=lambda index: (
+                    len(result[index]),
+                    distance(code, index),
+                    index,
+                ),
+            )
+            result[group_index].append(code)
+            unassigned.remove(code)
         return result
 
     def set_mission_active(self, active: bool) -> None:
@@ -120,10 +183,7 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         radii = [math.hypot(agent.x - target.x, agent.y - target.y) for agent in agents]
         lower_radius = 13.5
         upper_radius = child.outer_formation_radius + 15.0
-        max_gap_limit_deg = math.degrees(min(
-            math.pi * 0.84,
-            max(29.0 * math.pi / 36.0, 2.7 * math.pi / max(1, len(agents))),
-        ))
+        max_gap_limit_deg = maximum_capture_gap_deg(len(agents))
         target_inside = max_gap_deg < 180.0 - 1e-6
         visible_chase_complete = (
             child.target_travelled_distance
@@ -133,7 +193,10 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             blocker = "PURSUIT_DISTANCE"
         elif not target_inside:
             blocker = "POST_GLOBAL_TARGET_OUTSIDE_HULL"
-        elif max_gap_deg > max_gap_limit_deg + 1e-6:
+        # The repair controller and the renderer operate on quantised 0.1 s
+        # poses.  Share their half-degree tolerance here; otherwise a visually
+        # closed 64.91/64.80 ring is repaired forever but never latched.
+        elif max_gap_deg > max_gap_limit_deg + 0.5:
             blocker = "POST_GLOBAL_ANGULAR_GAP"
         elif min(radii) < lower_radius:
             blocker = "POST_GLOBAL_INNER_RADIUS"
@@ -149,6 +212,99 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             "minimumRadiusM": round(min(radii), 2),
             "maximumRadiusM": round(max(radii), 2),
             "blocker": blocker,
+        }
+
+    @staticmethod
+    def _gap_repair_proposal(
+        child: CaptureAdapter,
+        agents: List[AgentFrame],
+        target: TargetFrame,
+    ) -> tuple[str, tuple[float, float, float], Dict[str, object]] | None:
+        """Select one physical craft to close the executed ring's worst gap.
+
+        Child solvers target ideal slots before the coordinator performs
+        cross-target collision resolution.  When that final safety pass moves
+        one craft, every child continuing at the same speed can preserve the
+        new gap forever.  Repair the *executed* geometry with one ETA-selected
+        blocker while its neighbours hold their sectors.
+        """
+        if len(agents) < 3:
+            return None
+        radii = {
+            item.code: math.hypot(item.x - target.x, item.y - target.y)
+            for item in agents
+        }
+        upper_radius = child.outer_formation_radius + 15.0
+        farthest = max(agents, key=lambda item: radii[item.code])
+        if radii[farthest.code] > upper_radius:
+            angle = math.atan2(farthest.y - target.y, farthest.x - target.x)
+            speed = 4.0 if farthest.type == "USV" else min(
+                15.0, max(5.0, float(child.config.get("uavSpeedMps", 5.0))),
+            )
+            step = speed * 0.1
+            desired_radius = max(13.5, radii[farthest.code] - step)
+            return farthest.code, (
+                target.x + math.cos(angle) * desired_radius,
+                target.y + math.sin(angle) * desired_radius,
+                farthest.z,
+            ), {
+                "gapFillerCode": farthest.code,
+                "gapFillerSpeedMps": round(speed, 2),
+                "gapRepairMode": "RADIAL_RECOVERY",
+            }
+
+        ordered = sorted(
+            agents,
+            key=lambda item: math.atan2(item.y - target.y, item.x - target.x) % (2.0 * math.pi),
+        )
+        angles = [
+            math.atan2(item.y - target.y, item.x - target.x) % (2.0 * math.pi)
+            for item in ordered
+        ]
+        gaps = [
+            (angles[(index + 1) % len(angles)] - angles[index]) % (2.0 * math.pi)
+            for index in range(len(angles))
+        ]
+        gap_index = max(range(len(gaps)), key=gaps.__getitem__)
+        allowed = math.radians(maximum_capture_gap_deg(len(agents)))
+        # Keep repairing to the geometric limit, even though the final latch
+        # allows half a degree of integration noise.  This produces a visibly
+        # closed executed ring (important for asymmetric 6+8) instead of
+        # accepting the edge of the tolerance band as the resting shape.
+        if gaps[gap_index] <= allowed + math.radians(0.02):
+            return None
+
+        left_index = gap_index
+        right_index = (gap_index + 1) % len(ordered)
+        left_other_gap = gaps[(left_index - 1) % len(gaps)]
+        right_other_gap = gaps[right_index]
+        # Moving the endpoint with the smaller opposite gap increases the
+        # better-covered sector and therefore reduces the global maximum.
+        use_left = left_other_gap <= right_other_gap
+        filler = ordered[left_index if use_left else right_index]
+        radius = max(13.5, min(child.outer_formation_radius + 8.0, radii[filler.code]))
+        configured = float(child.config.get(
+            "usvSpeedMps" if filler.type == "USV" else "uavSpeedMps",
+            3.0 if filler.type == "USV" else 5.0,
+        ))
+        speed = min(4.0, max(configured, 3.6)) if filler.type == "USV" else min(
+            15.0, max(configured, 6.5),
+        )
+        max_arc_step = speed * 0.1 / max(8.0, radius)
+        required = min(gaps[gap_index] * 0.48, gaps[gap_index] - allowed + math.radians(2.0))
+        angle_step = min(required, max_arc_step)
+        desired_angle = angles[left_index] + angle_step if use_left else angles[right_index] - angle_step
+        return filler.code, (
+            target.x + math.cos(desired_angle) * radius,
+            target.y + math.sin(desired_angle) * radius,
+            filler.z,
+        ), {
+            "gapFillerCode": filler.code,
+            "gapFillerSpeedMps": round(speed, 2),
+            "gapRepairMode": "ANGULAR_INTERCEPT",
+            "gapCenterDeg": round(math.degrees(
+                (angles[left_index] + gaps[gap_index] * 0.5) % (2.0 * math.pi)
+            ), 2),
         }
 
     def step(self) -> RuntimeFrame:
@@ -263,6 +419,73 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 )
             agent.x, agent.y, agent.z = safe.x, safe.y, safe.z
             self.previous_scene[agent.code] = (safe.x, safe.y, safe.z)
+
+        # A second, role-aware pass repairs gaps created by the first global
+        # collision pass. Only the selected GAP_BLOCKER receives an accelerated
+        # proposal; every other member holds position, so closure does not
+        # turn into another whole-ring chase.
+        repair_metrics: Dict[str, Dict[str, object]] = {}
+        repairs = 0
+        # One 0.1 s correction is cancelled by the child solver's return to
+        # its ideal slot on the next frame.  Iterate the executed geometry in
+        # this same frame until the opening is actually below the contract (or
+        # a small bounded budget is exhausted).  This is still one physical
+        # GAP_BLOCKER per target; it simply receives enough arc travel to beat
+        # the global collision displacement instead of oscillating forever.
+        for _repair_round in range(12):
+            repair_proposals = {
+                agent.code: (agent.type, (agent.x, agent.y, agent.z))
+                for agent in agents
+            }
+            round_repairs = 0
+            for index, (child, target) in enumerate(zip(self.children, targets)):
+                target_code = f"TARGET-{index + 1:03d}"
+                group_agents = [
+                    item for item in agents if item.assignedTargetCode == target_code
+                ]
+                executed = self._executed_containment(child, group_agents, target)
+                within_exact_gap = (
+                    float(executed.get("maxGapDeg", 360.0))
+                    <= float(executed.get("maxAllowedGapDeg", 0.0)) + 0.02
+                )
+                if (
+                    (bool(executed["ready"]) and within_exact_gap)
+                    or executed["blocker"] == "PURSUIT_DISTANCE"
+                ):
+                    continue
+                repair = self._gap_repair_proposal(child, group_agents, target)
+                if repair is None:
+                    continue
+                code, proposal, diagnostics = repair
+                filler = agents_by_code.get(code)
+                if filler is None:
+                    continue
+                repair_proposals[code] = (filler.type, proposal)
+                filler.role = "GAP_BLOCKER"
+                repair_metrics[target_code] = diagnostics
+                round_repairs += 1
+                repairs += 1
+            if not round_repairs:
+                break
+            repair_previous = {
+                agent.code: (agent.x, agent.y, agent.z) for agent in agents
+            }
+            repaired = self.safety.resolve_group(
+                repair_proposals,
+                repair_previous,
+                fixed_targets,
+                iterations=64,
+                max_steps={"UAV": 1.5, "USV": 0.4},
+            )
+            for agent in agents:
+                safe = repaired[agent.code]
+                if safe.adjusted:
+                    global_adjustments += 1
+                    global_adjustments_by_target[agent.assignedTargetCode] = (
+                        global_adjustments_by_target.get(agent.assignedTargetCode, 0) + 1
+                    )
+                agent.x, agent.y, agent.z = safe.x, safe.y, safe.z
+                self.previous_scene[agent.code] = (safe.x, safe.y, safe.z)
         for target in targets:
             self.previous_scene[target.code] = (target.x, target.y, target.z)
 
@@ -314,8 +537,40 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             group["postGlobalMaxGapDeg"] = executed["maxGapDeg"]
             group["postGlobalMaxAllowedGapDeg"] = executed["maxAllowedGapDeg"]
             group["globalAvoidanceCount"] = global_adjustments_by_target.get(target_code, 0)
+            group.update(repair_metrics.get(target_code, {}))
             if bool(executed["ready"]):
+                self.executed_hold_frames[index] = min(
+                    child.capture_hold_frames,
+                    self.executed_hold_frames[index] + 1,
+                )
+                group["postGlobalHoldFrames"] = self.executed_hold_frames[index]
+                group["postGlobalHoldRequiredFrames"] = child.capture_hold_frames
+                if (
+                    self.mission_active
+                    and self.executed_hold_frames[index] >= child.capture_hold_frames
+                ):
+                    if child.captured_at_sequence is None:
+                        child.captured_at_sequence = child.sequence
+                        guard_ids = {int(raw[7]) for raw in child.env.agents}
+                        child.env.guarding_agents[0] = guard_ids
+                        child.env.permanently_captured.add(0)
+                    child.target_behavior_state = "CAPTURED"
+                    child.target_velocity = (0.0, 0.0)
+                    frame.terminalStatus = "COMPLETED"
+                    frame.phase = "CAPTURED"
+                    frame.metrics["captured"] = True
+                    frame.metrics["formationReady"] = True
+                    frame.metrics["captureHoldFrames"] = child.capture_hold_frames
+                    frame.metrics["captureStage"] = 3
+                    frame.metrics["captureBlocker"] = "NONE"
+                    group["state"] = "CAPTURED"
+                    group["stage"] = 3
+                    group["progress"] = 1.0
+                    group["holdFrames"] = child.capture_hold_frames
+                    group["captureBlocker"] = "NONE"
+                    target.state = "CAPTURED"
                 continue
+            self.executed_hold_frames[index] = 0
             child.containment_candidate_at_sequence = None
             child.formation_ready_at_sequence = None
             if child.captured_at_sequence is not None:
@@ -323,6 +578,15 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 child.env.permanently_captured.discard(0)
                 child.env.guarding_agents.pop(0, None)
                 child.target_behavior_state = "BREAKOUT"
+                # A child freezes its target when it first latches capture.
+                # If global collision resolution later opens that ring, the
+                # latch is revoked and the hostile must immediately resume
+                # its seeded escape speed instead of remaining motionless in
+                # an incomplete 6+8 (or other asymmetric) formation.
+                child.target_velocity = (
+                    child.target_escape_direction[0] * child.target_cruise_mps,
+                    child.target_escape_direction[1] * child.target_cruise_mps,
+                )
             frame.terminalStatus = None
             if frame.phase == "CAPTURED":
                 frame.phase = "ENCIRCLEMENT"

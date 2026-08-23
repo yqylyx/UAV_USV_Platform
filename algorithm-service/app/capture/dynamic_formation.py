@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import asin, atan2, cos, hypot, pi, sin
+from math import asin, atan2, cos, degrees, hypot, pi, sin
 from typing import Iterable, Sequence
 
 
@@ -29,6 +29,23 @@ class CaptureAssessment:
     radial_error: float
     participating: int
     required: int
+
+
+def maximum_capture_gap_deg(count: int) -> float:
+    """Maximum visually credible opening for an executed containment ring.
+
+    The limit tightens as more members are available.  A three-member ring
+    needs 120 degrees even when it is a perfect equilateral triangle, while
+    four or more members are never allowed a gap wider than 90 degrees.
+    Dense teams converge toward a 45-degree ceiling.  This keeps sparse valid
+    rings achievable without letting a broad arc or horseshoe count as a
+    completed encirclement.
+    """
+    count = max(1, int(count))
+    if count <= 3:
+        return 120.0
+    ideal_gap = 360.0 / count
+    return min(90.0, max(45.0, ideal_gap * 1.8))
 
 
 def _ring_capacity(radius: float, spacing: float) -> int:
@@ -123,7 +140,7 @@ def assess_capture(
         total >= 3
         and participating == total
         and inside
-        and max_gap <= min(pi * 0.84, max(5.0 * pi / 12.0, 2.7 * pi / total)) + 1e-6
+        and degrees(max_gap) <= maximum_capture_gap_deg(total) + 1e-6
     )
     return CaptureAssessment(
         capability=capability,

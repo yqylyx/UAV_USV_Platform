@@ -172,12 +172,15 @@ function poseFromTarget(
   previous: VirtualPoseStateMap,
   origin: EnuOrigin,
 ): VirtualPoseInput {
-  // Runtime targets are created in the exact same protected-then-threat order
-  // as the initial Unity scene. Never re-sort this list: doing so changed the
-  // hostile capture target from TARGET-001 to the nonexistent TARGET-002.
+  // Runtime target identity must match the codes used when Unity initialized
+  // the scene. Escort missions create PROTECTED-* and THREAT-* objects, while
+  // capture missions use TARGET-*. Re-numbering escort targets to TARGET-* made
+  // Unity update a different object (or reject the pose), visually leaving the
+  // protected vessel outside while a threat appeared at the formation centre.
   const canonical = target.code.trim().toUpperCase()
-  const deviceCode = /^TARGET-\d+$/.test(canonical)
-    ? `TARGET-${String(Number(canonical.split('-')[1])).padStart(3, '0')}`
+  const supportedCode = /^(TARGET|PROTECTED|THREAT)-\d+$/.test(canonical)
+  const deviceCode = supportedCode
+    ? `${canonical.split('-')[0]}-${String(Number(canonical.split('-')[1])).padStart(3, '0')}`
     : `TARGET-${String(targetIndex + 1).padStart(3, '0')}`
   const eastM = finiteOr(target.x, 0) + origin.eastM
   const northM = finiteOr(target.y, 0) + origin.northM
