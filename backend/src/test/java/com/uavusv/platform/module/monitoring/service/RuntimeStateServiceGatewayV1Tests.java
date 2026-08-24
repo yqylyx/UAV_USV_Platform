@@ -99,16 +99,28 @@ class RuntimeStateServiceGatewayV1Tests {
     }
 
     @Test
-    void usvFlightStateNeverBecomesUavControlAuthority() throws Exception {
+    void usvDeviceStatusIsNormalizedAndMappedToControlState() throws Exception {
         Device device = device("usv-01", DeviceType.USV);
         RuntimeDeviceStatus runtime = new RuntimeDeviceStatus(device.getId());
         TestServices services = services(List.of(device), runtime);
         services.runtimeStateService.observeGatewayConnection(true);
         services.runtimeStateService.observeGatewayDeviceStatus(objectMapper.readTree(
-                "{\"deviceCode\":\"usv_01\",\"connectionState\":\"ONLINE\",\"flightState\":\"GROUNDED\"}"),
+                """
+                        {
+                          "deviceCode": "usv_01",
+                          "connectionState": "ONLINE",
+                          "operationState": "IDLE",
+                          "controlMode": "MANUAL",
+                          "flightState": "GROUNDED"
+                        }
+                        """),
                 "gateway", "device.status.usv_01", 1L);
 
-        assertThat(services.runtimeStateService.getControlOperationalSnapshot("usv-01").state()).isEqualTo("UNKNOWN");
+        var snapshot = services.runtimeStateService.getControlOperationalSnapshot("usv-01");
+        assertThat(snapshot.connectionState()).isEqualTo("ONLINE");
+        assertThat(snapshot.state()).isEqualTo("MOORED");
+        assertThat(snapshot.fresh()).isTrue();
+        assertThat(snapshot.receivedAt()).isNotNull();
     }
 
     @Test

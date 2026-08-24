@@ -184,6 +184,57 @@ export const useRealtimeStore = defineStore('realtime', {
         }, 100)
       })
     },
+    waitForCommandStart(commandId: string, timeoutMs = 90000): Promise<string> {
+      const started = new Set(['ACCEPTED', 'EXECUTING'])
+      const successfulTerminal = new Set(['SUCCEEDED', 'SUCCESS', 'COMPLETED'])
+      const terminal = new Set(['FAILED', 'REJECTED', 'CANCELLED', 'TIMEOUT', 'EXPIRED'])
+      const runningStates = new Set(['RUNNING', 'EXECUTING', 'ACTIVE', 'STARTED', 'ENCIRCLING'])
+      const runningPhases = new Set([
+        'ENCIRCLING',
+        'FORMATION_CONVERGING',
+        'ENCIRCLEMENT',
+        'CAPTURE',
+        'CAPTURING',
+        'CAPTURED',
+        'PURSUIT',
+        'TASK_RUNNING',
+      ])
+      return new Promise((resolve) => {
+        const startedAt = Date.now()
+        const timer = window.setInterval(() => {
+          const status = this.commandStatuses[commandId]
+          if (status && started.has(status)) {
+            window.clearInterval(timer)
+            resolve(status)
+            return
+          }
+          if (status && successfulTerminal.has(status)) {
+            window.clearInterval(timer)
+            resolve(status)
+            return
+          }
+          if (status && terminal.has(status)) {
+            window.clearInterval(timer)
+            resolve(status)
+            return
+          }
+
+          const mission = this.missionStatus?.payload
+          const state = String(mission?.state ?? '').trim().toUpperCase()
+          const phase = String(mission?.phase ?? '').trim().toUpperCase()
+          if (runningStates.has(state) || runningPhases.has(phase)) {
+            window.clearInterval(timer)
+            resolve(state || phase)
+          } else if (successfulTerminal.has(state) || successfulTerminal.has(phase)) {
+            window.clearInterval(timer)
+            resolve(state || phase)
+          } else if (Date.now() - startedAt >= timeoutMs) {
+            window.clearInterval(timer)
+            resolve('TIMEOUT')
+          }
+        }, 100)
+      })
+    },
     clear() {
       this.runId = ''
       this.streamSequences = {}

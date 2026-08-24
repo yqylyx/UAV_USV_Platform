@@ -29,9 +29,13 @@ public enum GatewayMessageType {
     }
 
     public static GatewayMessageType fromWireName(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if ("telemetry.device_status".equals(normalized)) {
+            return DEVICE_STATUS;
+        }
         return Arrays.stream(values())
-                .filter(type -> type.wireName.equals(value))
+                .filter(type -> type.wireName.equals(normalized))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Unsupported gateway message type: " + value));
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported gateway message type: " + normalized));
     }
 }
