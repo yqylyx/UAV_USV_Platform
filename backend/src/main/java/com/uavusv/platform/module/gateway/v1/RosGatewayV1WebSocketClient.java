@@ -2,6 +2,7 @@ package com.uavusv.platform.module.gateway.v1;
 
 import jakarta.annotation.PreDestroy;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.uavusv.platform.module.mission.service.MissionRuntimeReconciler;
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
 import com.uavusv.platform.module.sensor.service.RadarScanInput;
 import com.uavusv.platform.module.sensor.service.SensorRuntimeService;
@@ -46,6 +47,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
     private final RealtimeHub realtimeHub;
     private final ApplicationEventPublisher eventPublisher;
     private final RuntimeStateService runtimeStateService;
+    private final MissionRuntimeReconciler missionRuntimeReconciler;
     private final VisualSensorService visualSensorService;
     private final SensorRuntimeService sensorRuntimeService;
     private final URI endpoint;
@@ -76,6 +78,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
             RealtimeHub realtimeHub,
             ApplicationEventPublisher eventPublisher,
             RuntimeStateService runtimeStateService,
+            MissionRuntimeReconciler missionRuntimeReconciler,
             VisualSensorService visualSensorService,
             SensorRuntimeService sensorRuntimeService,
             @Value("${app.gateway.v1.websocket-url:ws://127.0.0.1:8765/uav_usv/v1}") String websocketUrl,
@@ -87,6 +90,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         this.realtimeHub = realtimeHub;
         this.eventPublisher = eventPublisher;
         this.runtimeStateService = runtimeStateService;
+        this.missionRuntimeReconciler = missionRuntimeReconciler;
         this.visualSensorService = visualSensorService;
         this.sensorRuntimeService = sensorRuntimeService;
         this.endpoint = URI.create(websocketUrl);
@@ -241,6 +245,7 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         realtimeHub.publish(envelope);
         if (stateAuthority) observeRuntimeState(envelope);
         publishControlAckEvent(envelope);
+        reconcileMissionStatus(envelope);
     }
 
     private boolean observeHighVolumeSensor(GatewayEnvelope envelope) {
@@ -328,6 +333,27 @@ public class RosGatewayV1WebSocketClient implements WebSocket.Listener {
         if (envelope.type() == GatewayMessageType.DEVICE_STATUS) {
             runtimeStateService.observeGatewayDeviceStatus(
                     envelope.payload(), envelope.source(), envelope.streamId(), envelope.sequence());
+        }
+    }
+
+    private void reconcileMissionStatus(GatewayEnvelope envelope) {
+        if (envelope.type() != GatewayMessageType.MISSION_STATUS) {
+            return;
+        }
+        JsonNode payload = envelope.payload();
+        try {
+            missionRuntimeReconciler.reconcileMissionStatus(
+                    text(payload, "missionId", "mission_id"),
+                    envelope.runId(),
+                    text(payload, "runId", "run_id"),
+                    text(payload, "activeCommandId", "active_command_id"),
+                    text(payload, "state"),
+                    text(payload, "phase"),
+                    "ROS_GATEWAY_V1"
+            );
+        } catch (RuntimeException exception) {
+            log.warn("Unable to reconcile ROS Gateway v1 mission.status runId={} state={}: {}",
+                    envelope.runId(), text(payload, "state"), exception.getMessage());
         }
     }
 

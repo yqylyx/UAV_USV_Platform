@@ -2,6 +2,7 @@ package com.uavusv.platform.module.gateway.v1;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.Timestamp;
+import com.uavusv.platform.module.mission.service.MissionRuntimeReconciler;
 import com.uavusv.platform.module.monitoring.service.RuntimeStateService;
 import com.uavusv.platform.module.sensor.service.SensorRuntimeService;
 import com.uavusv.platform.module.visualsensor.service.VisualSensorService;
@@ -23,10 +24,12 @@ class RosGatewayV1WebSocketClientTests {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private ApplicationEventPublisher eventPublisher;
+    private MissionRuntimeReconciler missionRuntimeReconciler;
 
     @BeforeEach
     void setUp() {
         eventPublisher = mock(ApplicationEventPublisher.class);
+        missionRuntimeReconciler = mock(MissionRuntimeReconciler.class);
     }
 
     @Test
@@ -75,6 +78,7 @@ class RosGatewayV1WebSocketClientTests {
                 mock(RealtimeHub.class),
                 eventPublisher,
                 mock(RuntimeStateService.class),
+                missionRuntimeReconciler,
                 mock(VisualSensorService.class),
                 mock(SensorRuntimeService.class),
                 "ws://127.0.0.1:8765/uav_usv/v1",
@@ -106,6 +110,54 @@ class RosGatewayV1WebSocketClientTests {
                 "executing",
                 null
         ));
+        verify(socket).request(1);
+    }
+
+    @Test
+    void reconcilesMissionStatusFromGateway() {
+        RosGatewayV1WebSocketClient client = new RosGatewayV1WebSocketClient(
+                mock(GatewayEnvelopeDecoder.class),
+                new GatewayProtobufDecoder(objectMapper),
+                new GatewaySequenceGuard(),
+                mock(RealtimeHub.class),
+                eventPublisher,
+                mock(RuntimeStateService.class),
+                missionRuntimeReconciler,
+                mock(VisualSensorService.class),
+                mock(SensorRuntimeService.class),
+                "ws://127.0.0.1:8765/uav_usv/v1",
+                "v1"
+        );
+        WebSocket socket = mock(WebSocket.class);
+        UavUsvGatewayV1.MissionStatus missionStatus = UavUsvGatewayV1.MissionStatus.newBuilder()
+                .setMissionId("10")
+                .setRunId("20")
+                .setState("COMPLETED")
+                .setPhase("EVALUATION")
+                .setActiveCommandId("command-20")
+                .build();
+        UavUsvGatewayV1.GatewayEnvelope envelope = UavUsvGatewayV1.GatewayEnvelope.newBuilder()
+                .setSpecVersion("1.0")
+                .setMessageType("mission.status")
+                .setSource("uav_usv_fleet_gateway")
+                .setTimestamp(Timestamp.newBuilder().setSeconds(1786900000))
+                .setRunId("20")
+                .setStreamId("mission")
+                .setSequence(1)
+                .setMissionStatus(missionStatus)
+                .build();
+
+        client.onBinary(socket, ByteBuffer.wrap(envelope.toByteArray()), true);
+
+        verify(missionRuntimeReconciler).reconcileMissionStatus(
+                "10",
+                "20",
+                "20",
+                "command-20",
+                "COMPLETED",
+                "EVALUATION",
+                "ROS_GATEWAY_V1"
+        );
         verify(socket).request(1);
     }
 
