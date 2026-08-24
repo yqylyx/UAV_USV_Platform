@@ -129,6 +129,8 @@ public class RuntimeStateService {
         deviceStatusSnapshots.put(deviceCode, new DeviceStatusSnapshot(
                 deviceCode,
                 payload.path("connectionState").asText("UNKNOWN").trim().toUpperCase(),
+                payload.path("operationState").asText("UNKNOWN").trim().toUpperCase(),
+                payload.path("controlMode").asText("UNKNOWN").trim().toUpperCase(),
                 payload.path("flightState").asText("UNKNOWN").trim().toUpperCase(),
                 payload.path("armed").asBoolean(false),
                 payload.path("activeCommandId").asText(""),
@@ -141,7 +143,7 @@ public class RuntimeStateService {
 
     public ControlOperationalSnapshot getControlOperationalSnapshot(String deviceCode) {
         String normalized = deviceCode == null ? "" : deviceCode.trim().toLowerCase().replace('_', '-');
-        if (!normalized.startsWith("uav-")) {
+        if (!normalized.startsWith("uav-") && !normalized.startsWith("usv-")) {
             return new ControlOperationalSnapshot("UNKNOWN", false, null, "UNKNOWN");
         }
         DeviceStatusSnapshot snapshot = deviceStatusSnapshots.get(normalized);
@@ -151,14 +153,57 @@ public class RuntimeStateService {
         boolean fresh = gatewayConnected
                 && Duration.between(snapshot.receivedAt(), LocalDateTime.now()).compareTo(Duration.ofSeconds(2)) <= 0;
         boolean online = "ONLINE".equals(snapshot.connectionState());
-        boolean knownFlightState = "GROUNDED".equals(snapshot.flightState())
-                || "AIRBORNE".equals(snapshot.flightState());
+        String state = normalized.startsWith("usv-")
+                ? mapUsvOperationalState(snapshot)
+                : mapUavOperationalState(snapshot);
         return new ControlOperationalSnapshot(
-                fresh && online && knownFlightState ? snapshot.flightState() : "UNKNOWN",
+                fresh && online ? state : "UNKNOWN",
                 fresh,
                 snapshot.receivedAt(),
                 snapshot.connectionState()
         );
+    }
+
+    private String mapUavOperationalState(DeviceStatusSnapshot snapshot) {
+        if ("GROUNDED".equals(snapshot.flightState()) || "AIRBORNE".equals(snapshot.flightState())) {
+            return snapshot.flightState();
+        }
+        if ("HOVERING".equals(snapshot.operationState()) || "LOITER".equals(snapshot.controlMode())) {
+            return "HOLDING";
+        }
+        if ("RETURNING".equals(snapshot.operationState()) || "RTL".equals(snapshot.controlMode())) {
+            return "RETURNING";
+        }
+        if ("LANDING".equals(snapshot.operationState())) {
+            return "LANDING";
+        }
+        return "UNKNOWN";
+    }
+
+    private String mapUsvOperationalState(DeviceStatusSnapshot snapshot) {
+        if ("IDLE".equals(snapshot.operationState())) {
+            return "MOORED";
+        }
+        if ("HOLD".equals(snapshot.operationState())
+                || "HOLDING".equals(snapshot.operationState())
+                || "HOLD".equals(snapshot.controlMode())) {
+            return "HOLDING";
+        }
+        if ("SAILING".equals(snapshot.operationState())
+                || "MOVING".equals(snapshot.operationState())
+                || "AUTO".equals(snapshot.controlMode())) {
+            return "SAILING";
+        }
+        if ("RETURNING".equals(snapshot.operationState()) || "RTL".equals(snapshot.controlMode())) {
+            return "RETURNING";
+        }
+        if ("STOPPED".equals(snapshot.operationState())) {
+            return "STOPPED";
+        }
+        if ("ERROR".equals(snapshot.operationState())) {
+            return "ERROR";
+        }
+        return "UNKNOWN";
     }
 
     public TakeoffReadiness getUavTakeoffReadiness(String deviceCode) {
@@ -492,6 +537,8 @@ public class RuntimeStateService {
     private record DeviceStatusSnapshot(
             String deviceCode,
             String connectionState,
+            String operationState,
+            String controlMode,
             String flightState,
             boolean armed,
             String activeCommandId,

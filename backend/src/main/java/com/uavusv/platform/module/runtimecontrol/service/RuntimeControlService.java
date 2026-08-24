@@ -453,7 +453,7 @@ public class RuntimeControlService {
             );
         }
         commandRepository.save(command);
-        publishTerminalCommandStatus(command);
+        publishCommandStatus(command);
         return RuntimeCommandResponse.from(command);
     }
 
@@ -502,7 +502,7 @@ public class RuntimeControlService {
             default -> { return RuntimeCommandResponse.from(command); }
         }
         commandRepository.save(command);
-        publishTerminalCommandStatus(command);
+        publishCommandStatus(command);
         return RuntimeCommandResponse.from(command);
     }
 
@@ -668,7 +668,18 @@ private void requestUnityStop() throws IOException {
     }
 
     private void publishTerminalCommandStatus(ControlCommand command) {
-        if (command.getStatus() != CommandStatus.SUCCEEDED
+        if (command.getStatus() == CommandStatus.SUCCEEDED
+                || command.getStatus() == CommandStatus.REJECTED
+                || command.getStatus() == CommandStatus.FAILED
+                || command.getStatus() == CommandStatus.TIMEOUT
+                || command.getStatus() == CommandStatus.CANCELLED) {
+            publishCommandStatus(command);
+        }
+    }
+
+    private void publishCommandStatus(ControlCommand command) {
+        if (command.getStatus() != CommandStatus.EXECUTING
+                && command.getStatus() != CommandStatus.SUCCEEDED
                 && command.getStatus() != CommandStatus.REJECTED
                 && command.getStatus() != CommandStatus.FAILED
                 && command.getStatus() != CommandStatus.TIMEOUT

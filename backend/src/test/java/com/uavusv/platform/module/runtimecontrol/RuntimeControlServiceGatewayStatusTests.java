@@ -11,6 +11,7 @@ import com.uavusv.platform.module.runtimecontrol.entity.CommandStatus;
 import com.uavusv.platform.module.runtimecontrol.entity.CommandType;
 import com.uavusv.platform.module.runtimecontrol.entity.ControlCommand;
 import com.uavusv.platform.module.runtimecontrol.entity.RuntimeScope;
+import com.uavusv.platform.module.runtimecontrol.event.ControlCommandStatusChangedEvent;
 import com.uavusv.platform.module.runtimecontrol.repository.ControlCommandRepository;
 import com.uavusv.platform.module.runtimecontrol.repository.SimulationSessionRepository;
 import com.uavusv.platform.module.runtimecontrol.service.RuntimeControlService;
@@ -30,12 +31,14 @@ import static org.mockito.Mockito.when;
 class RuntimeControlServiceGatewayStatusTests {
     private ControlCommandRepository commandRepository;
     private RuntimeCommandDispatcher commandDispatcher;
+    private ApplicationEventPublisher eventPublisher;
     private RuntimeControlService service;
 
     @BeforeEach
     void setUp() {
         commandRepository = mock(ControlCommandRepository.class);
         commandDispatcher = mock(RuntimeCommandDispatcher.class);
+        eventPublisher = mock(ApplicationEventPublisher.class);
         service = new RuntimeControlService(
                 mock(RuntimeStateService.class),
                 mock(SimulationSessionRepository.class),
@@ -43,7 +46,7 @@ class RuntimeControlServiceGatewayStatusTests {
                 mock(DeviceRepository.class),
                 mock(MissionRunRepository.class),
                 commandDispatcher,
-                mock(ApplicationEventPublisher.class),
+                eventPublisher,
                 "Ubuntu", ".", ".", ".", "ws://localhost", "token", "ros-gateway-v1", 15,75
         );
     }
@@ -106,6 +109,15 @@ class RuntimeControlServiceGatewayStatusTests {
                 "executing", null, "ROS_GATEWAY_V1");
 
         assertEquals(CommandStatus.EXECUTING, command.getStatus());
+        verify(eventPublisher).publishEvent(new ControlCommandStatusChangedEvent(
+                command.getId(),
+                command.getCommandKey(),
+                command.getRunId(),
+                command.getCommandType(),
+                CommandStatus.EXECUTING,
+                "executing",
+                null
+        ));
     }
 
     @Test

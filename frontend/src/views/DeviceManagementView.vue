@@ -2,16 +2,18 @@
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Pencil, Plus, Trash2 } from '@lucide/vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 import { createDevice, deleteDevice, updateDevice } from '@/api/device'
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDeviceStore } from '@/stores/device'
+import { useMonitoringStore } from '@/stores/monitoring'
 import type { Device, DeviceSavePayload, DeviceStatus, DeviceType } from '@/types/device'
 
 const authStore = useAuthStore()
 const deviceStore = useDeviceStore()
+const monitoringStore = useMonitoringStore()
 const formRef = ref<FormInstance>()
 const dialogVisible = ref(false)
 const deleteDialogVisible = ref(false)
@@ -68,9 +70,14 @@ const statusOptions: Array<{ label: string; value: DeviceStatus }> = [
 const canManage = computed(() => authStore.user?.role === 'ADMIN')
 const dialogTitle = computed(() => (editingId.value ? '编辑设备' : '新增设备'))
 const deleteTitle = computed(() => (deleteTarget.value ? `删除 ${deleteTarget.value.name}` : '删除设备'))
-const onlineCount = computed(() => deviceStore.records.filter((device) => device.status === 'ONLINE').length)
+const runtimeNodeByCode = computed(() => {
+  const map = new Map<string, DeviceStatus>()
+  monitoringStore.nodes.forEach((node) => map.set(node.code.toLowerCase(), node.status))
+  return map
+})
+const onlineCount = computed(() => deviceStore.records.filter((device) => displayStatus(device) === 'ONLINE').length)
 const bridgeNodeCount = computed(() => deviceStore.records.filter((device) => ['ROS_NODE', 'UNITY_NODE'].includes(device.type)).length)
-const attentionCount = computed(() => deviceStore.records.filter((device) => device.status !== 'ONLINE').length)
+const attentionCount = computed(() => deviceStore.records.filter((device) => displayStatus(device) !== 'ONLINE').length)
 
 function typeLabel(type: DeviceType) {
   return typeOptions.find((item) => item.value === type)?.label ?? type
@@ -78,6 +85,11 @@ function typeLabel(type: DeviceType) {
 
 function statusLabel(status: DeviceStatus) {
   return statusOptions.find((item) => item.value === status)?.label ?? status
+}
+
+function displayStatus(row: Device | Record<string, unknown>) {
+  const device = row as Device
+  return runtimeNodeByCode.value.get(device.code.toLowerCase()) ?? device.status
 }
 
 function statusTag(status: DeviceStatus) {
@@ -160,7 +172,12 @@ async function load(page = 0) {
   deviceStore.keyword = ''
   deviceStore.type = undefined
   deviceStore.status = undefined
-  await deviceStore.refresh({ page })
+  monitoringStore.type = undefined
+  monitoringStore.status = undefined
+  await Promise.all([
+    deviceStore.refresh({ page }),
+    monitoringStore.refresh({}, true),
+  ])
 }
 
 async function submit() {
@@ -223,7 +240,12 @@ async function confirmDelete() {
   }
 }
 
-onMounted(() => load(0))
+onMounted(() => {
+  monitoringStore.connectEvents()
+  void load(0)
+})
+
+onBeforeUnmount(() => monitoringStore.disconnectEvents())
 </script>
 
 <template>
@@ -251,7 +273,7 @@ onMounted(() => load(0))
       <article class="console-stat-card">
         <span>在线设备</span>
         <strong>{{ onlineCount }}</strong>
-        <small>当前页在线</small>
+        <small>实时状态优先</small>
       </article>
       <article class="console-stat-card warning">
         <span>待检查</span>
@@ -269,7 +291,7 @@ onMounted(() => load(0))
       <div class="panel-heading">
         <div>
           <h2>设备列表</h2>
-          <p>统一维护无人机、无人艇、灯塔、ROS 和 Unity 节点。</p>
+          <p>统一维护真实/登记设备状态；Unity 虚拟场景设备不计入在线数量。</p>
         </div>
         <el-tag effect="plain">共 {{ deviceStore.total }} 个</el-tag>
       </div>
@@ -291,8 +313,8 @@ onMounted(() => load(0))
         </el-table-column>
         <el-table-column label="状态" min-width="120">
           <template #default="{ row }">
-            <el-tag class="device-table-status" :type="statusTag(row.status)" effect="plain">
-              {{ statusLabel(row.status) }}
+            <el-tag class="device-table-status" :type="statusTag(displayStatus(row))" effect="plain">
+              {{ statusLabel(displayStatus(row)) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -380,7 +402,7 @@ onMounted(() => load(0))
           <div><dt>设备名称</dt><dd>{{ deleteTarget.name }}</dd></div>
           <div><dt>设备编号</dt><dd>{{ deleteTarget.code }}</dd></div>
           <div><dt>设备类型</dt><dd>{{ typeLabel(deleteTarget.type) }}</dd></div>
-          <div><dt>当前状态</dt><dd>{{ statusLabel(deleteTarget.status) }}</dd></div>
+          <div><dt>当前状态</dt><dd>{{ statusLabel(displayStatus(deleteTarget)) }}</dd></div>
         </dl>
         <el-checkbox v-model="deleteAcknowledged">我确认删除该设备，并了解这不会停止 ROS 或 Unity 进程</el-checkbox>
       </div>
