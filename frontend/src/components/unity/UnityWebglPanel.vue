@@ -37,6 +37,7 @@ const emit = defineEmits<{
 }>()
 
 const iframeRef = ref<HTMLIFrameElement | null>(null)
+const panelRef = ref<HTMLElement | null>(null)
 const trajectoryStore = useTrajectoryStore()
 const unityBridgeStore = useUnityBridgeStore()
 const visualSensorStore = useVisualSensorStore()
@@ -53,6 +54,9 @@ let readyEmitted = false
 let lastRuntimeReportAt = 0
 const seenPoseReceiptKeys = new Set<string>()
 let heartbeatInFlight = false
+let viewportResizeObserver: ResizeObserver | null = null
+let lockedViewportWidth = 0
+let lockedViewportHeight = 0
 
 type HeartbeatReport = {
   state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED'
@@ -538,6 +542,82 @@ function syncViewport() {
   })
 }
 
+function beginViewportTransition() {
+  const iframe = iframeRef.value
+  const panel = panelRef.value
+  if (iframe && panel) {
+    const panelRect = panel.getBoundingClientRect()
+    if (!lockedViewportWidth) {
+      const frameRect = iframe.getBoundingClientRect()
+      lockedViewportWidth = Math.max(1, frameRect.width)
+      lockedViewportHeight = Math.max(1, frameRect.height)
+    }
+    iframe.style.width = `${lockedViewportWidth}px`
+    iframe.style.height = `${lockedViewportHeight}px`
+    iframe.style.maxWidth = 'none'
+    iframe.style.maxHeight = 'none'
+    iframe.style.flex = '0 0 auto'
+    iframe.style.transformOrigin = 'top left'
+    iframe.style.transform = `scaleX(${Math.max(0.01, panelRect.width / lockedViewportWidth)})`
+    viewportResizeObserver?.disconnect()
+    viewportResizeObserver = new ResizeObserver(() => {
+      const currentPanel = panelRef.value
+      if (!currentPanel || !lockedViewportWidth) return
+      const currentWidth = currentPanel.getBoundingClientRect().width
+      iframe.style.transform = `scaleX(${Math.max(0.01, currentWidth / lockedViewportWidth)})`
+    })
+    viewportResizeObserver.observe(panel)
+  }
+  const frameWindow = iframeRef.value?.contentWindow
+  frameWindow?.postMessage({
+    source: 'vue-console',
+    message: { type: 'viewportTransitionStart' },
+  }, window.location.origin)
+}
+
+function endViewportTransition() {
+  const frameWindow = iframeRef.value?.contentWindow
+  frameWindow?.postMessage({
+    source: 'vue-console',
+    message: { type: 'viewportTransitionEnd' },
+  }, window.location.origin)
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      viewportResizeObserver?.disconnect()
+      viewportResizeObserver = null
+      const iframe = iframeRef.value
+      if (iframe) {
+        iframe.style.width = ''
+        iframe.style.height = ''
+        iframe.style.maxWidth = ''
+        iframe.style.maxHeight = ''
+        iframe.style.flex = ''
+        iframe.style.transform = ''
+        iframe.style.transformOrigin = ''
+      }
+      lockedViewportWidth = 0
+      lockedViewportHeight = 0
+      // Restoring the iframe layout generates the single native resize that
+      // Unity needs. Do not dispatch another synthetic resize here: doing so
+      // can make Unity rebuild its WebGL backbuffer twice and flash black.
+      window.requestAnimationFrame(() => {
+        iframeRef.value?.contentWindow?.postMessage({
+          source: 'vue-console',
+          type: 'viewportSettled',
+        }, window.location.origin)
+      })
+    })
+  })
+}
+
+function handleGlobalViewportTransitionStart() {
+  beginViewportTransition()
+}
+
+function handleGlobalViewportTransitionEnd() {
+  endViewportTransition()
+}
+
 async function reportHeartbeat(
   state: HeartbeatReport['state'],
   detail: string,
@@ -596,11 +676,15 @@ defineExpose({
   toggleTrajectory,
   sendControlCommand,
   sendPoseFrame,
+  beginViewportTransition,
+  endViewportTransition,
   syncViewport,
 })
 
 onMounted(() => {
   window.addEventListener('message', handleWindowMessage)
+  window.addEventListener('uav-usv:viewport-transition-start', handleGlobalViewportTransitionStart)
+  window.addEventListener('uav-usv:viewport-transition-end', handleGlobalViewportTransitionEnd)
   heartbeatTimer = window.setInterval(() => {
     const state = unityBridgeStore.channels[props.runtimeScope].connected ? 'ONLINE' : 'OFFLINE'
     void reportHeartbeat(state, `${props.runtimeScope} Unity WebGL 心跳`)
@@ -623,9 +707,13 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  viewportResizeObserver?.disconnect()
+  viewportResizeObserver = null
   unityBridgeStore.setConnectedFor(props.runtimeScope, false)
   void reportHeartbeat('OFFLINE', `${props.runtimeScope} Unity WebGL 已卸载`)
   window.removeEventListener('message', handleWindowMessage)
+  window.removeEventListener('uav-usv:viewport-transition-start', handleGlobalViewportTransitionStart)
+  window.removeEventListener('uav-usv:viewport-transition-end', handleGlobalViewportTransitionEnd)
   if (probeTimer !== null) window.clearInterval(probeTimer)
   if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer)
   try {
@@ -644,7 +732,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="unity-webgl-panel">
+  <div ref="panelRef" class="unity-webgl-panel">
     <iframe
       ref="iframeRef"
       :key="reloadToken"
@@ -675,7 +763,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .unity-webgl-panel {
-  contain: layout paint;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .unity-webgl-frame {

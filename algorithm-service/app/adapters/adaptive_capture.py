@@ -6,7 +6,7 @@ from typing import Dict, List, Mapping
 
 from app.adapters.base import AlgorithmAdapter
 from app.adapters.capture import CaptureAdapter
-from app.capture import maximum_capture_gap_deg
+from app.capture import assess_containment, maximum_capture_gap_deg
 from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
 from app.scenario import derive_scenario_plan
 from app.schemas import AgentFrame, RuntimeFrame, TargetFrame
@@ -57,6 +57,12 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         # Unity. Child solvers assess before the cross-target safety pass, so
         # their private hold cannot be authoritative for a merged scene.
         self.executed_hold_frames: List[int] = [0 for _ in range(self.target_count)]
+        self.executed_post_breakout_stable_frames: List[int] = [0 for _ in range(self.target_count)]
+        # Keep the aggregate mission in final verification once any target
+        # enters it; staggered target groups must not make the UI oscillate
+        # between STABLE_CONTAINMENT and BREAKOUT_TEST.
+        self.breakout_test_phase_started = False
+        self.display_progress = 0.0
         initial = self.initial_pose_map()
 
         target_points = [
@@ -189,28 +195,46 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             child.target_travelled_distance
             >= child.required_pursuit_distance + 20.0
         )
+        contract = assess_containment(
+            [(agent.x, agent.y, agent.z) for agent in agents],
+            (target.x, target.y, target.z),
+            required_count=len(agents),
+            device_types=[agent.type for agent in agents],
+            minimum_type_counts={"UAV": 1, "USV": 1},
+            minimum_radius_m=lower_radius,
+            maximum_radius_m=upper_radius,
+            # Multi-target teams intentionally use concentric UAV/USV layers.
+            # Permit that designed layer offset while still bounding detached
+            # staging craft and pathological radial outliers.
+            maximum_radial_spread_m=max(48.0, upper_radius * 0.40),
+            minimum_pairwise_separation_m=7.1,
+            tolerance_deg=0.0,
+        )
         if not visible_chase_complete:
             blocker = "PURSUIT_DISTANCE"
-        elif not target_inside:
-            blocker = "POST_GLOBAL_TARGET_OUTSIDE_HULL"
-        # The repair controller and the renderer operate on quantised 0.1 s
-        # poses.  Share their half-degree tolerance here; otherwise a visually
-        # closed 64.91/64.80 ring is repaired forever but never latched.
-        elif max_gap_deg > max_gap_limit_deg + 0.5:
-            blocker = "POST_GLOBAL_ANGULAR_GAP"
-        elif min(radii) < lower_radius:
-            blocker = "POST_GLOBAL_INNER_RADIUS"
-        elif max(radii) > upper_radius:
-            blocker = "POST_GLOBAL_OUTER_RADIUS"
+        elif not contract.ready:
+            blocker = f"POST_GLOBAL_{contract.blocker}"
         else:
             blocker = "NONE"
         return {
             "ready": blocker == "NONE",
-            "targetInside": target_inside,
-            "maxGapDeg": round(max_gap_deg, 2),
-            "maxAllowedGapDeg": round(max_gap_limit_deg, 2),
-            "minimumRadiusM": round(min(radii), 2),
-            "maximumRadiusM": round(max(radii), 2),
+            "targetInside": contract.target_inside,
+            "maxGapDeg": contract.max_gap_deg,
+            "maxAllowedGapDeg": contract.allowed_gap_deg,
+            "minimumRadiusM": contract.minimum_radius_m,
+            "maximumRadiusM": contract.maximum_radius_m,
+            "radialSpreadM": contract.radial_spread_m,
+            "sectorCount": contract.sector_count,
+            "coveredSectors": contract.covered_sectors,
+            "minimumSeparationM": contract.minimum_separation_m,
+            "requiredSeparationM": contract.required_separation_m,
+            "uavCount": contract.uav_count,
+            "usvCount": contract.usv_count,
+            "invalidParticipants": contract.invalid,
+            "stationaryParticipants": contract.stationary,
+            "detachedParticipants": contract.detached,
+            "participating": contract.participating,
+            "required": contract.required,
             "blocker": blocker,
         }
 
@@ -356,9 +380,11 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 "CAPTURED" if child_captured else str(frame.metrics.get("targetBehavior", frame.phase)),
                 3,
             ))
+            child_stage = str(frame.metrics.get("missionStage", frame.phase))
             groups.append({
                 "threatCode": target_code,
-                "state": "CAPTURED" if child_captured else frame.phase,
+                "state": "CAPTURED" if child_captured else child_stage,
+                "missionStage": "COMPLETED" if child_captured else child_stage,
                 "memberCount": len(frame.agents),
                 "uavCount": sum(item.type == "UAV" for item in frame.agents),
                 "usvCount": sum(item.type == "USV" for item in frame.agents),
@@ -385,6 +411,9 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 "ringGeometryReady": frame.metrics.get("ringGeometryReady", False),
                 "captureBlocker": "NONE" if child_captured else frame.metrics.get("captureBlocker", ""),
                 "containmentConfidence": frame.metrics.get("containmentConfidence", 0.0),
+                "stableContainmentFrames": frame.metrics.get("stableContainmentFrames", 0),
+                "stableContainmentRequiredFrames": frame.metrics.get("requiredStableContainmentFrames", frame.metrics.get("requiredCaptureHoldFrames", 0)),
+                "gapRepairRequired": frame.metrics.get("gapRepairRequired", False),
             })
 
         # Child solvers are intentionally independent per target, but their
@@ -538,24 +567,89 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             group["postGlobalMaxAllowedGapDeg"] = executed["maxAllowedGapDeg"]
             group["globalAvoidanceCount"] = global_adjustments_by_target.get(target_code, 0)
             group.update(repair_metrics.get(target_code, {}))
-            if bool(executed["ready"]):
+            breakout_active = bool(getattr(child, "breakout_test_active", False))
+            breakout_passed = bool(getattr(child, "breakout_test_passed", False))
+            if breakout_active:
+                self.breakout_test_phase_started = True
+            group["breakoutTestState"] = (
+                "ACTIVE" if breakout_active
+                else "PASSED" if breakout_passed
+                else "PENDING"
+            )
+            group["breakoutTestFrames"] = int(getattr(child, "breakout_test_frames", 0))
+            group["breakoutTestRequiredFrames"] = int(
+                getattr(child, "breakout_test_required_frames", 0)
+            )
+            group["breakoutTestDistanceM"] = round(
+                float(getattr(child, "breakout_test_distance_m", 0.0)), 3
+            )
+            group["breakoutTestRequiredDistanceM"] = float(
+                getattr(child, "breakout_test_required_distance_m", 0.0)
+            )
+            group["postBreakoutStableFrames"] = int(
+                getattr(child, "post_breakout_stable_frames", 0)
+            )
+            group["requiredPostBreakoutStableFrames"] = int(
+                getattr(child, "required_post_breakout_stable_frames", 25)
+            )
+            if bool(executed["ready"]) and not breakout_active and not breakout_passed:
                 self.executed_hold_frames[index] = min(
                     child.capture_hold_frames,
                     self.executed_hold_frames[index] + 1,
                 )
                 group["postGlobalHoldFrames"] = self.executed_hold_frames[index]
                 group["postGlobalHoldRequiredFrames"] = child.capture_hold_frames
+                if self.executed_hold_frames[index] >= child.capture_hold_frames:
+                    gap_direction = child._largest_gap_direction(
+                        (target.x, target.y, target.z),
+                        [(agent.x, agent.y, agent.z) for agent in executed_agents],
+                    )
+                    child.breakout_test_active = True
+                    child.breakout_test_started_sequence = child.sequence
+                    child.breakout_test_origin = (target.x, target.y)
+                    child.breakout_test_direction = gap_direction or child.target_escape_direction
+                    child.breakout_test_frames = 0
+                    child.breakout_test_distance_m = 0.0
+                    child.target_behavior_state = "BREAKOUT_TEST"
+                    self.breakout_test_phase_started = True
+                    breakout_active = True
+                    group["breakoutTestState"] = "ACTIVE"
+                    group["state"] = "BREAKOUT_TEST"
+                    frame.phase = "BREAKOUT_TEST"
+            if (
+                bool(executed["ready"])
+                and breakout_active
+                and child.breakout_test_frames >= child.breakout_test_required_frames
+                and child.breakout_test_distance_m >= child.breakout_test_required_distance_m
+            ):
+                child.breakout_test_active = False
+                child.breakout_test_passed = True
+                child.target_behavior_state = "CONTAINED"
+                breakout_active = False
+                breakout_passed = True
+                group["breakoutTestState"] = "PASSED"
+            if bool(executed["ready"]) and not breakout_active and not breakout_passed:
+                group["captureBlocker"] = "HOLD_CONFIRMATION"
+                group["missionStage"] = "STABLE_CONTAINMENT"
+                group["state"] = "STABLE_CONTAINMENT"
+                continue
+            if bool(executed["ready"]) and not breakout_active and breakout_passed:
+                required_final_hold = int(getattr(
+                    child, "required_post_breakout_stable_frames", 25
+                ))
+                self.executed_post_breakout_stable_frames[index] = min(
+                    required_final_hold,
+                    self.executed_post_breakout_stable_frames[index] + 1,
+                )
+                group["postBreakoutStableFrames"] = self.executed_post_breakout_stable_frames[index]
+                group["requiredPostBreakoutStableFrames"] = required_final_hold
+                group["missionStage"] = "STABLE_CONTAINMENT"
+                group["state"] = "STABLE_CONTAINMENT"
                 if (
                     self.mission_active
-                    and self.executed_hold_frames[index] >= child.capture_hold_frames
+                    and self.executed_post_breakout_stable_frames[index] >= required_final_hold
                 ):
-                    if child.captured_at_sequence is None:
-                        child.captured_at_sequence = child.sequence
-                        guard_ids = {int(raw[7]) for raw in child.env.agents}
-                        child.env.guarding_agents[0] = guard_ids
-                        child.env.permanently_captured.add(0)
-                    child.target_behavior_state = "CAPTURED"
-                    child.target_velocity = (0.0, 0.0)
+                    child.confirm_executed_containment()
                     frame.terminalStatus = "COMPLETED"
                     frame.phase = "CAPTURED"
                     frame.metrics["captured"] = True
@@ -570,23 +664,26 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                     group["captureBlocker"] = "NONE"
                     target.state = "CAPTURED"
                 continue
+            if bool(executed["ready"]) and breakout_active:
+                group["state"] = "BREAKOUT_TEST"
+                group["captureBlocker"] = "BREAKOUT_TEST"
+                group["missionStage"] = "BREAKOUT_TEST"
+                frame.terminalStatus = None
+                frame.metrics["captured"] = False
+                frame.metrics["formationReady"] = True
+                frame.metrics["captureBlocker"] = "BREAKOUT_TEST"
+                target.state = "BREAKOUT_TEST"
+                continue
             self.executed_hold_frames[index] = 0
+            self.executed_post_breakout_stable_frames[index] = 0
             child.containment_candidate_at_sequence = None
             child.formation_ready_at_sequence = None
             if child.captured_at_sequence is not None:
-                child.captured_at_sequence = None
-                child.env.permanently_captured.discard(0)
-                child.env.guarding_agents.pop(0, None)
-                child.target_behavior_state = "BREAKOUT"
                 # A child freezes its target when it first latches capture.
-                # If global collision resolution later opens that ring, the
-                # latch is revoked and the hostile must immediately resume
-                # its seeded escape speed instead of remaining motionless in
-                # an incomplete 6+8 (or other asymmetric) formation.
-                child.target_velocity = (
-                    child.target_escape_direction[0] * child.target_cruise_mps,
-                    child.target_escape_direction[1] * child.target_cruise_mps,
-                )
+                # If global collision resolution later opens that ring, revoke
+                # through the child state machine so the target resumes its
+                # seeded breakout speed and the coordinator cannot own state.
+                child.revoke_executed_containment()
             frame.terminalStatus = None
             if frame.phase == "CAPTURED":
                 frame.phase = "ENCIRCLEMENT"
@@ -599,6 +696,16 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             group["stage"] = 1
             group["holdFrames"] = 0
             group["captureBlocker"] = executed["blocker"]
+            group["missionStage"] = (
+                "GAP_REPAIR"
+                if str(frame.metrics.get("missionStage", frame.phase)) in {
+                    "ENCIRCLEMENT", "GAP_REPAIR", "STABLE_CONTAINMENT"
+                } and (
+                    repair_metrics.get(target_code)
+                or executed["blocker"] in {"ANGULAR_GAP", "SECTOR_COVERAGE", "RADIAL_SPREAD"}
+                )
+                else str(frame.metrics.get("missionStage", frame.phase))
+            )
             target.state = child.target_behavior_state
 
         # A child may have already latched its capture state in the vendor
@@ -611,17 +718,53 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             for frame in child_frames
         ]
         all_completed = all(completed)
+        breakout_active_count = sum(
+            str(group.get("breakoutTestState", "")) == "ACTIVE"
+            for group in groups
+        )
+        breakout_passed_count = sum(
+            str(group.get("breakoutTestState", "")) == "PASSED"
+            for group in groups
+        )
+        # The coordinator can promote a child into BREAKOUT_TEST after the
+        # child frame has been produced, once the executed global poses pass
+        # the final containment check. Rebuild the aggregate phase from the
+        # post-coordination group states so that state is visible to Unity for
+        # at least the frame in which it was entered.
+        post_states = [str(group.get("state", "")) for group in groups]
         phases = [frame.phase for frame in child_frames]
         if all(phase == "PREVIEW" for phase in phases):
             phase = "PREVIEW"
         elif all_completed:
             phase = "CAPTURED"
+        elif self.breakout_test_phase_started and breakout_passed_count < len(groups):
+            phase = "BREAKOUT_TEST"
         elif "ESCAPE_PURSUIT" in phases:
             phase = "ESCAPE_PURSUIT"
         elif "INTERCEPTING" in phases:
             phase = "INTERCEPTING"
         else:
             phase = "ENCIRCLEMENT"
+
+        group_stages = [str(group.get("missionStage", group.get("state", ""))) for group in groups]
+        if all_completed:
+            mission_stage = "COMPLETED"
+        elif self.breakout_test_phase_started and breakout_passed_count < len(groups):
+            mission_stage = "BREAKOUT_TEST"
+        elif "INTERCEPT" in group_stages:
+            # Preserve the tactical hand-off for at least one aggregate frame
+            # when another target is already asking for gap repair.
+            mission_stage = "INTERCEPT"
+        elif "GAP_REPAIR" in group_stages:
+            mission_stage = "GAP_REPAIR"
+        elif "STABLE_CONTAINMENT" in group_stages:
+            mission_stage = "STABLE_CONTAINMENT"
+        elif "PURSUIT" in group_stages:
+            mission_stage = "PURSUIT"
+        elif "ESCAPE" in group_stages:
+            mission_stage = "ESCAPE"
+        else:
+            mission_stage = "ENCIRCLEMENT"
 
         def mean_metric(name: str) -> float:
             return sum(float(item.get(name, 0.0)) for item in metrics_list) / max(1, len(metrics_list))
@@ -639,18 +782,23 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 for name, diagnostic in raw.items():
                     ring_diagnostics[f"TARGET-{index + 1:03d}/{name}"] = diagnostic
 
+        raw_progress = 1.0 if all_completed else min(
+            0.999,
+            sum(
+                1.0 if done else float(metrics_list[index].get("progress", 0.0))
+                for index, done in enumerate(completed)
+            ) / max(1, len(completed)),
+        )
+        # Mission progress is a user-facing completion indicator. It must be
+        # monotonic; changing containment quality is reported separately by
+        # missionStage, captureBlocker and ring diagnostics.
+        self.display_progress = max(self.display_progress, raw_progress)
         metrics: Dict[str, object] = {
             "targetCount": self.target_count,
             "visibleTargetCount": len(targets),
             "capturedTargetCount": sum(completed),
             "capturedThreatCount": sum(completed),
-            "progress": 1.0 if all_completed else min(
-                0.999,
-                sum(
-                    1.0 if done else float(metrics_list[index].get("progress", 0.0))
-                    for index, done in enumerate(completed)
-                ) / max(1, len(completed)),
-            ),
+            "progress": round(self.display_progress, 3),
             "captured": all_completed,
             "formationReady": all(
                 completed[index] or bool(item.get("formationReady", False))
@@ -684,6 +832,12 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             ),
             "requiredCaptureHoldFrames": max(int(item.get("requiredCaptureHoldFrames", 0)) for item in metrics_list),
             "captureGroups": groups,
+            "breakoutTestActiveCount": breakout_active_count,
+            "breakoutTestPassedCount": breakout_passed_count,
+            "breakoutTestRequiredTargetCount": len(groups),
+            "breakoutTestCompleted": breakout_passed_count == len(groups),
+            "missionStage": mission_stage,
+            "stageSequence": ["ESCAPE", "PURSUIT", "INTERCEPT", "ENCIRCLEMENT", "GAP_REPAIR", "STABLE_CONTAINMENT", "BREAKOUT_TEST", "COMPLETED"],
             "ringDiagnostics": ring_diagnostics,
         }
         return RuntimeFrame(

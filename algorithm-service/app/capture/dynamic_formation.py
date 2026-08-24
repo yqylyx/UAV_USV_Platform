@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from math import asin, atan2, cos, degrees, hypot, pi, sin
 from typing import Iterable, Sequence
 
+from app.capture.containment_contract import allowed_containment_gap_deg
+
 
 @dataclass(frozen=True)
 class FormationSlot:
@@ -32,20 +34,8 @@ class CaptureAssessment:
 
 
 def maximum_capture_gap_deg(count: int) -> float:
-    """Maximum visually credible opening for an executed containment ring.
-
-    The limit tightens as more members are available.  A three-member ring
-    needs 120 degrees even when it is a perfect equilateral triangle, while
-    four or more members are never allowed a gap wider than 90 degrees.
-    Dense teams converge toward a 45-degree ceiling.  This keeps sparse valid
-    rings achievable without letting a broad arc or horseshoe count as a
-    completed encirclement.
-    """
-    count = max(1, int(count))
-    if count <= 3:
-        return 120.0
-    ideal_gap = 360.0 / count
-    return min(90.0, max(45.0, ideal_gap * 1.8))
+    """Backward-compatible alias for the shared containment contract."""
+    return allowed_containment_gap_deg(count)
 
 
 def _ring_capacity(radius: float, spacing: float) -> int:

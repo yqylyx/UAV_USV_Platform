@@ -49,6 +49,7 @@ function readSidebarPreference() {
 }
 
 const sidebarCollapsed = ref(readSidebarPreference())
+let sidebarTransitionTimer: number | null = null
 
 watch(sidebarCollapsed, (collapsed) => {
   if (typeof window === 'undefined') return
@@ -61,10 +62,14 @@ watch(sidebarCollapsed, (collapsed) => {
 
 async function toggleSidebar() {
   if (!props.collapsibleSidebar) return
+  window.dispatchEvent(new CustomEvent('uav-usv:viewport-transition-start'))
   sidebarCollapsed.value = !sidebarCollapsed.value
   await nextTick()
-  window.dispatchEvent(new Event('resize'))
-  window.setTimeout(() => window.dispatchEvent(new Event('resize')), 220)
+  if (sidebarTransitionTimer !== null) window.clearTimeout(sidebarTransitionTimer)
+  sidebarTransitionTimer = window.setTimeout(() => {
+    sidebarTransitionTimer = null
+    window.dispatchEvent(new CustomEvent('uav-usv:viewport-transition-end'))
+  }, 220)
 }
 
 async function logout() {

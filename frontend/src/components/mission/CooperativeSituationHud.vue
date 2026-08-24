@@ -43,11 +43,12 @@ const path=(code:string,recent=false)=>{
 const routePath=computed(()=>props.frame?.route.map((point,index)=>`${index?'L':'M'} ${sx(point[0]||0)} ${sy(point[1]||0)}`).join(' ')||'')
 const polygon=(items:Array<{x:number;y:number}>)=>items.map(item=>`${sx(item.x)},${sy(item.y)}`).join(' ')
 const ringRadius=computed(()=>captureTarget.value&&usvs.value.length?usvs.value.reduce((sum,item)=>sum+Math.hypot(item.x-captureTarget.value!.x,item.y-captureTarget.value!.y),0)/usvs.value.length*plot.w/(bounds.value.maxX-bounds.value.minX):0)
-const enclosure=computed(()=>['ENCIRCLEMENT','CAPTURED'].includes(props.frame?.phase||''))
-const phaseLabel=computed(()=>({ASSIGNMENT:'任务分配',TRANSIT:'航行接近',ENCIRCLEMENT:'形成围捕',CAPTURED:'围捕完成',ESCORTING:'正常护航',APPROACHING:'威胁接近',FORMING:'守卫编队形成',ORBITING:'动态护卫',THREAT_RESPONSE:'威胁响应',COMPLETED:'任务完成'}[props.frame?.phase||'']||props.frame?.phase||'等待算法帧'))
+const currentStage=computed(()=>String(props.frame?.metrics?.missionStage||props.frame?.phase||''))
+const enclosure=computed(()=>['ENCIRCLEMENT','GAP_REPAIR','STABLE_CONTAINMENT','BREAKOUT_TEST','COMPLETED','CAPTURED'].includes(currentStage.value))
+const phaseLabel=computed(()=>({ASSIGNMENT:'任务分配',TRANSIT:'航行接近',ESCAPE:'敌船逃逸',PURSUIT:'持续追击',INTERCEPT:'前出拦截',ENCIRCLEMENT:'形成围捕',GAP_REPAIR:'缺口修复',STABLE_CONTAINMENT:'稳定闭环',BREAKOUT_TEST:'敌船突破测试',CAPTURED:'围捕完成',ESCORTING:'正常护航',APPROACHING:'威胁接近',FORMING:'守卫编队形成',ORBITING:'动态护卫',THREAT_RESPONSE:'威胁响应',COMPLETED:'任务完成'}[currentStage.value]||currentStage.value||'等待算法帧'))
 const steps=computed(()=>props.frame?.algorithmCode==='ESCORT_GUARD'?['任务分配','编队形成','正常护航','威胁接近','威胁响应','任务完成']:['任务分配','航行接近','态势展开','形成围捕','约束收敛','围捕完成'])
 const phaseIndex=computed(()=>{
-  const capture:Record<string,number>={ASSIGNMENT:0,TRANSIT:1,ENCIRCLEMENT:3,CAPTURED:5}
+  const capture:Record<string,number>={ASSIGNMENT:0,TRANSIT:0,ESCAPE:0,PURSUIT:1,INTERCEPT:2,ENCIRCLEMENT:3,GAP_REPAIR:4,STABLE_CONTAINMENT:5,BREAKOUT_TEST:6,CAPTURED:7,COMPLETED:7}
   const escort:Record<string,number>={ASSIGNMENT:0,FORMING:1,ESCORTING:2,ORBITING:2,APPROACHING:3,THREAT_RESPONSE:4,COMPLETED:5}
   const indexes=props.frame?.algorithmCode==='ESCORT_GUARD'?escort:capture
   return indexes[props.frame?.phase||'']??0

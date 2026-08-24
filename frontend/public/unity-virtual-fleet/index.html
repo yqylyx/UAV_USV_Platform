@@ -65,6 +65,8 @@
       var platformBridgeReady = false;
       var platformCapabilities = {};
       var pendingUnityMessages = [];
+      var viewportTransitioning = false;
+      var viewportResizeQueued = false;
       var platformBridgeMethods = [
         'InitializePlatform',
         'LoadScenario',
@@ -640,6 +642,10 @@
 
       function resizeEmbeddedCanvas() {
         if (!embedded) return;
+        if (viewportTransitioning) {
+          viewportResizeQueued = true;
+          return;
+        }
         var width = Math.max(1, window.innerWidth);
         var height = Math.max(1, window.innerHeight);
         canvas.style.width = width + 'px';
@@ -736,6 +742,31 @@
         if (data.runtimeScope && data.runtimeScope !== runtimeScope) return;
         if (data.runtimeInstanceId && data.runtimeInstanceId !== runtimeInstanceId) return;
         var message = data.message;
+        if (message.type === 'viewportTransitionStart') {
+          viewportTransitioning = true;
+          viewportResizeQueued = false;
+          return;
+        }
+        if (message.type === 'viewportTransitionEnd') {
+          viewportTransitioning = false;
+          if (viewportResizeQueued) {
+            viewportResizeQueued = false;
+            window.requestAnimationFrame(function () {
+              window.requestAnimationFrame(resizeEmbeddedCanvas);
+            });
+          } else {
+            resizeEmbeddedCanvas();
+          }
+          window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () {
+              postUnityMessage('viewportApplied', {
+                width: window.innerWidth,
+                height: window.innerHeight,
+              });
+            });
+          });
+          return;
+        }
         var bridgeSent = false;
         var queuedForBridge = false;
         if (window.uavUsvUnityInstance && window.uavUsvUnityInstance.SendMessage) {

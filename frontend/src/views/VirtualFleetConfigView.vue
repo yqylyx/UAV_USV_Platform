@@ -61,6 +61,12 @@ type CaptureGroupMetric = {
   arrivalRatio?: number
   holdFrames?: number
   holdRequiredFrames?: number
+  missionStage?: string
+  breakoutTestState?: string
+  breakoutTestFrames?: number
+  breakoutTestRequiredFrames?: number
+  postBreakoutStableFrames?: number
+  requiredPostBreakoutStableFrames?: number
   pursuitDistanceM?: number
   requiredPursuitDistanceM?: number
   captureBlocker?: string
@@ -93,7 +99,11 @@ const lastUnityMessage = ref<UnityMessage | null>(null)
 const currentAlgorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
 const initialScenarioPoses = ref<ScenarioInitialPose[]>([])
 const plannedScenarioPoses = ref<GridScenarioPose[]>([])
-const sceneLocked = computed(() => state.mission === 'RUNNING' || state.mission === 'PAUSED')
+const sceneLocked = computed(() => (
+  state.mission === 'RUNNING'
+  || state.mission === 'PAUSED'
+  || state.mission === 'COMPLETING'
+))
 const scenarioPlan = computed(() => deriveAdaptiveScenarioPlan(state.uavCount, state.usvCount))
 const configuredTargetCount = computed(() => (
   state.algorithm === 'GB_SFLA_CS'
@@ -103,33 +113,60 @@ const configuredTargetCount = computed(() => (
 const stageCompositionLabel = computed(() => state.algorithm === 'GB_SFLA_CS'
   ? `${state.uavCount} UAV · ${state.usvCount} USV · ${scenarioPlan.value.threatCount} 敌船`
   : `${state.uavCount} UAV · ${state.usvCount} USV · ${scenarioPlan.value.protectedCount} 护航目标 · ${scenarioPlan.value.threatCount} 敌船`)
-const missionPhase = computed(() => currentAlgorithmFrame.value?.phase || (state.mission === 'RUNNING' ? 'TRANSIT' : 'READY'))
+const missionPhase = computed(() => String(
+  currentAlgorithmFrame.value?.metrics?.missionStage
+  || currentAlgorithmFrame.value?.phase
+  || (state.mission === 'RUNNING' ? 'TRANSIT' : 'READY'),
+))
 const missionMetrics = computed(() => currentAlgorithmFrame.value?.metrics ?? {})
 const visibleTargetCount = computed(() => currentAlgorithmFrame.value?.targets.filter(target => target.visible !== false).length ?? configuredTargetCount.value)
-const missionProgress = computed(() => Math.round(Number(
-  missionMetrics.value.missionProgress ?? missionMetrics.value.progress ?? 0,
-) * 100))
+const displayMissionProgress = computed(() => {
+  const raw = Math.max(0, Math.min(1, Number(
+    missionMetrics.value.missionProgress ?? missionMetrics.value.progress ?? 0,
+  )))
+  const completed = state.mission === 'COMPLETED'
+  const captured = Number(
+    missionMetrics.value.capturedTargetCount
+    ?? missionMetrics.value.capturedThreatCount
+    ?? 0,
+  )
+  const targetCount = Math.max(0, configuredTargetCount.value)
+  const allTargetsCaptured = targetCount > 0 && captured >= targetCount
+  // 100% is reserved for the terminal state. COMPLETING still waits for
+  // Unity to acknowledge the final pose frame.
+  return Math.round((completed && (allTargetsCaptured || targetCount === 0) ? raw : Math.min(raw, 0.99)) * 100)
+})
 const escortProgress = computed(() => Math.round(Number(missionMetrics.value.escortProgress ?? 0) * 100))
 const captureProgress = computed(() => Math.round(Number(missionMetrics.value.captureProgress ?? 0) * 100))
 const captureRemainingSeconds = computed(() => Math.max(0, Math.ceil(Number(missionMetrics.value.captureRemainingFrames ?? 0) / 10)))
 const captureGroups = computed(() => Array.isArray(missionMetrics.value.captureGroups)
   ? missionMetrics.value.captureGroups as CaptureGroupMetric[]
   : [])
+const pendingTerminalSequence = ref<number | null>(null)
+const pendingTerminalStatus = ref<string | null>(null)
 
 function setLeftPanelCollapsed(collapsed: boolean) {
   panelTransitioning.value = true
+  unityPanel.value?.beginViewportTransition()
   leftPanelCollapsed.value = collapsed
 }
 
 function setRightPanelCollapsed(collapsed: boolean) {
   panelTransitioning.value = true
+  unityPanel.value?.beginViewportTransition()
   rightPanelCollapsed.value = collapsed
 }
 
 function handleWorkbenchTransitionEnd(event: TransitionEvent) {
   if (event.propertyName !== 'grid-template-columns') return
   panelTransitioning.value = false
-  unityPanel.value?.syncViewport()
+  unityPanel.value?.endViewportTransition()
+}
+
+function handleWorkbenchTransitionCancel(event: TransitionEvent) {
+  if (event.propertyName !== 'grid-template-columns') return
+  panelTransitioning.value = false
+  unityPanel.value?.endViewportTransition()
 }
 const displayCaptureStage = (stage: unknown) => {
   const value = Number(stage ?? 0)
@@ -157,20 +194,23 @@ const selectedFrameItem = computed(() => {
     ?? null
 })
 const phaseSteps = computed(() => state.algorithm === 'ESCORT_GUARD'
-  ? ['护航', '侦察', '拦截', '围捕', '完成']
-  : ['预演', '追击', '围捕', '完成'])
+  ? ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '突破测试', '完成']
+  : ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '突破测试', '完成'])
 const activePhaseIndex = computed(() => {
   const phase = missionPhase.value.toUpperCase()
   if (state.mission === 'COMPLETED' || phase === 'COMPLETED') return phaseSteps.value.length - 1
   if (state.algorithm === 'ESCORT_GUARD') {
-    if (/CONTAIN|CAPTURE_HOLD|ENCIRCL/.test(phase)) return 3
-    if (/ACTIVE_CAPTURE|INTERCEPT|PURSUIT|ESCAPE/.test(phase)) return 2
-    if (/GUARD|BLOCK|DETECT|THREAT/.test(phase)) return 1
+    if (phase === 'COMPLETED') return 7
+    if (phase === 'BREAKOUT_TEST') return 6
+    if (phase === 'STABLE_CONTAINMENT') return 5
+    if (phase === 'GAP_REPAIR') return 4
+    if (phase === 'ENCIRCLEMENT') return 3
+    if (phase === 'INTERCEPT') return 2
+    if (phase === 'PURSUIT') return 1
+    if (phase === 'ESCAPE') return 0
     return 0
   }
-  if (/CAPTURE|CONTAIN|ENCIRCL/.test(phase)) return 2
-  if (/PURSUIT|ESCAPE|INTERCEPT/.test(phase)) return 1
-  return 0
+  return ({ ESCAPE: 0, PURSUIT: 1, INTERCEPT: 2, ENCIRCLEMENT: 3, GAP_REPAIR: 4, STABLE_CONTAINMENT: 5, BREAKOUT_TEST: 6, COMPLETED: 7 } as Record<string, number>)[phase] ?? 0
 })
 const protocolSnapshot = computed(() => JSON.stringify(
   lastUnityMessage.value ?? {
@@ -224,6 +264,23 @@ function send(type: string, payload: Record<string, unknown> = {}) {
   const requestId = unityPanel.value?.postToUnity(type, payload)
   addLog(`${type}${requestId ? ` / ${requestId}` : ''}`)
   return requestId
+}
+
+function finalizeTerminalMission(status: string, sequence: number) {
+  if (pendingTerminalSequence.value !== sequence) return
+  pendingTerminalSequence.value = null
+  pendingTerminalStatus.value = null
+  state.mission = status
+  stopAlgorithmPolling()
+  algorithmPrepared.value = false
+  algorithmPreparePromise = null
+  addLog(`mission terminal applied by Unity: ${status} sequence=${sequence}`)
+  send('missionStop', {
+    runtimeMode: 'VIRTUAL_SIMULATION',
+    runId: state.runId,
+    terminalStatus: status,
+    appliedSequence: sequence,
+  })
 }
 
 function onUnityReady() {
@@ -315,6 +372,17 @@ function onUnityMessage(message: UnityMessage) {
   }
   if (message.type === 'poseFrameApplied') {
     const success = message.payload?.success === true
+    const appliedSequence = Number(message.payload?.sequence ?? -1)
+    if (
+      success
+      && pendingTerminalSequence.value !== null
+      && appliedSequence === pendingTerminalSequence.value
+    ) {
+      finalizeTerminalMission(
+        pendingTerminalStatus.value ?? 'COMPLETED',
+        appliedSequence,
+      )
+    }
     const code = String(message.payload?.code ?? '')
     const trackedDeviceCode = String(message.payload?.trackedDeviceCode ?? '')
     const unityPosition = trackedDeviceCode
@@ -369,6 +437,8 @@ function generateScenario() {
   state.runId = Date.now()
   state.sequence = 0
   state.mission = 'STOPPED'
+  pendingTerminalSequence.value = null
+  pendingTerminalStatus.value = null
   missionActionMessage.value = ''
   algorithmPrepared.value = false
   algorithmPreparePromise = null
@@ -548,6 +618,8 @@ function toggleWebglExpanded() {
 }
 
 async function stopMission() {
+  pendingTerminalSequence.value = null
+  pendingTerminalStatus.value = null
   try {
     if (algorithmPrepared.value) await controlAlgorithmRun(state.runId, 'stop')
     state.mission = 'STOPPED'
@@ -571,6 +643,8 @@ async function resetMission() {
     }
   }
   state.mission = 'STOPPED'
+  pendingTerminalSequence.value = null
+  pendingTerminalStatus.value = null
   state.sequence = 0
   algorithmPrepared.value = false
   algorithmPreparePromise = null
@@ -615,16 +689,15 @@ async function applyAlgorithmFrame(
   send('applyPoseBatch', { ...adapted.payload, runId: state.runId })
   if (frame.terminalStatus) {
     const terminal = frame.terminalStatus.toUpperCase()
-    state.mission = terminal
+    pendingTerminalSequence.value = frame.sequence
+    pendingTerminalStatus.value = terminal
+    state.mission = 'COMPLETING'
     stopAlgorithmPolling()
-    algorithmPrepared.value = false
-    algorithmPreparePromise = null
-    addLog(`mission terminal: ${terminal} ${String(frame.metrics.terminalReason ?? '')}`)
-    send('missionStop', {
-      runtimeMode: 'VIRTUAL_SIMULATION',
-      runId: state.runId,
-      terminalStatus: terminal,
-    })
+    addLog(
+      `mission terminal pending Unity apply: ${terminal}`
+      + ` sequence=${frame.sequence}`
+      + ` ${String(frame.metrics.terminalReason ?? '')}`,
+    )
   }
 }
 
@@ -753,6 +826,7 @@ onBeforeUnmount(() => {
           'panel-transitioning': panelTransitioning,
         }"
         @transitionend="handleWorkbenchTransitionEnd"
+        @transitioncancel="handleWorkbenchTransitionCancel"
       >
         <aside class="vf-config-drawer" :class="{ collapsed: leftPanelCollapsed }">
           <button
@@ -849,7 +923,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="vf-live-strip">
             <span><i></i>阶段 <strong>{{ missionPhase }}</strong></span>
-            <span>综合进度 <strong>{{ missionProgress }}%</strong></span>
+            <span>综合进度 <strong>{{ displayMissionProgress }}%</strong></span>
             <span>可见目标 <strong>{{ visibleTargetCount }}</strong></span>
             <span v-if="state.algorithm === 'GB_SFLA_CS'">追逃 <strong>{{ Number(missionMetrics.targetTravelDistanceM ?? 0).toFixed(0) }}/{{ Number(missionMetrics.requiredPursuitDistanceM ?? 0).toFixed(0) }} m</strong></span>
             <span v-else>已捕获 <strong>{{ Number(missionMetrics.capturedThreatCount ?? 0) }}/{{ scenarioPlan.threatCount }}</strong></span>
@@ -928,7 +1002,7 @@ onBeforeUnmount(() => {
               <section class="vf-inspector-section">
                 <h4>任务指标</h4>
                 <dl class="vf-metric-list">
-                  <div><dt>综合进度</dt><dd>{{ missionProgress }}%</dd></div>
+                  <div><dt>综合进度</dt><dd>{{ displayMissionProgress }}%</dd></div>
                   <div><dt>可见目标</dt><dd>{{ visibleTargetCount }}</dd></div>
                   <template v-if="state.algorithm === 'GB_SFLA_CS'">
                     <div><dt>追逃距离</dt><dd>{{ Number(missionMetrics.targetTravelDistanceM ?? 0).toFixed(0) }}/{{ Number(missionMetrics.requiredPursuitDistanceM ?? 0).toFixed(0) }} m</dd></div>
@@ -947,12 +1021,19 @@ onBeforeUnmount(() => {
               </section>
 
               <section v-if="captureGroups.length" class="vf-inspector-section">
-                <h4>围捕目标</h4>
+                <h4>
+                  <span>围捕目标</span>
+                  <span>
+                    突破测试 {{ Number(missionMetrics.breakoutTestPassedCount ?? 0) }}/{{ Number(missionMetrics.breakoutTestRequiredTargetCount ?? captureGroups.length) }}
+                    <template v-if="Number(missionMetrics.breakoutTestActiveCount ?? 0) > 0"> · 进行中</template>
+                  </span>
+                </h4>
                 <div class="vf-capture-groups">
                   <article v-for="group in captureGroups.slice(0, 4)" :key="group.threatCode">
                     <strong>{{ group.threatCode }}</strong>
                     <span>阶段 {{ displayCaptureStage(group.stage) }}/3 · {{ group.uavCount }} UAV + {{ group.usvCount }} USV</span>
-                    <small>到位 {{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}% · 保持 {{ group.holdFrames ?? 0 }}/{{ group.holdRequiredFrames ?? 0 }}</small>
+                    <small>到位 {{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}% · 稳定闭环 {{ group.postBreakoutStableFrames ?? 0 }}/{{ group.requiredPostBreakoutStableFrames ?? 25 }}</small>
+                    <small>突破测试 {{ group.breakoutTestFrames ?? 0 }}/{{ group.breakoutTestRequiredFrames ?? 0 }} · {{ group.breakoutTestState || 'PENDING' }}</small>
                     <small v-if="state.algorithm === 'GB_SFLA_CS'">
                       实际闭环 {{ group.postGlobalContainmentReady ? '是' : '否' }}
                       · 最大缺口 {{ Number(group.postGlobalMaxGapDeg ?? 0).toFixed(0) }}/{{ Number(group.postGlobalMaxAllowedGapDeg ?? 0).toFixed(0) }}°
@@ -1017,7 +1098,6 @@ onBeforeUnmount(() => {
 .vf-config-drawer.collapsed .vf-config-panel { opacity: 0; visibility: hidden; transform: translateX(-12px); pointer-events: none; }
 .vf-inspector-drawer.collapsed .vf-inspector-panel { opacity: 0; visibility: hidden; transform: translateX(12px); pointer-events: none; }
 .vf-config-drawer.collapsed .vf-drawer-reopen, .vf-inspector-drawer.collapsed .vf-drawer-reopen { opacity: 1; visibility: visible; transform: translateX(0); pointer-events: auto; transition-delay: 90ms; }
-.vf-workbench.panel-transitioning .vf-stage-panel { contain: layout paint; }
 .vf-panel, .vf-stage-panel { min-width: 0; color: #dff8f4; background: rgba(8, 25, 30, .94); border: 1px solid rgba(108, 228, 213, .18); border-radius: 8px; }
 .vf-config-panel, .vf-inspector-panel { width: 100%; height: 100%; overflow: auto; }
 .vf-config-panel { padding: 15px; }
@@ -1069,13 +1149,16 @@ onBeforeUnmount(() => {
 .vf-live-strip { display: flex; min-height: 34px; padding: 0 13px; align-items: center; flex-wrap: wrap; gap: 8px 18px; color: #7ea7a5; background: #06191f; border-top: 1px solid rgba(108,228,213,.16); border-bottom: 1px solid rgba(108,228,213,.1); font-size: 10px; }
 .vf-live-strip span { display: inline-flex; align-items: center; gap: 5px; }
 .vf-live-strip strong { color: #eafffb; font-size: 11px; }
-.vf-command-bar { display: grid; min-height: 66px; padding: 9px 12px; align-items: center; gap: 14px; background: #06151a; grid-template-columns: auto minmax(280px, 1fr) auto; }
+.vf-command-bar { display: grid; min-height: 94px; padding: 9px 12px; align-items: center; gap: 8px 14px; background: #06151a; grid-template-columns: auto 1fr; grid-template-areas: 'commands cameras' 'steps steps'; }
+.vf-command-actions { grid-area: commands; }
+.vf-camera-actions { grid-area: cameras; justify-self: end; }
+.vf-phase-stepper { grid-area: steps; }
 .vf-command-actions, .vf-camera-actions { display: flex; align-items: center; gap: 7px; }
 .vf-command-actions .vf-button { margin: 0; }
 .vf-camera-actions button { display: inline-flex; min-height: 32px; padding: 0 9px; align-items: center; gap: 5px; color: #b8d8d4; cursor: pointer; background: #081e24; border: 1px solid rgba(108,228,213,.22); border-radius: 4px; font-size: 10px; }
 .vf-camera-actions button.active, .vf-camera-actions button:hover:not(:disabled) { color: #6ce4d5; border-color: rgba(108,228,213,.5); }
 .vf-camera-actions button:disabled { cursor: not-allowed; opacity: .38; }
-.vf-phase-stepper { display: flex; min-width: 0; margin: 0; padding: 0; align-items: center; justify-content: center; list-style: none; }
+.vf-phase-stepper { display: flex; min-width: 0; overflow-x: auto; margin: 0; padding: 0 2px; align-items: center; justify-content: center; list-style: none; }
 .vf-phase-stepper li { display: flex; min-width: 70px; align-items: center; gap: 6px; color: #617e7c; font-size: 10px; font-weight: 800; }
 .vf-phase-stepper li:not(:last-child)::after { height: 1px; min-width: 16px; margin: 0 6px; flex: 1; content: ''; background: #274044; }
 .vf-phase-stepper li span { display: grid; width: 22px; height: 22px; flex: 0 0 auto; place-items: center; border: 1px solid #385155; border-radius: 50%; }
@@ -1132,7 +1215,7 @@ onBeforeUnmount(() => {
   .vf-app-title span { display: none; }
   .vf-app-header { min-height: 52px; }
   .vf-workspace-switch a, .vf-workspace-switch span { min-width: 90px; padding: 7px 12px; }
-  .vf-command-bar { min-height: 58px; padding: 7px 9px; gap: 8px; grid-template-columns: auto minmax(210px, 1fr) auto; }
+  .vf-command-bar { min-height: 86px; padding: 7px 9px; gap: 8px; grid-template-columns: auto 1fr; grid-template-areas: 'commands cameras' 'steps steps'; }
   .vf-command-actions, .vf-camera-actions { gap: 5px; }
   .vf-command-actions .vf-button { width: 32px; padding: 0; }
   .vf-command-actions .vf-button span { display: none; }
@@ -1167,11 +1250,11 @@ onBeforeUnmount(() => {
   .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 380px; }
   .vf-two-col { grid-template-columns: 1fr; }
   .vf-stage-actions strong, .vf-unity-state { display: none; }
-  .vf-command-bar { grid-template-columns: 1fr; }
+  .vf-command-bar { min-height: 126px; grid-template-columns: 1fr; grid-template-areas: 'commands' 'cameras' 'steps'; }
   .vf-command-actions, .vf-camera-actions { justify-content: center; }
   .vf-command-actions .vf-button { width: auto; padding: 0 10px; }
   .vf-command-actions .vf-button span { display: inline; }
-  .vf-camera-actions { grid-column: auto; }
+  .vf-camera-actions { grid-column: auto; justify-self: center; }
   .vf-phase-stepper { overflow-x: auto; justify-content: flex-start; }
 }
 @media (max-width: 1400px) and (min-width: 801px) {
@@ -1192,7 +1275,7 @@ onBeforeUnmount(() => {
   .vf-stage-head { padding: 9px 12px; }
   .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 0; }
   .vf-live-strip { min-height: 29px; }
-  .vf-command-bar { min-height: 52px; padding-top: 5px; padding-bottom: 5px; }
+  .vf-command-bar { min-height: 86px; padding-top: 5px; padding-bottom: 5px; }
   .vf-status-card, .vf-inspector-section { padding: 11px; }
   .vf-target-list article, .vf-capture-groups article { padding: 6px; }
   .vf-metric-list div { padding: 5px 0; }
