@@ -251,19 +251,6 @@ class CaptureAdapter(AlgorithmAdapter):
         self.mission_stage = "ESCAPE"
         self.last_containment_confidence = 0.0
         self.capture_hold_frames = max(10, int(self.config.get("captureHoldFrames", 20)))
-        self.breakout_test_required_frames = max(15, int(self.config.get("breakoutTestFrames", 20)))
-        self.breakout_test_required_distance_m = max(3.0, float(self.config.get("breakoutTestDistanceM", 4.5)))
-        self.breakout_test_active = False
-        self.breakout_test_passed = False
-        self.breakout_test_started_sequence: int | None = None
-        self.breakout_test_origin: Tuple[float, float] | None = None
-        self.breakout_test_direction = self.target_escape_direction
-        self.breakout_test_frames = 0
-        self.breakout_test_distance_m = 0.0
-        self.post_breakout_stable_frames = 0
-        self.required_post_breakout_stable_frames = max(
-            25, int(self.config.get("postBreakoutStableFrames", 25))
-        )
         self.display_progress = 0.0
         self.progress_best_sequence = 0
         self.replan_count = 0
@@ -315,14 +302,6 @@ class CaptureAdapter(AlgorithmAdapter):
             self.settling_started_at_sequence = None
             self.containment_candidate_at_sequence = None
             self.formation_ready_at_sequence = None
-            self.breakout_test_active = False
-            self.breakout_test_passed = False
-            self.breakout_test_started_sequence = None
-            self.breakout_test_origin = None
-            self.breakout_test_direction = self.target_escape_direction
-            self.breakout_test_frames = 0
-            self.breakout_test_distance_m = 0.0
-            self.post_breakout_stable_frames = 0
             self.presentation_slot_assignments.clear()
             self.last_usv_angular_error_deg = 180.0
             self.display_progress = 0.0
@@ -668,6 +647,69 @@ class CaptureAdapter(AlgorithmAdapter):
             slot.altitude,
         )
 
+    def _pursuit_proposal(
+        self,
+        current: Tuple[float, float, float],
+        target: Tuple[float, float, float],
+        kind: str,
+        ordinal: int,
+        count: int,
+    ) -> Tuple[float, float, float]:
+        """Generate a visibly closing, bounded-lead interception step."""
+        dx = target[0] - current[0]
+        dy = target[1] - current[1]
+        distance = math.hypot(dx, dy)
+        if distance < 1e-6:
+            return current
+
+        target_vx, target_vy = self.target_velocity
+        target_speed = math.hypot(target_vx, target_vy)
+        configured = float(self.config.get(
+            "uavSpeedMps" if kind == "UAV" else "usvSpeedMps",
+            5.0 if kind == "UAV" else 3.0,
+        ))
+        pursuit_speed = (
+            min(15.0, max(configured, target_speed + 1.8))
+            if kind == "UAV"
+            else min(4.0, max(self.usv_pursuit_mps, target_speed + 0.65))
+        )
+        lead_time = min(
+            2.8,
+            max(0.45, distance / max(1.0, pursuit_speed + target_speed)),
+        )
+        lead_x = target_vx * lead_time
+        lead_y = target_vy * lead_time
+        lead_length = math.hypot(lead_x, lead_y)
+        maximum_lead = distance * 0.22
+        if lead_length > maximum_lead > 0.0:
+            lead_x *= maximum_lead / lead_length
+            lead_y *= maximum_lead / lead_length
+
+        velocity_length = target_speed or 1.0
+        normal_x = (
+            -target_vy / velocity_length
+            if target_speed > 1e-6 else -dy / distance
+        )
+        normal_y = (
+            target_vx / velocity_length
+            if target_speed > 1e-6 else dx / distance
+        )
+        centered = ordinal - (max(1, count) - 1) * 0.5
+        lane_spacing = 3.2 if kind == "USV" else 4.5
+        lane_offset = centered * lane_spacing * min(1.0, distance / 45.0)
+        aim_x = target[0] + lead_x + normal_x * lane_offset
+        aim_y = target[1] + lead_y + normal_y * lane_offset
+        aim_dx = aim_x - current[0]
+        aim_dy = aim_y - current[1]
+        aim_distance = math.hypot(aim_dx, aim_dy)
+        step = pursuit_speed * 0.1
+        if aim_distance <= step or aim_distance < 1e-9:
+            next_x, next_y = aim_x, aim_y
+        else:
+            next_x = current[0] + aim_dx * step / aim_distance
+            next_y = current[1] + aim_dy * step / aim_distance
+        return next_x, next_y, current[2]
+
     def _advance_capture_target(
         self,
         previous: Tuple[float, float, float],
@@ -712,9 +754,7 @@ class CaptureAdapter(AlgorithmAdapter):
                 desired_x += peer_dx / peer_length * repulsion
                 desired_y += peer_dy / peer_length * repulsion
         gap_direction = self._largest_gap_direction(previous, scene_agents)
-        if self.breakout_test_active:
-            desired_x, desired_y = self.breakout_test_direction
-        elif not preview and gap_direction is not None and (
+        if not preview and gap_direction is not None and (
             not pursuit or self.last_containment_confidence >= 0.35
         ):
             # A target under pressure should exploit the largest opening,
@@ -800,12 +840,6 @@ class CaptureAdapter(AlgorithmAdapter):
         if preview:
             speed = min(1.4, self.target_cruise_mps * 0.65)
             self.target_behavior_state = "CRUISE"
-        elif self.breakout_test_active:
-            speed = min(
-                self.target_max_mps,
-                max(self.target_cruise_mps * 1.4, self.target_max_mps * 0.82),
-            )
-            self.target_behavior_state = "BREAKOUT_TEST"
         elif self.containment_candidate_at_sequence is None:
             # Travel distance and a nearby interceptor are not capture.  The
             # target keeps at least its seeded cruise speed until the executed
@@ -839,10 +873,7 @@ class CaptureAdapter(AlgorithmAdapter):
         vx += max(-accel, min(accel, desired_vx - vx))
         vy += max(-accel, min(accel, desired_vy - vy))
         velocity_length = math.hypot(vx, vy)
-        confirmed_containment = (
-            self.containment_candidate_at_sequence is not None
-            and not self.breakout_test_active
-        )
+        confirmed_containment = self.containment_candidate_at_sequence is not None
         if (
             not preview
             and not confirmed_containment
@@ -871,7 +902,6 @@ class CaptureAdapter(AlgorithmAdapter):
         if (
             self.formation_ready_at_sequence is None
             and not confirmed_containment
-            and not self.breakout_test_active
             and velocity_length < 0.36
         ):
             # Turning at the coast must change heading rather than visually
@@ -884,7 +914,7 @@ class CaptureAdapter(AlgorithmAdapter):
         # a visible pursuit after circling back toward its spawn point. Keep
         # the net escape distance monotonic until containment is actually
         # latched; this also makes the mission metric meaningful for the UI.
-        if not preview and self.captured_at_sequence is None and not self.breakout_test_active:
+        if not preview and self.captured_at_sequence is None:
             start_dx = previous[0] - self.target_start_scene[0]
             start_dy = previous[1] - self.target_start_scene[1]
             current_net = math.hypot(start_dx, start_dy)
@@ -938,13 +968,6 @@ class CaptureAdapter(AlgorithmAdapter):
         self.target_velocity = (vx, vy)
         if not preview:
             self.target_travelled_distance += step
-        if self.breakout_test_active:
-            self.breakout_test_frames += 1
-            if self.breakout_test_origin is not None:
-                self.breakout_test_distance_m = math.hypot(
-                    safe.x - self.breakout_test_origin[0],
-                    safe.y - self.breakout_test_origin[1],
-                )
         return safe
 
     def _reset_positions(self) -> None:
@@ -1126,6 +1149,11 @@ class CaptureAdapter(AlgorithmAdapter):
             self._align_capture_slots_to_open_water((safe_target.x, safe_target.y, safe_target.z))
             self._assign_presentation_slots((safe_target.x, safe_target.y, safe_target.z))
         uav_no = usv_no = 0
+        guided_pursuit = (
+            not preview
+            and not formation_settling
+            and self.target_travelled_distance < self.required_pursuit_distance
+        )
         for index, raw in enumerate(self.env.agents):
             kind = "UAV" if int(raw[6]) == 0 else "USV"
             if kind == "UAV":
@@ -1153,6 +1181,20 @@ class CaptureAdapter(AlgorithmAdapter):
                     assigned_slot,
                     (safe_target.x, safe_target.y, safe_target.z),
                     settle_step,
+                )
+            elif guided_pursuit:
+                current_scene = self.previous_scene.get(
+                    code, self._to_scene(raw[:3], kind)
+                )
+                proposed_scene = self._pursuit_proposal(
+                    current_scene,
+                    (safe_target.x, safe_target.y, safe_target.z),
+                    kind,
+                    (uav_no if kind == "UAV" else usv_no) - 1,
+                    (
+                        len(self.uav_slot_specs)
+                        if kind == "UAV" else len(self.usv_slot_specs)
+                    ),
                 )
             else:
                 proposed_scene = self._to_scene(raw[:3], kind)
@@ -1202,7 +1244,7 @@ class CaptureAdapter(AlgorithmAdapter):
             # an overlap after the group had been made safe.
             if adjusted:
                 self.avoidance_count += 1
-            if preview or formation_settling or adjusted:
+            if preview or formation_settling or guided_pursuit or adjusted:
                 self.env.agents[index, :3] = self._to_internal(scene, kind)
             self.previous_scene[code] = scene
             initial_pose = self.initial_pose_map().get(code)
@@ -1534,20 +1576,10 @@ class CaptureAdapter(AlgorithmAdapter):
         if formation_ready:
             if self.containment_candidate_at_sequence is None:
                 self.containment_candidate_at_sequence = self.sequence
-        elif self.captured_at_sequence is None and not self.breakout_test_active:
+        elif self.captured_at_sequence is None:
             # Candidate continuity is strict. If the executed ring opens, the
             # target resumes breakout and the 20-frame confirmation restarts.
             self.containment_candidate_at_sequence = None
-        elif (
-            not formation_ready
-            and self.captured_at_sequence is None
-            and self.breakout_test_active
-        ):
-            # A multi-target coordinator may validate the executed global ring
-            # even when this child sees a local slot perturbation. Keep the
-            # active probe alive until the coordinator evaluates the poses it
-            # actually sent to Unity.
-            self.target_behavior_state = "BREAKOUT_TEST"
         if formation_ready and self.formation_ready_at_sequence is None:
             self.formation_ready_at_sequence = self.sequence
         elif not formation_ready:
@@ -1567,48 +1599,14 @@ class CaptureAdapter(AlgorithmAdapter):
         if (
             formation_ready
             and hold_frames >= self.capture_hold_frames
-            and not self.breakout_test_active
-            and not self.breakout_test_passed
             and self.captured_at_sequence is None
         ):
-            gap_direction = self._largest_gap_direction(
-                (safe_target.x, safe_target.y, safe_target.z),
-                [(agent.x, agent.y, agent.z) for agent in agents],
-            )
-            self.breakout_test_active = True
-            self.breakout_test_started_sequence = self.sequence
-            self.breakout_test_origin = (safe_target.x, safe_target.y)
-            self.breakout_test_direction = gap_direction or self.target_escape_direction
-            self.breakout_test_frames = 0
-            self.breakout_test_distance_m = 0.0
-            self.post_breakout_stable_frames = 0
-            self.target_behavior_state = "BREAKOUT_TEST"
-        if (
-            self.breakout_test_active
-            and formation_ready
-            and self.breakout_test_frames >= self.breakout_test_required_frames
-            and self.breakout_test_distance_m >= self.breakout_test_required_distance_m
-        ):
-            self.breakout_test_active = False
-            self.breakout_test_passed = True
-            self.post_breakout_stable_frames = 0
-            self.target_behavior_state = "CONTAINED"
-        if (
-            formation_ready
-            and self.breakout_test_passed
-            and self.captured_at_sequence is None
-        ):
-            self.post_breakout_stable_frames = min(
-                self.required_post_breakout_stable_frames,
-                self.post_breakout_stable_frames + 1,
-            )
-            if self.post_breakout_stable_frames >= self.required_post_breakout_stable_frames:
-                self.captured_at_sequence = self.sequence
-                guard_ids = {int(raw[7]) for raw in self.env.agents}
-                self.env.guarding_agents[0] = guard_ids
-                self.env.permanently_captured.add(0)
-                self.target_behavior_state = "CAPTURED"
-                self.target_velocity = (0.0, 0.0)
+            self.captured_at_sequence = self.sequence
+            guard_ids = {int(raw[7]) for raw in self.env.agents}
+            self.env.guarding_agents[0] = guard_ids
+            self.env.permanently_captured.add(0)
+            self.target_behavior_state = "CAPTURED"
+            self.target_velocity = (0.0, 0.0)
         captured = self.captured_at_sequence is not None
         formation_held = formation_ready or captured
         gap_repair_required = (
@@ -1628,10 +1626,6 @@ class CaptureAdapter(AlgorithmAdapter):
             mission_stage = "PREVIEW"
         elif captured:
             mission_stage = "COMPLETED"
-        elif self.breakout_test_passed and formation_ready:
-            mission_stage = "STABLE_CONTAINMENT"
-        elif self.breakout_test_active:
-            mission_stage = "BREAKOUT_TEST"
         elif not pursuit_complete:
             mission_stage = (
                 "ESCAPE"
@@ -1647,7 +1641,7 @@ class CaptureAdapter(AlgorithmAdapter):
             mission_stage = "INTERCEPT"
         elif gap_repair_required:
             mission_stage = "GAP_REPAIR"
-        elif formation_ready and not self.breakout_test_active:
+        elif formation_ready:
             mission_stage = "STABLE_CONTAINMENT"
         else:
             mission_stage = "ENCIRCLEMENT"
@@ -1655,8 +1649,6 @@ class CaptureAdapter(AlgorithmAdapter):
         mission_stage = (
             "PREVIEW"
             if preview
-            else "BREAKOUT_TEST"
-            if self.breakout_test_active
             else "COMPLETED"
             if captured
             else self.mission_stage
@@ -1664,8 +1656,6 @@ class CaptureAdapter(AlgorithmAdapter):
         phase = (
             "PREVIEW"
             if preview
-            else "BREAKOUT_TEST"
-            if self.breakout_test_active
             else "CAPTURED"
             if captured
             else "ESCAPE_PURSUIT"
@@ -1711,10 +1701,6 @@ class CaptureAdapter(AlgorithmAdapter):
             capture_blocker = "RING_GEOMETRY"
         elif not formation_ready:
             capture_blocker = "SLOT_CONFLICT"
-        elif self.breakout_test_active:
-            capture_blocker = "BREAKOUT_TEST"
-        elif not self.breakout_test_passed:
-            capture_blocker = "BREAKOUT_NOT_PASSED"
         elif not captured:
             capture_blocker = "HOLD_CONFIRMATION"
         else:
@@ -1773,10 +1759,8 @@ class CaptureAdapter(AlgorithmAdapter):
             "requiredCaptureHoldFrames": self.capture_hold_frames,
             "captureStage": 3 if captured else 2 if formation_ready or coarse_containment else 1,
             "missionStage": mission_stage,
-            "stableContainmentFrames": hold_frames if formation_ready and not self.breakout_test_active else 0,
+            "stableContainmentFrames": hold_frames if formation_ready else 0,
             "requiredStableContainmentFrames": self.capture_hold_frames,
-            "postBreakoutStableFrames": self.post_breakout_stable_frames,
-            "requiredPostBreakoutStableFrames": self.required_post_breakout_stable_frames,
             "gapRepairRequired": gap_repair_required,
             "arrivalRatio": round(radial_score, 3),
             "captureBlocker": capture_blocker,
@@ -1799,17 +1783,6 @@ class CaptureAdapter(AlgorithmAdapter):
             },
             "settlingStarted": self.settling_started_at_sequence is not None,
             "containmentCandidate": self.containment_candidate_at_sequence is not None,
-            "breakoutTestState": (
-                "ACTIVE"
-                if self.breakout_test_active
-                else "PASSED"
-                if self.breakout_test_passed
-                else "PENDING"
-            ),
-            "breakoutTestFrames": self.breakout_test_frames,
-            "breakoutTestRequiredFrames": self.breakout_test_required_frames,
-            "breakoutTestDistanceM": round(self.breakout_test_distance_m, 3),
-            "breakoutTestRequiredDistanceM": self.breakout_test_required_distance_m,
             "stalledFrames": self.stalled_frames,
             "replanCount": self.replan_count,
             "avoidanceCount": self.avoidance_count,

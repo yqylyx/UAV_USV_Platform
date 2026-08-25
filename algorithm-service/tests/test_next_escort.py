@@ -115,7 +115,7 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         # Automatic capture may already be active before this compatibility
         # command. The convoy then needs its independent escort window to
         # reach the safe destination after containment is complete.
-        for _ in range(adapter.timeout_frames):
+        for _ in range(12000):
             frame = adapter.step()
             terminal = frame.terminalStatus
             if terminal:
@@ -124,7 +124,6 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         self.assertGreater(frame.sequence, activation_sequence)
         self.assertNotEqual(frame.metrics["terminalReason"], "active capture time limit reached")
         self.assertEqual(frame.metrics["missionProgress"], 1.0)
-        self.assertEqual(frame.metrics["captureRemainingFrames"], 0)
 
     def test_completed_escort_keeps_the_enemy_contained(self):
         adapter = AdaptiveEscortAdapter(9253, {
@@ -134,7 +133,7 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         frame = None
         minimum_after_capture = math.inf
         minimum_member_clearance = math.inf
-        for _ in range(adapter.timeout_frames):
+        for _ in range(12000):
             frame = adapter.step()
             threat = adapter.threats[0]
             protected = adapter.protected[0]
@@ -172,7 +171,7 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         self.assertEqual(len(assigned_codes), len(set(assigned_codes)))
         self.assertIn("escortProgress", frame.metrics)
         self.assertIn("captureProgress", frame.metrics)
-        self.assertIn("captureRemainingFrames", frame.metrics)
+        self.assertNotIn("captureRemainingFrames", frame.metrics)
 
     def test_ten_plus_ten_two_threats_attack_then_get_independent_intercepts(self):
         adapter = AdaptiveEscortAdapter(9254, {
@@ -264,11 +263,54 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         self.assertGreater(maximum_threat_speed, 1.7)
         self.assertLessEqual(maximum_threat_speed, 2.41)
         self.assertGreater(maximum_usv_speed, 2.1)
-        # Collision projection can add a very small lateral component while
-        # preserving the configured 3 m/s cruise profile.
-        self.assertLessEqual(maximum_usv_speed, 3.05)
+        # Interceptors may accelerate above cruise but remain under the 4 m/s
+        # physical surface limit advertised by the simulation UI.
+        self.assertLessEqual(maximum_usv_speed, 4.05)
         self.assertGreater(maximum_target_speed, 1.4)
         self.assertLessEqual(maximum_target_speed, 2.26)
+
+    def test_urgent_threats_receive_independent_mixed_response_pairs(self):
+        adapter = AdaptiveEscortAdapter(9300, {
+            "uavCount": 15, "usvCount": 15, "seed": 20260814,
+        })
+        for threat in adapter.threats[:3]:
+            target = adapter.protected[threat.protected_index]
+            threat.x = target.x - 82.0
+            threat.y = target.y
+            threat.vx = 2.0
+            threat.vy = 0.0
+            threat.detected_frame = 1
+            threat.state = "DETECTED"
+        adapter._synchronize_guard_roles()
+        for index in range(3):
+            blockers = [
+                item for item in adapter.vehicles
+                if item.group_id == f"BLOCK-{index + 1:03d}"
+            ]
+            observers = [
+                item for item in adapter.vehicles
+                if item.group_id == f"WATCH-{index + 1:03d}"
+            ]
+            self.assertGreaterEqual(len(blockers), 2)
+            self.assertGreaterEqual(len(observers), 2)
+            desired = [adapter._desired_position(item) for item in blockers]
+            self.assertGreater(math.hypot(
+                desired[0][0] - desired[1][0],
+                desired[0][1] - desired[1][1],
+            ), 10.0)
+
+    def test_capture_allocation_preserves_quick_response_reserve(self):
+        adapter = AdaptiveEscortAdapter(9302, {
+            "uavCount": 15, "usvCount": 15, "seed": 20260814,
+        })
+        adapter._start_capture_for([adapter.threats[0]], "TEST")
+        for kind in ("UAV", "USV"):
+            reserve = [
+                item for item in adapter.vehicles
+                if item.kind == kind and item.role == "RECON"
+                and item.assigned_threat is None
+            ]
+            self.assertGreaterEqual(len(reserve), 2)
 
     def test_protected_target_moves_and_evades_after_detection(self):
         adapter = AdaptiveEscortAdapter(9301, {"uavCount": 3, "usvCount": 3, "seed": 4})
@@ -294,21 +336,20 @@ class NextEscortAcceptanceTests(unittest.TestCase):
                 self.assertGreaterEqual(distance, BREACH_DISTANCE_M)
                 self.assertGreaterEqual(frame.metrics["minShoreDistanceM"], -1e-6)
 
-    def test_terminal_state_is_explicit(self):
+    def test_mission_has_no_wall_clock_forced_terminal(self):
         adapter = AdaptiveEscortAdapter(9501, {"uavCount": 3, "usvCount": 3, "seed": 2})
         adapter.timeout_frames = 3
         frame = self.run_frames(adapter, 4)
-        self.assertEqual(frame.terminalStatus, "TIMEOUT")
-        self.assertEqual(frame.phase, "TIMEOUT")
-        self.assertTrue(frame.metrics["terminalReason"])
+        self.assertIsNone(frame.terminalStatus)
+        self.assertNotEqual(frame.phase, "TIMEOUT")
 
-    def test_active_capture_timeout_is_relative_to_activation(self):
+    def test_active_capture_has_no_fixed_deadline(self):
         adapter = AdaptiveEscortAdapter(9502, {"uavCount": 3, "usvCount": 3, "seed": 2})
         self.run_frames(adapter, 50)
         adapter.activate_capture()
         adapter.capture_timeout_frames = 3
         frame = self.run_frames(adapter, 3)
-        self.assertEqual(frame.terminalStatus, "TIMEOUT")
+        self.assertIsNone(frame.terminalStatus)
         self.assertEqual(frame.metrics["captureElapsedFrames"], 3)
 
 

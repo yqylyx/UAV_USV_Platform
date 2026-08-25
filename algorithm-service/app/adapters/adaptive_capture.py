@@ -6,7 +6,14 @@ from typing import Dict, List, Mapping
 
 from app.adapters.base import AlgorithmAdapter
 from app.adapters.capture import CaptureAdapter
-from app.capture import assess_containment, maximum_capture_gap_deg
+from app.capture import (
+    RingMember,
+    RingSlot,
+    allocate_balanced_groups,
+    assess_canonical_ring,
+    build_canonical_slots,
+    maximum_capture_gap_deg,
+)
 from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
 from app.scenario import derive_scenario_plan
 from app.schemas import AgentFrame, RuntimeFrame, TargetFrame
@@ -46,8 +53,12 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         # a target had completed its visible escape run. Several UAVs were
         # then projected onto the same boundary point, leaving an artificial
         # 90+ degree opening that could never converge.
-        half_width = max(320.0, plan.world_width * 0.5 + 120.0)
-        half_height = max(260.0, plan.world_height * 0.5 + 120.0)
+        # The target solver may use the full scenario extent.  The coordinator
+        # therefore needs another complete outer-ring diameter beyond that
+        # extent; otherwise a target near an edge remains valid while half of
+        # its requested ring is clamped to the same boundary coordinate.
+        half_width = max(420.0, plan.world_width * 0.5 + 220.0)
+        half_height = max(360.0, plan.world_height * 0.5 + 220.0)
         self.safety = SceneSafetyFilter({
             "bounds": [-half_width, half_width, -half_height, half_height],
             "obstacles": list(TASK_CENTER_SCENE_MAP.get("obstacles", [])),
@@ -57,12 +68,31 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         # Unity. Child solvers assess before the cross-target safety pass, so
         # their private hold cannot be authoritative for a merged scene.
         self.executed_hold_frames: List[int] = [0 for _ in range(self.target_count)]
-        self.executed_post_breakout_stable_frames: List[int] = [0 for _ in range(self.target_count)]
-        # Keep the aggregate mission in final verification once any target
-        # enters it; staggered target groups must not make the UI oscillate
-        # between STABLE_CONTAINMENT and BREAKOUT_TEST.
-        self.breakout_test_phase_started = False
+        # Geometry produced by the global safety pass can cross a threshold for
+        # one frame while a neighbour yields.  Treat those small angular/radial
+        # excursions as a local repair action instead of resetting the whole
+        # containment state machine.  Hard safety failures still regress at
+        # once; soft failures use a Schmitt-style grace window.
+        self.executed_soft_failure_frames: List[int] = [0 for _ in range(self.target_count)]
+        self.containment_stage_latched: List[bool] = [False for _ in range(self.target_count)]
+        self.soft_failure_grace_frames = max(
+            3, int(self.config.get("containmentSoftFailureGraceFrames", 8))
+        )
         self.display_progress = 0.0
+        self.reported_mission_stage = "PREVIEW"
+        # One authoritative horizontal ring per target. Slot identities remain
+        # stable for the lifetime of the assignment and are assessed again on
+        # the exact collision-safe coordinates emitted to Unity.
+        self.ring_slots: List[Dict[str, RingSlot]] = [
+            {} for _ in range(self.target_count)
+        ]
+        self.support_slots: List[Dict[str, RingSlot]] = [
+            {} for _ in range(self.target_count)
+        ]
+        self.ring_member_codes: List[set[str]] = []
+        self.ring_best_arrival: List[float] = [0.0 for _ in range(self.target_count)]
+        self.ring_stalled_frames: List[int] = [0 for _ in range(self.target_count)]
+        self.ring_replans: List[int] = [0 for _ in range(self.target_count)]
         initial = self.initial_pose_map()
 
         target_points = [
@@ -78,6 +108,12 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         for target_index in range(self.target_count):
             global_uavs = uav_groups[target_index]
             global_usvs = usv_groups[target_index]
+            # A dense fleet uses a ten-member primary ring and an outer support
+            # ring.  Completion therefore becomes easier to scale, not harder,
+            # while every surplus device still has an explicit moving role.
+            self.ring_member_codes.append(set(
+                global_uavs[:5] + global_usvs[:5]
+            ))
             code_map: Dict[str, str] = {}
             child_poses: List[Dict[str, object]] = []
             for kind, codes in (("UAV", global_uavs), ("USV", global_usvs)):
@@ -116,45 +152,26 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         initial: Mapping[str, Mapping[str, object]],
         target_points: List[Mapping[str, object] | None],
     ) -> List[List[str]]:
-        """Build balanced, distance-aware teams instead of round-robin lists.
-
-        The first pass guarantees one member per target where possible.  The
-        remaining devices are assigned by distance plus a load penalty so the
-        result remains balanced without sending a nearby craft across another
-        group's pursuit corridor.
-        """
-        result: List[List[str]] = [[] for _ in range(groups)]
+        """Build capacity-balanced teams with travel distance as their cost."""
         codes = [f"{kind}-{index + 1:03d}" for index in range(count)]
-
-        def distance(code: str, group_index: int) -> float:
-            pose = initial.get(code)
-            target = target_points[group_index]
-            if pose is None or target is None:
-                return 0.0
-            dx = float(pose.get("eastM", 0.0)) - float(target.get("eastM", 0.0))
-            dy = float(pose.get("northM", 0.0)) - float(target.get("northM", 0.0))
-            return math.hypot(dx, dy)
-
-        unassigned = set(codes)
-        for group_index in range(groups):
-            if not unassigned:
-                break
-            chosen = min(unassigned, key=lambda code: (distance(code, group_index), code))
-            result[group_index].append(chosen)
-            unassigned.remove(chosen)
-        while unassigned:
-            code = min(unassigned)
-            group_index = min(
-                range(groups),
-                key=lambda index: (
-                    len(result[index]),
-                    distance(code, index),
-                    index,
-                ),
+        positions = {
+            code: (
+                float(initial[code].get("eastM", 0.0)),
+                float(initial[code].get("northM", 0.0)),
+                float(initial[code].get("upM", 0.0)),
             )
-            result[group_index].append(code)
-            unassigned.remove(code)
-        return result
+            for code in codes
+            if code in initial
+        }
+        targets = [
+            None if point is None else (
+                float(point.get("eastM", 0.0)),
+                float(point.get("northM", 0.0)),
+                float(point.get("upM", 0.0)),
+            )
+            for point in target_points
+        ]
+        return allocate_balanced_groups(codes, groups, positions, targets)
 
     def set_mission_active(self, active: bool) -> None:
         super().set_mission_active(active)
@@ -162,7 +179,292 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             child.set_mission_active(active)
 
     @staticmethod
+    def _hard_containment_failure(blocker: object) -> bool:
+        """Failures that cannot be hidden behind containment hysteresis."""
+        name = str(blocker or "")
+        return any(token in name for token in {
+            "INSUFFICIENT_AGENTS",
+            "INCOMPLETE_PARTICIPATION",
+            "TARGET_OUTSIDE_HULL",
+            "INNER_RADIUS",
+            "OUTER_RADIUS",
+            "MINIMUM_SEPARATION",
+            "INVALID_PARTICIPANT",
+        })
+
+    def _update_executed_hold(
+        self,
+        index: int,
+        current: int,
+        required: int,
+        executed: Mapping[str, object],
+    ) -> tuple[int, bool]:
+        """Only consecutive valid emitted frames can confirm containment."""
+        if bool(executed.get("ready", False)):
+            self.executed_soft_failure_frames[index] = 0
+            return min(required, current + 1), True
+        self.executed_soft_failure_frames[index] = 0
+        return 0, False
+
+    @staticmethod
+    def _as_ring_members(agents: List[AgentFrame]) -> List[RingMember]:
+        return [
+            RingMember(
+                agent.code, agent.type, agent.x, agent.y, agent.z,
+                agent.heading,
+            )
+            for agent in agents
+        ]
+
+    def _ensure_ring_slots(
+        self,
+        index: int,
+        agents: List[AgentFrame],
+        target: TargetFrame,
+    ) -> Dict[str, RingSlot]:
+        current_codes = {agent.code for agent in agents}
+        if set(self.ring_slots[index]) != current_codes:
+            members = self._as_ring_members(agents)
+            center = (target.x, target.y, target.z)
+            base_phase = math.radians(target.heading)
+            samples = max(8, min(24, len(agents) * 2))
+            phase_span = 2.0 * math.pi / max(3, len(agents))
+            candidates = [
+                build_canonical_slots(
+                    members,
+                    center,
+                    phase=base_phase + phase_span * sample / samples,
+                    minimum_spacing_m=14.0,
+                )
+                for sample in range(samples)
+            ]
+            self.ring_slots[index] = min(
+                candidates,
+                key=lambda candidate: sum(
+                    math.hypot(
+                        member.x - candidate[member.code].point(center)[0],
+                        member.y - candidate[member.code].point(center)[1],
+                    )
+                    for member in members
+                ),
+            )
+        return self.ring_slots[index]
+
+    def _command_canonical_ring(
+        self,
+        index: int,
+        child: CaptureAdapter,
+        agents: List[AgentFrame],
+        target: TargetFrame,
+    ) -> None:
+        """Move every assigned member toward one stable, target-centred ring."""
+        if not self.mission_active:
+            return
+        if child.target_travelled_distance < child.required_pursuit_distance + 20.0:
+            return
+        primary_agents = [
+            agent for agent in agents
+            if agent.code in self.ring_member_codes[index]
+        ]
+        support_agents = [
+            agent for agent in agents
+            if agent.code not in self.ring_member_codes[index]
+        ]
+        slots = self._ensure_ring_slots(index, primary_agents, target)
+        previous_target = self.previous_scene.get(target.code)
+        velocity_x = 0.0 if previous_target is None else (target.x - previous_target[0]) / 0.1
+        velocity_y = 0.0 if previous_target is None else (target.y - previous_target[1]) / 0.1
+        current_members = self._as_ring_members(primary_agents)
+        provisional = assess_canonical_ring(
+            current_members,
+            (target.x, target.y, target.z),
+            slots,
+            slot_tolerance_m=12.0,
+            minimum_separation_m=0.0,
+        )
+        # The target keeps escaping at full speed until pursuers actually reach
+        # its neighbourhood. It then loses manoeuvring room progressively, but
+        # never stops before the strict ring contract is confirmed.
+        if provisional.arrival_ratio >= 0.35:
+            vx, vy = child.target_velocity
+            current_target_speed = math.hypot(vx, vy)
+            speed_cap = max(0.65, 2.2 * (1.0 - provisional.arrival_ratio * 0.68))
+            if current_target_speed > speed_cap > 0.0:
+                child.target_velocity = (
+                    vx * speed_cap / current_target_speed,
+                    vy * speed_cap / current_target_speed,
+                )
+        center = (
+            target.x + velocity_x * 0.10,
+            target.y + velocity_y * 0.10,
+            target.z,
+        )
+        target_speed = math.hypot(velocity_x, velocity_y)
+        for agent in primary_agents:
+            slot = slots[agent.code]
+            current = self.previous_scene.get(agent.code, (agent.x, agent.y, agent.z))
+            final_slot = slot.point(center)
+            slot_error = math.hypot(final_slot[0] - current[0], final_slot[1] - current[1])
+            configured = float(child.config.get(
+                "uavSpeedMps" if agent.type == "UAV" else "usvSpeedMps",
+                5.0 if agent.type == "UAV" else 3.0,
+            ))
+            if agent.type == "UAV":
+                speed = min(15.0, max(configured, target_speed + min(3.5, 0.5 + slot_error * 0.04)))
+            else:
+                speed = min(4.0, max(configured, target_speed + min(1.25, 0.3 + slot_error * 0.025)))
+            # Reduce only in the last metres; never fall behind a translating
+            # target while the ring is still closing.
+            if slot_error < 7.0:
+                speed = max(target_speed + 0.12, speed * max(0.35, slot_error / 7.0))
+            step = max(0.02, speed * 0.1)
+            # Approach a slot in polar coordinates. A straight chord can cross
+            # the target or another member and become permanently rejected by
+            # swept collision safety. Radial-then-tangential convergence keeps
+            # circular order and gives every member a collision-free route.
+            rel_x, rel_y = current[0] - center[0], current[1] - center[1]
+            current_radius = max(1.0, math.hypot(rel_x, rel_y))
+            current_angle = math.atan2(rel_y, rel_x)
+            angular_error = (slot.angle - current_angle + math.pi) % (2.0 * math.pi) - math.pi
+            radial_error = slot.radius - current_radius
+            radial_step = max(-step * 0.55, min(step * 0.55, radial_error))
+            angular_step = max(
+                -step * 0.82 / max(8.0, current_radius),
+                min(step * 0.82 / max(8.0, current_radius), angular_error),
+            )
+            if abs(angular_error) > math.pi * 0.52:
+                waypoint_radius = current_radius + radial_step
+                waypoint_angle = current_angle + angular_step
+                desired = (
+                    center[0] + math.cos(waypoint_angle) * waypoint_radius,
+                    center[1] + math.sin(waypoint_angle) * waypoint_radius,
+                    final_slot[2],
+                )
+            else:
+                desired = final_slot
+            dx, dy = desired[0] - current[0], desired[1] - current[1]
+            distance = math.hypot(dx, dy)
+            if distance <= step or distance < 1e-9:
+                next_x, next_y = desired[0], desired[1]
+            else:
+                next_x = current[0] + dx * step / distance
+                next_y = current[1] + dy * step / distance
+            if math.hypot(next_x - current[0], next_y - current[1]) > 1e-6:
+                agent.heading = math.degrees(math.atan2(next_y - current[1], next_x - current[0])) % 360.0
+            remaining_slot_error = math.hypot(
+                final_slot[0] - next_x, final_slot[1] - next_y
+            )
+            if agent.type == "USV" and remaining_slot_error <= 8.0:
+                inward_heading = math.degrees(math.atan2(
+                    target.y - next_y, target.x - next_x
+                )) % 360.0
+                current_heading = self._stable_headings.get(
+                    agent.code, agent.heading
+                )
+                heading_delta = (
+                    inward_heading - current_heading + 180.0
+                ) % 360.0 - 180.0
+                agent.heading = (
+                    current_heading
+                    + max(-6.0, min(6.0, heading_delta))
+                ) % 360.0
+                self._stable_headings[agent.code] = agent.heading
+            elif agent.type == "USV":
+                self._stable_headings[agent.code] = agent.heading
+            agent.x, agent.y, agent.z = next_x, next_y, desired[2]
+            agent.role = "RING_MEMBER"
+
+        if support_agents:
+            support_codes = {agent.code for agent in support_agents}
+            if set(self.support_slots[index]) != support_codes:
+                support = build_canonical_slots(
+                    self._as_ring_members(support_agents),
+                    (target.x, target.y, target.z),
+                    phase=(
+                        math.radians(target.heading)
+                        + math.pi / max(1, len(support_agents))
+                    ),
+                    minimum_spacing_m=14.0,
+                )
+                inner_radius = max(
+                    (slot.radius for slot in slots.values()),
+                    default=24.0,
+                )
+                outer_radius = min(96.0, inner_radius + 28.0)
+                self.support_slots[index] = {
+                    code: RingSlot(
+                        slot.index,
+                        slot.angle,
+                        outer_radius,
+                        slot.altitude,
+                    )
+                    for code, slot in support.items()
+                }
+            support_center = (
+                target.x + velocity_x * 0.10,
+                target.y + velocity_y * 0.10,
+                target.z,
+            )
+            for agent in support_agents:
+                slot = self.support_slots[index][agent.code]
+                current = self.previous_scene.get(
+                    agent.code, (agent.x, agent.y, agent.z)
+                )
+                final_slot = slot.point(support_center)
+                configured = float(child.config.get(
+                    "uavSpeedMps" if agent.type == "UAV" else "usvSpeedMps",
+                    5.0 if agent.type == "UAV" else 3.0,
+                ))
+                speed_limit = 15.0 if agent.type == "UAV" else 4.0
+                speed = min(
+                    speed_limit,
+                    max(configured, target_speed + (1.2 if agent.type == "UAV" else 0.5)),
+                )
+                step = max(0.02, speed * 0.1)
+                rel_x = current[0] - support_center[0]
+                rel_y = current[1] - support_center[1]
+                current_radius = max(1.0, math.hypot(rel_x, rel_y))
+                current_angle = math.atan2(rel_y, rel_x)
+                angular_error = (
+                    slot.angle - current_angle + math.pi
+                ) % (2.0 * math.pi) - math.pi
+                radial_error = slot.radius - current_radius
+                radial_step = max(
+                    -step * 0.65, min(step * 0.65, radial_error)
+                )
+                angular_step = max(
+                    -step * 0.7 / max(8.0, current_radius),
+                    min(
+                        step * 0.7 / max(8.0, current_radius),
+                        angular_error,
+                    ),
+                )
+                desired_radius = current_radius + radial_step
+                desired_angle = current_angle + angular_step
+                desired = (
+                    support_center[0] + math.cos(desired_angle) * desired_radius,
+                    support_center[1] + math.sin(desired_angle) * desired_radius,
+                    final_slot[2],
+                )
+                if abs(angular_error) <= 0.10 and abs(radial_error) <= 5.0:
+                    desired = final_slot
+                dx, dy = desired[0] - current[0], desired[1] - current[1]
+                distance = math.hypot(dx, dy)
+                if distance <= step or distance < 1e-9:
+                    next_x, next_y = desired[0], desired[1]
+                else:
+                    next_x = current[0] + dx * step / distance
+                    next_y = current[1] + dy * step / distance
+                if math.hypot(next_x - current[0], next_y - current[1]) > 1e-6:
+                    agent.heading = math.degrees(math.atan2(
+                        next_y - current[1], next_x - current[0]
+                    )) % 360.0
+                agent.x, agent.y, agent.z = next_x, next_y, desired[2]
+                agent.role = "CAPTURE_RESERVE"
+
     def _executed_containment(
+        self,
+        index: int,
         child: CaptureAdapter,
         agents: List[AgentFrame],
         target: TargetFrame,
@@ -178,37 +480,19 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 "maximumRadiusM": 0.0,
                 "blocker": "POST_GLOBAL_INSUFFICIENT_AGENTS",
             }
-        angles = sorted(
-            math.atan2(agent.y - target.y, agent.x - target.x) % (2.0 * math.pi)
-            for agent in agents
-        )
-        max_gap_deg = math.degrees(max(
-            (angles[(index + 1) % len(angles)] - angles[index]) % (2.0 * math.pi)
-            for index in range(len(angles))
-        ))
-        radii = [math.hypot(agent.x - target.x, agent.y - target.y) for agent in agents]
-        lower_radius = 13.5
-        upper_radius = child.outer_formation_radius + 15.0
-        max_gap_limit_deg = maximum_capture_gap_deg(len(agents))
-        target_inside = max_gap_deg < 180.0 - 1e-6
         visible_chase_complete = (
             child.target_travelled_distance
             >= child.required_pursuit_distance + 20.0
         )
-        contract = assess_containment(
-            [(agent.x, agent.y, agent.z) for agent in agents],
+        slots = self._ensure_ring_slots(index, agents, target)
+        contract = assess_canonical_ring(
+            self._as_ring_members(agents),
             (target.x, target.y, target.z),
-            required_count=len(agents),
-            device_types=[agent.type for agent in agents],
-            minimum_type_counts={"UAV": 1, "USV": 1},
-            minimum_radius_m=lower_radius,
-            maximum_radius_m=upper_radius,
-            # Multi-target teams intentionally use concentric UAV/USV layers.
-            # Permit that designed layer offset while still bounding detached
-            # staging craft and pathological radial outliers.
-            maximum_radial_spread_m=max(48.0, upper_radius * 0.40),
-            minimum_pairwise_separation_m=7.1,
-            tolerance_deg=0.0,
+            slots,
+            slot_tolerance_m=3.5,
+            minimum_separation_m=7.0,
+            require_inward_usv_heading=True,
+            usv_heading_tolerance_deg=3.0,
         )
         if not visible_chase_complete:
             blocker = "PURSUIT_DISTANCE"
@@ -219,22 +503,32 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         return {
             "ready": blocker == "NONE",
             "targetInside": contract.target_inside,
-            "maxGapDeg": contract.max_gap_deg,
+            "maxGapDeg": contract.maximum_gap_deg,
             "maxAllowedGapDeg": contract.allowed_gap_deg,
-            "minimumRadiusM": contract.minimum_radius_m,
-            "maximumRadiusM": contract.maximum_radius_m,
+            "minimumRadiusM": min(
+                (math.hypot(agent.x - target.x, agent.y - target.y) for agent in agents),
+                default=0.0,
+            ),
+            "maximumRadiusM": max(
+                (math.hypot(agent.x - target.x, agent.y - target.y) for agent in agents),
+                default=0.0,
+            ),
             "radialSpreadM": contract.radial_spread_m,
-            "sectorCount": contract.sector_count,
-            "coveredSectors": contract.covered_sectors,
+            "sectorCount": len(agents),
+            "coveredSectors": contract.arrived_count,
             "minimumSeparationM": contract.minimum_separation_m,
-            "requiredSeparationM": contract.required_separation_m,
-            "uavCount": contract.uav_count,
-            "usvCount": contract.usv_count,
-            "invalidParticipants": contract.invalid,
-            "stationaryParticipants": contract.stationary,
-            "detachedParticipants": contract.detached,
-            "participating": contract.participating,
-            "required": contract.required,
+            "requiredSeparationM": 7.0,
+            "uavCount": sum(agent.type == "UAV" for agent in agents),
+            "usvCount": sum(agent.type == "USV" for agent in agents),
+            "invalidParticipants": 0,
+            "stationaryParticipants": 0,
+            "detachedParticipants": len(agents) - contract.arrived_count,
+            "participating": contract.arrived_count,
+            "required": len(agents),
+            "arrivalRatio": contract.arrival_ratio,
+            "maximumSlotErrorM": contract.maximum_slot_error_m,
+            "inwardOrientedUsvCount": contract.inward_oriented_usv_count,
+            "maximumUsvHeadingErrorDeg": contract.maximum_usv_heading_error_deg,
             "blocker": blocker,
         }
 
@@ -357,10 +651,10 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             # one polling frame later.  Use the latched signal consistently
             # for group state, progress and aggregate completion so the UI
             # cannot show "stage 3 / hold 0 / ENCIRCLEMENT" for one target.
-            child_captured = (
-                frame.terminalStatus == "COMPLETED"
-                or bool(frame.metrics.get("captured", False))
-            )
+            # Child solvers still provide target pursuit dynamics, but they no
+            # longer own the multi-target completion signal. Only the emitted
+            # canonical-ring contract below may promote this group.
+            child_captured = False
             for agent in frame.agents:
                 agents.append(AgentFrame(
                     code_map.get(agent.code, agent.code), agent.type,
@@ -416,6 +710,13 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 "gapRepairRequired": frame.metrics.get("gapRepairRequired", False),
             })
 
+        for index, (child, target) in enumerate(zip(self.children, targets)):
+            group_agents = [
+                agent for agent in agents
+                if agent.assignedTargetCode == target.code
+            ]
+            self._command_canonical_ring(index, child, group_agents, target)
+
         # Child solvers are intentionally independent per target, but their
         # output shares one Unity ocean.  Enforce a final whole-fleet safety
         # pass so craft assigned to different targets cannot intersect while
@@ -449,72 +750,11 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             agent.x, agent.y, agent.z = safe.x, safe.y, safe.z
             self.previous_scene[agent.code] = (safe.x, safe.y, safe.z)
 
-        # A second, role-aware pass repairs gaps created by the first global
-        # collision pass. Only the selected GAP_BLOCKER receives an accelerated
-        # proposal; every other member holds position, so closure does not
-        # turn into another whole-ring chase.
+        # Canonical slot tracking already closes angular gaps. Do not run a
+        # second independent gap solver after global safety: that old pass moved
+        # one endpoint off its slot and made the two controllers fight forever.
         repair_metrics: Dict[str, Dict[str, object]] = {}
         repairs = 0
-        # One 0.1 s correction is cancelled by the child solver's return to
-        # its ideal slot on the next frame.  Iterate the executed geometry in
-        # this same frame until the opening is actually below the contract (or
-        # a small bounded budget is exhausted).  This is still one physical
-        # GAP_BLOCKER per target; it simply receives enough arc travel to beat
-        # the global collision displacement instead of oscillating forever.
-        for _repair_round in range(12):
-            repair_proposals = {
-                agent.code: (agent.type, (agent.x, agent.y, agent.z))
-                for agent in agents
-            }
-            round_repairs = 0
-            for index, (child, target) in enumerate(zip(self.children, targets)):
-                target_code = f"TARGET-{index + 1:03d}"
-                group_agents = [
-                    item for item in agents if item.assignedTargetCode == target_code
-                ]
-                executed = self._executed_containment(child, group_agents, target)
-                within_exact_gap = (
-                    float(executed.get("maxGapDeg", 360.0))
-                    <= float(executed.get("maxAllowedGapDeg", 0.0)) + 0.02
-                )
-                if (
-                    (bool(executed["ready"]) and within_exact_gap)
-                    or executed["blocker"] == "PURSUIT_DISTANCE"
-                ):
-                    continue
-                repair = self._gap_repair_proposal(child, group_agents, target)
-                if repair is None:
-                    continue
-                code, proposal, diagnostics = repair
-                filler = agents_by_code.get(code)
-                if filler is None:
-                    continue
-                repair_proposals[code] = (filler.type, proposal)
-                filler.role = "GAP_BLOCKER"
-                repair_metrics[target_code] = diagnostics
-                round_repairs += 1
-                repairs += 1
-            if not round_repairs:
-                break
-            repair_previous = {
-                agent.code: (agent.x, agent.y, agent.z) for agent in agents
-            }
-            repaired = self.safety.resolve_group(
-                repair_proposals,
-                repair_previous,
-                fixed_targets,
-                iterations=64,
-                max_steps={"UAV": 1.5, "USV": 0.4},
-            )
-            for agent in agents:
-                safe = repaired[agent.code]
-                if safe.adjusted:
-                    global_adjustments += 1
-                    global_adjustments_by_target[agent.assignedTargetCode] = (
-                        global_adjustments_by_target.get(agent.assignedTargetCode, 0) + 1
-                    )
-                agent.x, agent.y, agent.z = safe.x, safe.y, safe.z
-                self.previous_scene[agent.code] = (safe.x, safe.y, safe.z)
         for target in targets:
             self.previous_scene[target.code] = (target.x, target.y, target.z)
 
@@ -552,9 +792,12 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             target_code = f"TARGET-{index + 1:03d}"
             executed_agents = [
                 agent for agent in agents
-                if agent.assignedTargetCode == target_code
+                if (
+                    agent.assignedTargetCode == target_code
+                    and agent.code in self.ring_member_codes[index]
+                )
             ]
-            executed = self._executed_containment(child, executed_agents, target)
+            executed = self._executed_containment(index, child, executed_agents, target)
             frame.metrics["postGlobalContainmentReady"] = executed["ready"]
             frame.metrics["postGlobalTargetInsideFormation"] = executed["targetInside"]
             frame.metrics["postGlobalCombinedMaxGapDeg"] = executed["maxGapDeg"]
@@ -565,90 +808,119 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             group["postGlobalContainmentReady"] = executed["ready"]
             group["postGlobalMaxGapDeg"] = executed["maxGapDeg"]
             group["postGlobalMaxAllowedGapDeg"] = executed["maxAllowedGapDeg"]
+            group["arrivalRatio"] = executed.get("arrivalRatio", 0.0)
+            group["ringMemberCount"] = len(executed_agents)
+            group["supportMemberCount"] = max(
+                0, int(group.get("memberCount", 0)) - len(executed_agents)
+            )
+            group["maximumSlotErrorM"] = executed.get("maximumSlotErrorM")
+            group["inwardOrientedUsvCount"] = executed.get(
+                "inwardOrientedUsvCount", 0
+            )
+            group["maximumUsvHeadingErrorDeg"] = executed.get(
+                "maximumUsvHeadingErrorDeg", 180.0
+            )
             group["globalAvoidanceCount"] = global_adjustments_by_target.get(target_code, 0)
             group.update(repair_metrics.get(target_code, {}))
-            breakout_active = bool(getattr(child, "breakout_test_active", False))
-            breakout_passed = bool(getattr(child, "breakout_test_passed", False))
-            if breakout_active:
-                self.breakout_test_phase_started = True
-            group["breakoutTestState"] = (
-                "ACTIVE" if breakout_active
-                else "PASSED" if breakout_passed
-                else "PENDING"
+            ready = bool(executed["ready"])
+            arrival = float(executed.get("arrivalRatio", 0.0))
+            if ready or arrival > self.ring_best_arrival[index] + 0.02:
+                self.ring_best_arrival[index] = arrival
+                self.ring_stalled_frames[index] = 0
+            elif executed.get("blocker") != "PURSUIT_DISTANCE":
+                self.ring_stalled_frames[index] += 1
+            repairable_local_stall = (
+                arrival >= 0.60
+                and self.ring_stalled_frames[index] >= 120
             )
-            group["breakoutTestFrames"] = int(getattr(child, "breakout_test_frames", 0))
-            group["breakoutTestRequiredFrames"] = int(
-                getattr(child, "breakout_test_required_frames", 0)
-            )
-            group["breakoutTestDistanceM"] = round(
-                float(getattr(child, "breakout_test_distance_m", 0.0)), 3
-            )
-            group["breakoutTestRequiredDistanceM"] = float(
-                getattr(child, "breakout_test_required_distance_m", 0.0)
-            )
-            group["postBreakoutStableFrames"] = int(
-                getattr(child, "post_breakout_stable_frames", 0)
-            )
-            group["requiredPostBreakoutStableFrames"] = int(
-                getattr(child, "required_post_breakout_stable_frames", 25)
-            )
-            if bool(executed["ready"]) and not breakout_active and not breakout_passed:
-                self.executed_hold_frames[index] = min(
-                    child.capture_hold_frames,
-                    self.executed_hold_frames[index] + 1,
+            if not ready and repairable_local_stall:
+                # Replace only the worst missing member when a same-type outer
+                # reserve can reach that exact slot sooner. Already-arrived
+                # members keep their identities and positions; this is the
+                # visible gap-filler behaviour instead of a whole-ring shuffle.
+                current_slots = self.ring_slots[index]
+                executed_by_code = {
+                    agent.code: agent for agent in executed_agents
+                }
+                missing = max(
+                    executed_agents,
+                    key=lambda agent: math.hypot(
+                        agent.x - current_slots[agent.code].point(
+                            (target.x, target.y, target.z)
+                        )[0],
+                        agent.y - current_slots[agent.code].point(
+                            (target.x, target.y, target.z)
+                        )[1],
+                    ),
+                    default=None,
                 )
-                group["postGlobalHoldFrames"] = self.executed_hold_frames[index]
-                group["postGlobalHoldRequiredFrames"] = child.capture_hold_frames
-                if self.executed_hold_frames[index] >= child.capture_hold_frames:
-                    gap_direction = child._largest_gap_direction(
-                        (target.x, target.y, target.z),
-                        [(agent.x, agent.y, agent.z) for agent in executed_agents],
+                reserve_agents = [
+                    agent for agent in agents
+                    if (
+                        agent.assignedTargetCode == target_code
+                        and agent.code not in self.ring_member_codes[index]
+                        and missing is not None
+                        and agent.type == missing.type
                     )
-                    child.breakout_test_active = True
-                    child.breakout_test_started_sequence = child.sequence
-                    child.breakout_test_origin = (target.x, target.y)
-                    child.breakout_test_direction = gap_direction or child.target_escape_direction
-                    child.breakout_test_frames = 0
-                    child.breakout_test_distance_m = 0.0
-                    child.target_behavior_state = "BREAKOUT_TEST"
-                    self.breakout_test_phase_started = True
-                    breakout_active = True
-                    group["breakoutTestState"] = "ACTIVE"
-                    group["state"] = "BREAKOUT_TEST"
-                    frame.phase = "BREAKOUT_TEST"
-            if (
-                bool(executed["ready"])
-                and breakout_active
-                and child.breakout_test_frames >= child.breakout_test_required_frames
-                and child.breakout_test_distance_m >= child.breakout_test_required_distance_m
-            ):
-                child.breakout_test_active = False
-                child.breakout_test_passed = True
-                child.target_behavior_state = "CONTAINED"
-                breakout_active = False
-                breakout_passed = True
-                group["breakoutTestState"] = "PASSED"
-            if bool(executed["ready"]) and not breakout_active and not breakout_passed:
+                ]
+                promoted = None
+                if missing is not None and reserve_agents:
+                    missing_slot = current_slots[missing.code]
+                    slot_point = missing_slot.point(
+                        (target.x, target.y, target.z)
+                    )
+                    missing_distance = math.hypot(
+                        missing.x - slot_point[0],
+                        missing.y - slot_point[1],
+                    )
+                    candidate = min(
+                        reserve_agents,
+                        key=lambda agent: math.hypot(
+                            agent.x - slot_point[0], agent.y - slot_point[1]
+                        ),
+                    )
+                    candidate_distance = math.hypot(
+                        candidate.x - slot_point[0],
+                        candidate.y - slot_point[1],
+                    )
+                    if candidate_distance + 5.0 < missing_distance:
+                        self.ring_member_codes[index].remove(missing.code)
+                        self.ring_member_codes[index].add(candidate.code)
+                        del current_slots[missing.code]
+                        current_slots[candidate.code] = missing_slot
+                        self.support_slots[index] = {}
+                        promoted = candidate.code
+                        group["gapFillerCode"] = candidate.code
+                        group["replacedRingMemberCode"] = missing.code
+                if promoted is None:
+                    self.ring_slots[index] = {}
+                    self._ensure_ring_slots(index, executed_agents, target)
+                self.ring_replans[index] += 1
+                self.ring_stalled_frames[index] = 0
+                self.ring_best_arrival[index] = arrival
+                group["slotReplanned"] = True
+            group["slotReplanCount"] = self.ring_replans[index]
+            updated_hold, keep_latched_stage = self._update_executed_hold(
+                index,
+                self.executed_hold_frames[index],
+                child.capture_hold_frames,
+                executed,
+            )
+            self.executed_hold_frames[index] = updated_hold
+            if updated_hold > 0:
+                self.containment_stage_latched[index] = True
+            if ready:
+                group["postGlobalHoldFrames"] = updated_hold
+                group["postGlobalHoldRequiredFrames"] = child.capture_hold_frames
+                group["missionStage"] = "STABLE_CONTAINMENT"
+                group["state"] = "STABLE_CONTAINMENT"
                 group["captureBlocker"] = "HOLD_CONFIRMATION"
-                group["missionStage"] = "STABLE_CONTAINMENT"
-                group["state"] = "STABLE_CONTAINMENT"
-                continue
-            if bool(executed["ready"]) and not breakout_active and breakout_passed:
-                required_final_hold = int(getattr(
-                    child, "required_post_breakout_stable_frames", 25
-                ))
-                self.executed_post_breakout_stable_frames[index] = min(
-                    required_final_hold,
-                    self.executed_post_breakout_stable_frames[index] + 1,
-                )
-                group["postBreakoutStableFrames"] = self.executed_post_breakout_stable_frames[index]
-                group["requiredPostBreakoutStableFrames"] = required_final_hold
-                group["missionStage"] = "STABLE_CONTAINMENT"
-                group["state"] = "STABLE_CONTAINMENT"
-                if (
-                    self.mission_active
-                    and self.executed_post_breakout_stable_frames[index] >= required_final_hold
-                ):
+                frame.terminalStatus = None
+                frame.metrics["captured"] = False
+                frame.metrics["formationReady"] = True
+                frame.metrics["captureBlocker"] = "HOLD_CONFIRMATION"
+                target.state = "STABLE_CONTAINMENT"
+                if self.mission_active and updated_hold >= child.capture_hold_frames:
                     child.confirm_executed_containment()
                     frame.terminalStatus = "COMPLETED"
                     frame.phase = "CAPTURED"
@@ -664,18 +936,21 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                     group["captureBlocker"] = "NONE"
                     target.state = "CAPTURED"
                 continue
-            if bool(executed["ready"]) and breakout_active:
-                group["state"] = "BREAKOUT_TEST"
-                group["captureBlocker"] = "BREAKOUT_TEST"
-                group["missionStage"] = "BREAKOUT_TEST"
+            if keep_latched_stage:
+                group["localAction"] = "GAP_REPAIR"
+                group["softFailureFrames"] = self.executed_soft_failure_frames[index]
+                group["captureBlocker"] = executed["blocker"]
+                group["state"] = "STABLE_CONTAINMENT"
+                group["missionStage"] = group["state"]
                 frame.terminalStatus = None
                 frame.metrics["captured"] = False
-                frame.metrics["formationReady"] = True
-                frame.metrics["captureBlocker"] = "BREAKOUT_TEST"
-                target.state = "BREAKOUT_TEST"
+                frame.metrics["formationReady"] = False
+                frame.metrics["captureBlocker"] = executed["blocker"]
+                target.state = "RECONFIGURING"
                 continue
             self.executed_hold_frames[index] = 0
-            self.executed_post_breakout_stable_frames[index] = 0
+            self.executed_soft_failure_frames[index] = 0
+            self.containment_stage_latched[index] = False
             child.containment_candidate_at_sequence = None
             child.formation_ready_at_sequence = None
             if child.captured_at_sequence is not None:
@@ -697,7 +972,9 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             group["holdFrames"] = 0
             group["captureBlocker"] = executed["blocker"]
             group["missionStage"] = (
-                "GAP_REPAIR"
+                "STABLE_CONTAINMENT"
+                if self.containment_stage_latched[index]
+                else "GAP_REPAIR"
                 if str(frame.metrics.get("missionStage", frame.phase)) in {
                     "ENCIRCLEMENT", "GAP_REPAIR", "STABLE_CONTAINMENT"
                 } and (
@@ -718,27 +995,11 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             for frame in child_frames
         ]
         all_completed = all(completed)
-        breakout_active_count = sum(
-            str(group.get("breakoutTestState", "")) == "ACTIVE"
-            for group in groups
-        )
-        breakout_passed_count = sum(
-            str(group.get("breakoutTestState", "")) == "PASSED"
-            for group in groups
-        )
-        # The coordinator can promote a child into BREAKOUT_TEST after the
-        # child frame has been produced, once the executed global poses pass
-        # the final containment check. Rebuild the aggregate phase from the
-        # post-coordination group states so that state is visible to Unity for
-        # at least the frame in which it was entered.
-        post_states = [str(group.get("state", "")) for group in groups]
         phases = [frame.phase for frame in child_frames]
         if all(phase == "PREVIEW" for phase in phases):
             phase = "PREVIEW"
         elif all_completed:
             phase = "CAPTURED"
-        elif self.breakout_test_phase_started and breakout_passed_count < len(groups):
-            phase = "BREAKOUT_TEST"
         elif "ESCAPE_PURSUIT" in phases:
             phase = "ESCAPE_PURSUIT"
         elif "INTERCEPTING" in phases:
@@ -749,22 +1010,33 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         group_stages = [str(group.get("missionStage", group.get("state", ""))) for group in groups]
         if all_completed:
             mission_stage = "COMPLETED"
-        elif self.breakout_test_phase_started and breakout_passed_count < len(groups):
-            mission_stage = "BREAKOUT_TEST"
-        elif "INTERCEPT" in group_stages:
-            # Preserve the tactical hand-off for at least one aggregate frame
-            # when another target is already asking for gap repair.
-            mission_stage = "INTERCEPT"
-        elif "GAP_REPAIR" in group_stages:
-            mission_stage = "GAP_REPAIR"
-        elif "STABLE_CONTAINMENT" in group_stages:
-            mission_stage = "STABLE_CONTAINMENT"
-        elif "PURSUIT" in group_stages:
-            mission_stage = "PURSUIT"
-        elif "ESCAPE" in group_stages:
-            mission_stage = "ESCAPE"
         else:
-            mission_stage = "ENCIRCLEMENT"
+            # The aggregate task displays the earliest unresolved target, not
+            # the most advanced one. This prevents a completed subgroup from
+            # making the global stepper jump forward and then back while a
+            # second target is still filling its ring.
+            stage_rank = {
+                "ESCAPE": 0, "PURSUIT": 1, "INTERCEPT": 2,
+                "ENCIRCLEMENT": 3, "GAP_REPAIR": 4,
+                "STABLE_CONTAINMENT": 5,
+            }
+            unresolved_stages = [
+                group_stages[index]
+                for index, done in enumerate(completed)
+                if not done
+            ]
+            mission_stage = min(
+                unresolved_stages or ["ENCIRCLEMENT"],
+                key=lambda item: stage_rank.get(item, 3),
+            )
+        report_rank = {
+            "PREVIEW": 0, "ESCAPE": 0, "PURSUIT": 1, "INTERCEPT": 2,
+            "ENCIRCLEMENT": 3, "GAP_REPAIR": 4,
+            "STABLE_CONTAINMENT": 5, "COMPLETED": 6,
+        }
+        if report_rank.get(mission_stage, 0) >= report_rank.get(self.reported_mission_stage, 0):
+            self.reported_mission_stage = mission_stage
+        mission_stage = self.reported_mission_stage
 
         def mean_metric(name: str) -> float:
             return sum(float(item.get(name, 0.0)) for item in metrics_list) / max(1, len(metrics_list))
@@ -832,12 +1104,8 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             ),
             "requiredCaptureHoldFrames": max(int(item.get("requiredCaptureHoldFrames", 0)) for item in metrics_list),
             "captureGroups": groups,
-            "breakoutTestActiveCount": breakout_active_count,
-            "breakoutTestPassedCount": breakout_passed_count,
-            "breakoutTestRequiredTargetCount": len(groups),
-            "breakoutTestCompleted": breakout_passed_count == len(groups),
             "missionStage": mission_stage,
-            "stageSequence": ["ESCAPE", "PURSUIT", "INTERCEPT", "ENCIRCLEMENT", "GAP_REPAIR", "STABLE_CONTAINMENT", "BREAKOUT_TEST", "COMPLETED"],
+            "stageSequence": ["ESCAPE", "PURSUIT", "INTERCEPT", "ENCIRCLEMENT", "GAP_REPAIR", "STABLE_CONTAINMENT", "COMPLETED"],
             "ringDiagnostics": ring_diagnostics,
         }
         return RuntimeFrame(

@@ -62,11 +62,6 @@ type CaptureGroupMetric = {
   holdFrames?: number
   holdRequiredFrames?: number
   missionStage?: string
-  breakoutTestState?: string
-  breakoutTestFrames?: number
-  breakoutTestRequiredFrames?: number
-  postBreakoutStableFrames?: number
-  requiredPostBreakoutStableFrames?: number
   pursuitDistanceM?: number
   requiredPursuitDistanceM?: number
   captureBlocker?: string
@@ -138,7 +133,26 @@ const displayMissionProgress = computed(() => {
 })
 const escortProgress = computed(() => Math.round(Number(missionMetrics.value.escortProgress ?? 0) * 100))
 const captureProgress = computed(() => Math.round(Number(missionMetrics.value.captureProgress ?? 0) * 100))
-const captureRemainingSeconds = computed(() => Math.max(0, Math.ceil(Number(missionMetrics.value.captureRemainingFrames ?? 0) / 10)))
+const missionElapsedMs = ref(0)
+const missionClockNow = ref(Date.now())
+const missionClockStartedAt = ref<number | null>(null)
+let missionClockTimer: number | null = null
+const missionElapsedSeconds = computed(() => Math.max(0, Math.floor(
+  (missionElapsedMs.value + (
+    missionClockStartedAt.value === null
+      ? 0
+      : missionClockNow.value - missionClockStartedAt.value
+  )) / 1000,
+)))
+const missionElapsedLabel = computed(() => {
+  const total = missionElapsedSeconds.value
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  return hours > 0
+    ? `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+    : `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+})
 const captureGroups = computed(() => Array.isArray(missionMetrics.value.captureGroups)
   ? missionMetrics.value.captureGroups as CaptureGroupMetric[]
   : [])
@@ -194,14 +208,13 @@ const selectedFrameItem = computed(() => {
     ?? null
 })
 const phaseSteps = computed(() => state.algorithm === 'ESCORT_GUARD'
-  ? ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '突破测试', '完成']
-  : ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '突破测试', '完成'])
+  ? ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '完成']
+  : ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '完成'])
 const activePhaseIndex = computed(() => {
   const phase = missionPhase.value.toUpperCase()
   if (state.mission === 'COMPLETED' || phase === 'COMPLETED') return phaseSteps.value.length - 1
   if (state.algorithm === 'ESCORT_GUARD') {
-    if (phase === 'COMPLETED') return 7
-    if (phase === 'BREAKOUT_TEST') return 6
+    if (phase === 'COMPLETED') return 6
     if (phase === 'STABLE_CONTAINMENT') return 5
     if (phase === 'GAP_REPAIR') return 4
     if (phase === 'ENCIRCLEMENT') return 3
@@ -210,7 +223,7 @@ const activePhaseIndex = computed(() => {
     if (phase === 'ESCAPE') return 0
     return 0
   }
-  return ({ ESCAPE: 0, PURSUIT: 1, INTERCEPT: 2, ENCIRCLEMENT: 3, GAP_REPAIR: 4, STABLE_CONTAINMENT: 5, BREAKOUT_TEST: 6, COMPLETED: 7 } as Record<string, number>)[phase] ?? 0
+  return ({ ESCAPE: 0, PURSUIT: 1, INTERCEPT: 2, ENCIRCLEMENT: 3, GAP_REPAIR: 4, STABLE_CONTAINMENT: 5, COMPLETED: 6 } as Record<string, number>)[phase] ?? 0
 })
 const protocolSnapshot = computed(() => JSON.stringify(
   lastUnityMessage.value ?? {
@@ -224,6 +237,33 @@ let previousAlgorithmPoses: VirtualPoseStateMap = new Map()
 let algorithmPollTimer: number | null = null
 let algorithmPollInFlight = false
 let algorithmPreparePromise: Promise<boolean> | null = null
+
+function startMissionClock(resume: boolean) {
+  if (!resume) missionElapsedMs.value = 0
+  missionClockStartedAt.value = Date.now()
+  missionClockNow.value = missionClockStartedAt.value
+  if (missionClockTimer !== null) window.clearInterval(missionClockTimer)
+  missionClockTimer = window.setInterval(() => {
+    missionClockNow.value = Date.now()
+  }, 250)
+}
+
+function pauseMissionClock() {
+  if (missionClockStartedAt.value !== null) {
+    missionElapsedMs.value += Date.now() - missionClockStartedAt.value
+    missionClockStartedAt.value = null
+  }
+  if (missionClockTimer !== null) {
+    window.clearInterval(missionClockTimer)
+    missionClockTimer = null
+  }
+}
+
+function resetMissionClock() {
+  pauseMissionClock()
+  missionElapsedMs.value = 0
+  missionClockNow.value = Date.now()
+}
 const fleetOriginEnu: EnuOrigin = {
   // Centre the experiment in open water instead of beside the island base.
   // The capture target occupies this origin and both containment rings are
@@ -271,6 +311,7 @@ function finalizeTerminalMission(status: string, sequence: number) {
   pendingTerminalSequence.value = null
   pendingTerminalStatus.value = null
   state.mission = status
+  pauseMissionClock()
   stopAlgorithmPolling()
   algorithmPrepared.value = false
   algorithmPreparePromise = null
@@ -291,6 +332,20 @@ function onUnityReady() {
     protocolVersion: '2.0',
     buildId: 'vue-virtual-fleet-v2-compatible',
   })
+  // The page should open with a real, validated default preview instead of
+  // exposing Unity's bootstrap placeholders or leaving an empty ocean.  Use
+  // the same loadScenario path as the Generate button so the default 3+3
+  // fleet, target and island obey the current safety/layout validation.
+  window.setTimeout(() => {
+    if (
+      unityReady.value
+      && !scenarioLoading.value
+      && scenarioReadyRunId.value === null
+      && plannedScenarioPoses.value.length === 0
+    ) {
+      generateScenario()
+    }
+  }, 0)
 }
 
 function onUnityError(message: string) {
@@ -362,6 +417,11 @@ function onUnityMessage(message: UnityMessage) {
         ? returnedPoses
         : plannedScenarioPoses.value
       addLog(`scenario initial poses: ${initialScenarioPoses.value.length}`)
+      // Frame the validated preview only after Unity has created every
+      // scenario object. Sending overview while loadScenario is still in
+      // flight can focus the bootstrap origin and produce an empty/default
+      // view depending on machine timing.
+      window.setTimeout(() => setOverviewCamera(), 80)
     }
     if (runIdMatches) scenarioLoading.value = false
     if (success && runIdMatches) void prepareExternalAlgorithm()
@@ -454,10 +514,6 @@ function generateScenario() {
     captureMode: state.algorithm === 'GB_SFLA_CS',
     seed: state.seed,
   })
-  // The observer must own the camera before a mission starts; otherwise the
-  // legacy chase camera consumes wheel and drag input until the user clicks
-  // the overview button once.
-  window.setTimeout(() => setOverviewCamera(), 80)
   initialScenarioPoses.value = plannedScenarioPoses.value
   scenarioReadyRunId.value = null
   scenarioLoading.value = true
@@ -559,8 +615,10 @@ async function startMission() {
     return
   }
   try {
+    const resuming = state.mission === 'PAUSED'
     await controlAlgorithmRun(state.runId, 'start')
     state.mission = 'RUNNING'
+    startMissionClock(resuming)
     missionActionMessage.value = '算法已启动。'
     addLog(
       `algorithm coordinates: FLEET_LOCAL_ENU`
@@ -581,8 +639,10 @@ async function startMission() {
           return
         }
         try {
+          const resuming = state.mission === 'PAUSED'
           await controlAlgorithmRun(state.runId, 'start')
           state.mission = 'RUNNING'
+          startMissionClock(resuming)
           send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
           startAlgorithmPolling()
           return
@@ -606,6 +666,7 @@ async function pauseMission() {
   try {
     await controlAlgorithmRun(state.runId, 'pause')
     state.mission = 'PAUSED'
+    pauseMissionClock()
     stopAlgorithmPolling()
     send('missionPause', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
   } catch (error) {
@@ -623,6 +684,7 @@ async function stopMission() {
   try {
     if (algorithmPrepared.value) await controlAlgorithmRun(state.runId, 'stop')
     state.mission = 'STOPPED'
+    pauseMissionClock()
     algorithmPrepared.value = false
     algorithmPreparePromise = null
     stopAlgorithmPolling()
@@ -643,6 +705,7 @@ async function resetMission() {
     }
   }
   state.mission = 'STOPPED'
+  resetMissionClock()
   pendingTerminalSequence.value = null
   pendingTerminalStatus.value = null
   state.sequence = 0
@@ -791,6 +854,7 @@ function followSelectedDevice() {
 
 onBeforeUnmount(() => {
   stopAlgorithmPolling()
+  pauseMissionClock()
 })
 </script>
 
@@ -913,7 +977,7 @@ onBeforeUnmount(() => {
           <div class="vf-unity-stage">
             <UnityWebglPanel
               ref="unityPanel"
-              iframe-src="/unity-virtual-fleet/index.html?embedded=1&build=20260821-v7"
+              iframe-src="/unity-virtual-fleet/index.html?embedded=1&build=20260825-v8"
               runtime-scope="VIRTUAL_FLEET"
               runtime-instance-id="virtual-fleet-v3-01"
               @unity-ready="onUnityReady"
@@ -925,8 +989,9 @@ onBeforeUnmount(() => {
             <span><i></i>阶段 <strong>{{ missionPhase }}</strong></span>
             <span>综合进度 <strong>{{ displayMissionProgress }}%</strong></span>
             <span>可见目标 <strong>{{ visibleTargetCount }}</strong></span>
-            <span v-if="state.algorithm === 'GB_SFLA_CS'">追逃 <strong>{{ Number(missionMetrics.targetTravelDistanceM ?? 0).toFixed(0) }}/{{ Number(missionMetrics.requiredPursuitDistanceM ?? 0).toFixed(0) }} m</strong></span>
+            <span v-if="state.algorithm === 'GB_SFLA_CS'">行动距离 <strong>{{ Number(missionMetrics.targetTravelDistanceM ?? 0).toFixed(0) }} m</strong></span>
             <span v-else>已捕获 <strong>{{ Number(missionMetrics.capturedThreatCount ?? 0) }}/{{ scenarioPlan.threatCount }}</strong></span>
+            <span>运行时长 <strong>{{ missionElapsedLabel }}</strong></span>
           </div>
           <div class="vf-command-bar">
             <div class="vf-command-actions">
@@ -1005,7 +1070,7 @@ onBeforeUnmount(() => {
                   <div><dt>综合进度</dt><dd>{{ displayMissionProgress }}%</dd></div>
                   <div><dt>可见目标</dt><dd>{{ visibleTargetCount }}</dd></div>
                   <template v-if="state.algorithm === 'GB_SFLA_CS'">
-                    <div><dt>追逃距离</dt><dd>{{ Number(missionMetrics.targetTravelDistanceM ?? 0).toFixed(0) }}/{{ Number(missionMetrics.requiredPursuitDistanceM ?? 0).toFixed(0) }} m</dd></div>
+                    <div><dt>行动距离</dt><dd>{{ Number(missionMetrics.targetTravelDistanceM ?? 0).toFixed(0) }} m</dd></div>
                     <div><dt>闭环置信</dt><dd>{{ Math.round(Number(missionMetrics.containmentConfidence ?? 0) * 100) }}%</dd></div>
                     <div><dt>敌船速度</dt><dd>{{ Number(missionMetrics.targetSpeedMps ?? 0).toFixed(1) }} m/s</dd></div>
                     <div><dt>全局避障</dt><dd>{{ Number(missionMetrics.globalAvoidanceCount ?? 0) }}</dd></div>
@@ -1014,7 +1079,6 @@ onBeforeUnmount(() => {
                     <div><dt>护航进度</dt><dd>{{ escortProgress }}%</dd></div>
                     <div><dt>围捕进度</dt><dd>{{ captureProgress }}%</dd></div>
                     <div><dt>已捕获</dt><dd>{{ Number(missionMetrics.capturedThreatCount ?? 0) }}/{{ scenarioPlan.threatCount }}</dd></div>
-                    <div><dt>围捕剩余</dt><dd>{{ captureRemainingSeconds }} s</dd></div>
                   </template>
                   <div><dt>避障修正</dt><dd>{{ Number(missionMetrics.avoidanceCount ?? 0) }}</dd></div>
                 </dl>
@@ -1023,17 +1087,13 @@ onBeforeUnmount(() => {
               <section v-if="captureGroups.length" class="vf-inspector-section">
                 <h4>
                   <span>围捕目标</span>
-                  <span>
-                    突破测试 {{ Number(missionMetrics.breakoutTestPassedCount ?? 0) }}/{{ Number(missionMetrics.breakoutTestRequiredTargetCount ?? captureGroups.length) }}
-                    <template v-if="Number(missionMetrics.breakoutTestActiveCount ?? 0) > 0"> · 进行中</template>
-                  </span>
+                  <span>实时闭环 {{ Number(missionMetrics.capturedThreatCount ?? missionMetrics.capturedTargetCount ?? 0) }}/{{ captureGroups.length }}</span>
                 </h4>
                 <div class="vf-capture-groups">
                   <article v-for="group in captureGroups.slice(0, 4)" :key="group.threatCode">
                     <strong>{{ group.threatCode }}</strong>
                     <span>阶段 {{ displayCaptureStage(group.stage) }}/3 · {{ group.uavCount }} UAV + {{ group.usvCount }} USV</span>
-                    <small>到位 {{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}% · 稳定闭环 {{ group.postBreakoutStableFrames ?? 0 }}/{{ group.requiredPostBreakoutStableFrames ?? 25 }}</small>
-                    <small>突破测试 {{ group.breakoutTestFrames ?? 0 }}/{{ group.breakoutTestRequiredFrames ?? 0 }} · {{ group.breakoutTestState || 'PENDING' }}</small>
+                    <small>到位 {{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}% · 稳定闭环 {{ group.holdFrames ?? 0 }}/{{ group.holdRequiredFrames ?? 25 }}</small>
                     <small v-if="state.algorithm === 'GB_SFLA_CS'">
                       实际闭环 {{ group.postGlobalContainmentReady ? '是' : '否' }}
                       · 最大缺口 {{ Number(group.postGlobalMaxGapDeg ?? 0).toFixed(0) }}/{{ Number(group.postGlobalMaxAllowedGapDeg ?? 0).toFixed(0) }}°

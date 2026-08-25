@@ -143,9 +143,17 @@ function poseFromAgent(
   const prior = previous.get(deviceCode)
   const deltaEast = prior ? eastM - prior.eastM : 0
   const deltaNorth = prior ? northM - prior.northM : 0
-  const heading = Math.hypot(deltaEast, deltaNorth) > 0.0001
-    ? Math.atan2(deltaEast, deltaNorth) * 180 / Math.PI
-    : finiteOr(agent.heading, prior?.headingDeg ?? 0)
+  // Algorithm heading is authoritative. It may intentionally differ from
+  // the instantaneous displacement near an interception or final ring slot
+  // (for example, a USV moving tangentially while turning its bow inward).
+  // Only derive a heading when the algorithm did not provide a finite value.
+  // GLOBAL_ENU uses 0=east and positive angles toward north.
+  const algorithmHeading = finiteOr(agent.heading, Number.NaN)
+  const heading = Number.isFinite(algorithmHeading)
+    ? algorithmHeading
+    : Math.hypot(deltaEast, deltaNorth) > 0.0001
+      ? Math.atan2(deltaNorth, deltaEast) * 180 / Math.PI
+      : prior?.headingDeg ?? 0
   const maxSpeed = deviceType === 'UAV' ? UAV_MAX_SPEED_MPS : USV_MAX_SPEED_MPS
   const speedMps = Math.min(
     maxSpeed,
@@ -188,9 +196,12 @@ function poseFromTarget(
   const prior = previous.get(deviceCode)
   const deltaEast = prior ? eastM - prior.eastM : 0
   const deltaNorth = prior ? northM - prior.northM : 0
-  const heading = Math.hypot(deltaEast, deltaNorth) > 0.0001
-    ? Math.atan2(deltaEast, deltaNorth) * 180 / Math.PI
-    : finiteOr(target.heading, prior?.headingDeg ?? 0)
+  const algorithmHeading = finiteOr(target.heading, Number.NaN)
+  const heading = Number.isFinite(algorithmHeading)
+    ? algorithmHeading
+    : Math.hypot(deltaEast, deltaNorth) > 0.0001
+      ? Math.atan2(deltaNorth, deltaEast) * 180 / Math.PI
+      : prior?.headingDeg ?? 0
   const speedMps = Math.min(
     USV_MAX_SPEED_MPS,
     Math.max(0, speedFromDelta(deviceCode, eastM, northM, upM, frame.timestamp, previous)),

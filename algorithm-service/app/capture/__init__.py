@@ -10,6 +10,16 @@ from app.capture.containment_contract import (
     assess_containment,
     allowed_containment_gap_deg,
 )
+from app.capture.canonical_ring import (
+    RingAssessment,
+    RingMember,
+    RingSlot,
+    allocate_balanced_groups,
+    assess_canonical_ring,
+    build_canonical_slots,
+    required_ring_members,
+    ring_radius,
+)
 
 __all__ = [
     "CaptureAssessment",
@@ -20,4 +30,12 @@ __all__ = [
     "ContainmentAssessment",
     "assess_containment",
     "allowed_containment_gap_deg",
+    "RingAssessment",
+    "RingMember",
+    "RingSlot",
+    "allocate_balanced_groups",
+    "assess_canonical_ring",
+    "build_canonical_slots",
+    "required_ring_members",
+    "ring_radius",
 ]

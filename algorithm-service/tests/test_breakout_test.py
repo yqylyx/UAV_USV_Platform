@@ -11,108 +11,82 @@ def quiet_step(adapter):
         return adapter.step()
 
 
-class BreakoutTestRegression(unittest.TestCase):
-    def test_capture_requires_breakout_before_completion(self):
+class DirectContainmentRegression(unittest.TestCase):
+    def test_capture_completes_only_after_stable_live_ring(self):
         adapter = AdaptiveCaptureAdapter(9601, {
             "uavCount": 5,
             "usvCount": 5,
             "targetCount": 1,
             "seed": 20260814,
-            "breakoutTestFrames": 15,
-            "breakoutTestDistanceM": 3.0,
         })
         adapter.set_mission_active(True)
-        active_seen = False
-        passed_seen = False
-        for _ in range(900):
+        for _ in range(1800):
             frame = quiet_step(adapter)
             group = frame.metrics["captureGroups"][0]
-            state = group["breakoutTestState"]
-            active_seen = active_seen or state == "ACTIVE"
-            if state == "ACTIVE":
-                self.assertIsNone(frame.terminalStatus)
-                self.assertNotEqual("COMPLETED", frame.phase)
-            passed_seen = passed_seen or state == "PASSED"
+            self.assertNotIn("breakoutTestState", group)
+            self.assertNotEqual("BREAKOUT_TEST", frame.phase)
             if frame.terminalStatus:
                 break
-        self.assertTrue(active_seen, "capture never entered BREAKOUT_TEST")
-        self.assertTrue(passed_seen, "capture never passed BREAKOUT_TEST")
         self.assertEqual("COMPLETED", frame.terminalStatus)
+        self.assertTrue(group["postGlobalContainmentReady"])
 
-    def test_capture_coordinator_uses_executed_breakout_state(self):
+    def test_capture_coordinator_requires_every_executed_ring(self):
         adapter = AdaptiveCaptureAdapter(9602, {
             "uavCount": 10,
             "usvCount": 10,
             "targetCount": 2,
             "seed": 20260814,
-            "breakoutTestFrames": 15,
-            "breakoutTestDistanceM": 3.0,
         })
         adapter.set_mission_active(True)
-        active_seen = False
-        passed_seen = False
-        for _ in range(1000):
+        for _ in range(1800):
             frame = quiet_step(adapter)
-            states = {group["breakoutTestState"] for group in frame.metrics["captureGroups"]}
-            active_seen = active_seen or "ACTIVE" in states
-            passed_seen = passed_seen or "PASSED" in states
-            if "ACTIVE" in states:
-                self.assertIsNone(frame.terminalStatus)
             if frame.terminalStatus:
                 break
-        self.assertTrue(active_seen)
-        self.assertTrue(passed_seen)
         self.assertEqual("COMPLETED", frame.terminalStatus)
         self.assertEqual(2, frame.metrics["capturedTargetCount"])
+        self.assertTrue(all(
+            group["postGlobalContainmentReady"]
+            for group in frame.metrics["captureGroups"]
+        ))
 
-    def test_capture_10_plus_10_exposes_breakout_phase_for_single_target(self):
+    def test_capture_never_exposes_removed_breakout_phase(self):
         adapter = AdaptiveCaptureAdapter(9604, {
             "uavCount": 10,
             "usvCount": 10,
             "targetCount": 1,
             "seed": 20260814,
-            "breakoutTestFrames": 15,
-            "breakoutTestDistanceM": 3.0,
         })
         adapter.set_mission_active(True)
-        breakout_frame = None
-        for _ in range(1000):
+        for _ in range(1800):
             frame = quiet_step(adapter)
             group = frame.metrics["captureGroups"][0]
-            if group["breakoutTestState"] == "ACTIVE":
-                breakout_frame = frame
-                self.assertEqual("BREAKOUT_TEST", frame.phase)
-                self.assertEqual("BREAKOUT_TEST", group["state"])
-                self.assertIsNone(frame.terminalStatus)
+            self.assertNotEqual("BREAKOUT_TEST", frame.phase)
+            self.assertNotEqual("BREAKOUT_TEST", group["state"])
+            self.assertNotIn("breakoutTestState", group)
+            if frame.terminalStatus:
                 break
-        self.assertIsNotNone(breakout_frame, "10+10 capture never entered BREAKOUT_TEST")
+        self.assertEqual("COMPLETED", frame.terminalStatus)
 
-    def test_escort_requires_breakout_before_completion(self):
+    def test_escort_uses_live_ring_without_breakout_stage(self):
         adapter = AdaptiveEscortAdapter(9603, {
             "uavCount": 5,
             "usvCount": 5,
             "seed": 20260814,
-            "breakoutTestFrames": 15,
-            "breakoutTestDistanceM": 3.0,
         })
         quiet_step(adapter)
         adapter.activate_capture()
-        active_seen = False
-        passed_seen = False
-        for _ in range(1400):
+        for _ in range(5000):
             frame = quiet_step(adapter)
             groups = frame.metrics.get("captureGroups", [])
-            states = {group["breakoutTestState"] for group in groups}
-            active_seen = active_seen or "ACTIVE" in states
-            passed_seen = passed_seen or "PASSED" in states
-            if "ACTIVE" in states:
-                self.assertNotEqual("COMPLETED", frame.terminalStatus)
-                self.assertNotEqual("COMPLETED", frame.phase)
+            self.assertNotEqual("BREAKOUT_TEST", frame.phase)
+            self.assertTrue(all("breakoutTestState" not in group for group in groups))
             if frame.terminalStatus:
                 break
-        self.assertTrue(active_seen, "escort never entered BREAKOUT_TEST")
-        self.assertTrue(passed_seen, "escort never passed BREAKOUT_TEST")
         self.assertEqual("COMPLETED", frame.terminalStatus)
+        self.assertEqual(
+            frame.metrics["threatCount"],
+            frame.metrics["capturedThreatCount"],
+        )
 
 
 if __name__ == "__main__":

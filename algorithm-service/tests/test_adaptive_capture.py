@@ -8,6 +8,31 @@ from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
 
 
 class AdaptiveCaptureAdapterTest(unittest.TestCase):
+    def test_any_gap_breaks_the_consecutive_visual_hold(self):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            adapter = AdaptiveCaptureAdapter(8999, {
+                "uavCount": 3, "usvCount": 3, "targetCount": 1,
+            })
+        adapter.containment_stage_latched[0] = True
+        adapter.executed_hold_frames[0] = 6
+        value, retained = adapter._update_executed_hold(
+            0, 6, 25, {"ready": False, "blocker": "POST_GLOBAL_ANGULAR_GAP"},
+        )
+        self.assertFalse(retained)
+        self.assertEqual(0, value)
+
+    def test_hard_failure_immediately_drops_latched_containment(self):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            adapter = AdaptiveCaptureAdapter(8998, {
+                "uavCount": 3, "usvCount": 3, "targetCount": 1,
+            })
+        adapter.containment_stage_latched[0] = True
+        value, retained = adapter._update_executed_hold(
+            0, 6, 25, {"ready": False, "blocker": "POST_GLOBAL_TARGET_OUTSIDE_HULL"},
+        )
+        self.assertFalse(retained)
+        self.assertEqual(0, value)
+
     def test_ten_by_ten_uses_two_independent_targets(self):
         adapter = AdaptiveCaptureAdapter(9001, {
             "uavCount": 10,
@@ -107,7 +132,7 @@ class AdaptiveCaptureAdapterTest(unittest.TestCase):
                     })
                 adapter.set_mission_active(True)
                 final = None
-                for _ in range(1000):
+                for _ in range(1800):
                     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                         final = adapter.step()
                     if final.terminalStatus == "COMPLETED":

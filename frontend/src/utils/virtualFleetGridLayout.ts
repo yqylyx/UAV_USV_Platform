@@ -89,16 +89,19 @@ function appendRandomStaging(
   random: () => number,
   occupied: PlanarPoint[],
   frontEastOffset: number,
+  northBandOffset: number,
 ) {
-  const spacing = type === 'USV' ? 14 : 10
+  // Use the rendered surface-craft footprint for both types.  Sharing a
+  // horizontal cell and relying on UAV altitude is physically valid, but in
+  // the global top-down camera it looks exactly like a collision.
+  const spacing = 14
   const columns = Math.max(1, Math.ceil(Math.sqrt(count)))
   const rows = Math.max(1, Math.ceil(count / columns))
   for (let index = 0; index < count; index += 1) {
     const row = Math.floor(index / columns)
     const column = index % columns
     // Seeded cell jitter preserves the requested random-looking idle layout
-    // while the cell pitch guarantees clearance for 100+ devices. UAV and
-    // USV layers may share horizontal cells because altitude separates them.
+    // while the cell pitch guarantees visible clearance.
     const jitterEast = (random() - .5) * spacing * .18
     const jitterNorth = (random() - .5) * spacing * .18
     // Capture missions start as a pursuit, not as an almost-complete ring.
@@ -107,7 +110,8 @@ function appendRandomStaging(
     // fleet below, so even 3+3 starts with more than 100 m of separation.
     const columnDirection = frontEastOffset >= 0 ? 1 : -1
     const eastM = origin.eastM + frontEastOffset + column * spacing * columnDirection + jitterEast
-    const northM = origin.northM + (row - (rows - 1) / 2) * spacing + jitterNorth
+    const northM = origin.northM + northBandOffset
+      + (row - (rows - 1) / 2) * spacing + jitterNorth
     occupied.push({ eastM, northM })
 
     poses.push({
@@ -139,8 +143,9 @@ export function buildVirtualFleetGridLayout(
     // Stage the friendly fleet east of the hostile target. The target's
     // initial escape therefore points west into the long open-water corridor,
     // rather than east toward Catalina and its bases.
-    appendRandomStaging(poses, 'UAV', uavCount, options.uavSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength)
-    appendRandomStaging(poses, 'USV', usvCount, options.usvSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength)
+    const stagingBandOffset = Math.min(62, 22 + Math.max(0, captureColumns - 2) * 5)
+    appendRandomStaging(poses, 'UAV', uavCount, options.uavSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength, stagingBandOffset)
+    appendRandomStaging(poses, 'USV', usvCount, options.usvSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength, -stagingBandOffset)
   } else {
     appendGrid(poses, 'UAV', uavCount, -50, 0, options.uavSpeedMps, options.fleetOrigin)
     appendGrid(poses, 'USV', usvCount, 0, 50, options.usvSpeedMps, options.fleetOrigin)
