@@ -10,7 +10,10 @@ class PhaseTwoScenarioTests(unittest.TestCase):
         expected = {
             3: (1, 1, 1, 360, 280),
             10: (1, 2, 2, 360, 280),
-            15: (1, 3, 2, 420, 320),
+            15: (1, 3, 3, 420, 320),
+            20: (2, 3, 3, 520, 400),
+            25: (2, 4, 4, 600, 460),
+            30: (2, 4, 4, 600, 460),
         }
         for count, values in expected.items():
             with self.subTest(count=count):
@@ -36,12 +39,90 @@ class PhaseTwoScenarioTests(unittest.TestCase):
         self.assertEqual(len(initial.targets), 4)
         self.assertEqual(sum(t.type == "ESCORT_TARGET" for t in initial.targets), 1)
         self.assertEqual(sum(t.type == "THREAT_TARGET" for t in initial.targets), 3)
-        self.assertEqual(sum(t.visible for t in initial.targets if t.type == "THREAT_TARGET"), 2)
+        self.assertEqual(sum(t.visible for t in initial.targets if t.type == "THREAT_TARGET"), 3)
         selected = adapter.activate_capture()
         self.assertTrue(selected.startswith("THREAT-"))
         frame = adapter.step()
         assigned = [agent for agent in frame.agents if agent.assignedTargetCode == selected]
         self.assertGreaterEqual(len(assigned), 3)
+
+    def test_twenty_plus_twenty_starts_all_three_threats_and_lists_all_groups(self):
+        adapter = AdaptiveEscortAdapter(420, {
+            "uavCount": 20, "usvCount": 20, "seed": 20260814,
+        })
+        frame = adapter.step()
+        threats = [item for item in frame.targets if item.type == "THREAT_TARGET"]
+        self.assertEqual(3, len(threats))
+        self.assertTrue(all(item.visible for item in threats))
+        self.assertEqual(3, frame.metrics["visibleThreatCount"])
+        self.assertEqual(3, frame.metrics["simultaneousThreatLimit"])
+        self.assertEqual(0.0, frame.metrics["simulationElapsedSeconds"])
+        self.assertEqual(
+            ["THREAT-001", "THREAT-002", "THREAT-003"],
+            [item["threatCode"] for item in frame.metrics["captureGroups"]],
+        )
+        self.assertTrue(frame.metrics["parallelResponseStarted"])
+        self.assertTrue(all(item.forced for item in adapter.threats))
+        self.assertTrue(all(
+            item["uavCount"] == 4 and item["usvCount"] == 4
+            for item in frame.metrics["captureGroups"]
+        ))
+
+    def test_fifteen_through_nineteen_start_all_three_parallel_groups(self):
+        for count in (15, 18, 19):
+            with self.subTest(count=count):
+                adapter = AdaptiveEscortAdapter(390 + count, {
+                    "uavCount": count, "usvCount": count, "seed": 20260814,
+                })
+                frame = adapter.step()
+                threats = [item for item in frame.targets if item.type == "THREAT_TARGET"]
+                self.assertEqual(3, len(threats))
+                self.assertTrue(all(item.visible for item in threats))
+                self.assertEqual(3, frame.metrics["simultaneousThreatLimit"])
+                self.assertTrue(frame.metrics["parallelResponseStarted"])
+                self.assertTrue(all(item.forced for item in adapter.threats))
+                self.assertTrue(all(
+                    item["uavCount"] == 4 and item["usvCount"] == 4
+                    for item in frame.metrics["captureGroups"]
+                ))
+
+    def test_global_stage_tracks_the_earliest_unresolved_threat(self):
+        adapter = AdaptiveEscortAdapter(418, {
+            "uavCount": 18, "usvCount": 18, "seed": 20260814,
+        })
+        adapter.step()
+        for threat, stage in zip(
+            adapter.threats,
+            ("GAP_REPAIR", "GAP_REPAIR", "PURSUIT"),
+        ):
+            threat.state = "INTERCEPTING"
+            threat.forced = True
+            threat.mission_stage = stage
+        adapter._reported_mission_stage = "GAP_REPAIR"
+        self.assertEqual("PURSUIT", adapter._reported_stage())
+
+    def test_twenty_five_and_thirty_start_all_four_parallel_groups(self):
+        for count in (25, 30):
+            with self.subTest(count=count):
+                adapter = AdaptiveEscortAdapter(420 + count, {
+                    "uavCount": count, "usvCount": count, "seed": 20260814,
+                })
+                frame = adapter.step()
+                threats = [item for item in frame.targets if item.type == "THREAT_TARGET"]
+                self.assertEqual(4, len(threats))
+                self.assertTrue(all(item.visible for item in threats))
+                self.assertEqual(4, frame.metrics["visibleThreatCount"])
+                self.assertEqual(4, frame.metrics["simultaneousThreatLimit"])
+                self.assertTrue(frame.metrics["parallelResponseStarted"])
+                self.assertTrue(all(item.forced for item in adapter.threats))
+                self.assertEqual(
+                    ["THREAT-001", "THREAT-002", "THREAT-003", "THREAT-004"],
+                    [item["threatCode"] for item in frame.metrics["captureGroups"]],
+                )
+                self.assertTrue(all(
+                    item["uavCount"] == 4 and item["usvCount"] == 4
+                    for item in frame.metrics["captureGroups"]
+                ))
 
     def test_capture_team_scales_beyond_fixed_two_plus_two(self):
         adapter = AdaptiveEscortAdapter(421, {

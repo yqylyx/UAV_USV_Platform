@@ -1162,7 +1162,15 @@ class CaptureAdapter(AlgorithmAdapter):
             else:
                 usv_no += 1
                 code = f"USV-{usv_no:03d}"
-            if preview and not initial_frame:
+            initial_pose = self.initial_pose_map().get(code)
+            if initial_snapshot and initial_pose is not None:
+                # The first mission frame is a visual hand-off from Unity.
+                # Reconstruct it from the supplied pose contract instead of
+                # reading the vendor array, which may have been normalized by
+                # a previous runtime instance or vendor reset.
+                east, north, up = self.initial_pose_to_local(initial_pose)
+                proposed_scene = (east, north, up if kind == "UAV" else 0.0)
+            elif preview and not initial_frame:
                 proposed_scene = self._preview_agent_proposal(code, kind, index)
             elif formation_settling:
                 specs = self.uav_slot_specs if kind == "UAV" else self.usv_slot_specs
@@ -1231,6 +1239,7 @@ class CaptureAdapter(AlgorithmAdapter):
         for code, (index, raw) in rows.items():
             kind = proposals[code][0]
             previous_scene = self.previous_scene.get(code)
+            initial_pose = self.initial_pose_map().get(code)
             if initial_snapshot:
                 scene = proposals[code][1]
                 adjusted = False
@@ -1247,7 +1256,6 @@ class CaptureAdapter(AlgorithmAdapter):
             if preview or formation_settling or guided_pursuit or adjusted:
                 self.env.agents[index, :3] = self._to_internal(scene, kind)
             self.previous_scene[code] = scene
-            initial_pose = self.initial_pose_map().get(code)
             if initial_snapshot and initial_pose is not None:
                 heading = float(initial_pose.get("headingDeg", 0.0)) % 360.0
                 self._stable_headings[code] = heading

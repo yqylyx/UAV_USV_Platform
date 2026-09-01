@@ -8,6 +8,25 @@ from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
 
 
 class AdaptiveCaptureAdapterTest(unittest.TestCase):
+    def test_stale_completed_stage_is_revoked_when_a_global_ring_is_open(self):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            adapter = AdaptiveCaptureAdapter(8997, {
+                "uavCount": 10, "usvCount": 10, "targetCount": 2,
+                "seed": 20260814,
+            })
+        adapter.set_mission_active(True)
+        # Reproduce the presentation state left by a transient all-closed
+        # frame. The following executed frame is still in pursuit, so its
+        # terminal stage must follow current global geometry.
+        adapter.reported_mission_stage = "COMPLETED"
+
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            frame = adapter.step()
+
+        self.assertIsNone(frame.terminalStatus)
+        self.assertNotEqual("COMPLETED", frame.metrics["missionStage"])
+        self.assertLess(frame.metrics["progress"], 1.0)
+
     def test_any_gap_breaks_the_consecutive_visual_hold(self):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             adapter = AdaptiveCaptureAdapter(8999, {

@@ -1034,7 +1034,16 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             "ENCIRCLEMENT": 3, "GAP_REPAIR": 4,
             "STABLE_CONTAINMENT": 5, "COMPLETED": 6,
         }
-        if report_rank.get(mission_stage, 0) >= report_rank.get(self.reported_mission_stage, 0):
+        if all_completed:
+            self.reported_mission_stage = "COMPLETED"
+        elif self.reported_mission_stage == "COMPLETED":
+            # COMPLETED is an authoritative live terminal state, not a
+            # monotonic presentation milestone. The global collision pass can
+            # reopen a ring after a child solver briefly considered it closed;
+            # in that case the stepper must immediately return to the earliest
+            # unresolved stage instead of showing completion below 100%.
+            self.reported_mission_stage = mission_stage
+        elif report_rank.get(mission_stage, 0) >= report_rank.get(self.reported_mission_stage, 0):
             self.reported_mission_stage = mission_stage
         mission_stage = self.reported_mission_stage
 

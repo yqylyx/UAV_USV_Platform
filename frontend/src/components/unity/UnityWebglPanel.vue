@@ -57,6 +57,7 @@ let heartbeatInFlight = false
 let viewportResizeObserver: ResizeObserver | null = null
 let lockedViewportWidth = 0
 let lockedViewportHeight = 0
+let viewportTransitionGeneration = 0
 
 type HeartbeatReport = {
   state: 'ONLINE' | 'RUNNING' | 'STOPPED' | 'OFFLINE' | 'FAILED'
@@ -543,6 +544,7 @@ function syncViewport() {
 }
 
 function beginViewportTransition() {
+  viewportTransitionGeneration += 1
   const iframe = iframeRef.value
   const panel = panelRef.value
   if (iframe && panel) {
@@ -571,39 +573,46 @@ function beginViewportTransition() {
   const frameWindow = iframeRef.value?.contentWindow
   frameWindow?.postMessage({
     source: 'vue-console',
-    message: { type: 'viewportTransitionStart' },
+    runtimeScope: props.runtimeScope,
+    runtimeInstanceId: props.runtimeInstanceId,
+    message: {
+      type: 'viewportTransitionStart',
+      payload: { generation: viewportTransitionGeneration },
+    },
   }, window.location.origin)
 }
 
 function endViewportTransition() {
-  const frameWindow = iframeRef.value?.contentWindow
-  frameWindow?.postMessage({
-    source: 'vue-console',
-    message: { type: 'viewportTransitionEnd' },
-  }, window.location.origin)
+  const generation = viewportTransitionGeneration
   window.requestAnimationFrame(() => {
+    if (generation !== viewportTransitionGeneration) return
+    viewportResizeObserver?.disconnect()
+    viewportResizeObserver = null
+    const iframe = iframeRef.value
+    if (iframe) {
+      iframe.style.width = ''
+      iframe.style.height = ''
+      iframe.style.maxWidth = ''
+      iframe.style.maxHeight = ''
+      iframe.style.flex = ''
+      iframe.style.transform = ''
+      iframe.style.transformOrigin = ''
+    }
+    lockedViewportWidth = 0
+    lockedViewportHeight = 0
+    // Keep Unity in transition mode while the iframe assumes its final size.
+    // Only after layout has settled do we permit one WebGL backbuffer resize.
     window.requestAnimationFrame(() => {
-      viewportResizeObserver?.disconnect()
-      viewportResizeObserver = null
-      const iframe = iframeRef.value
-      if (iframe) {
-        iframe.style.width = ''
-        iframe.style.height = ''
-        iframe.style.maxWidth = ''
-        iframe.style.maxHeight = ''
-        iframe.style.flex = ''
-        iframe.style.transform = ''
-        iframe.style.transformOrigin = ''
-      }
-      lockedViewportWidth = 0
-      lockedViewportHeight = 0
-      // Restoring the iframe layout generates the single native resize that
-      // Unity needs. Do not dispatch another synthetic resize here: doing so
-      // can make Unity rebuild its WebGL backbuffer twice and flash black.
       window.requestAnimationFrame(() => {
+        if (generation !== viewportTransitionGeneration) return
         iframeRef.value?.contentWindow?.postMessage({
           source: 'vue-console',
-          type: 'viewportSettled',
+          runtimeScope: props.runtimeScope,
+          runtimeInstanceId: props.runtimeInstanceId,
+          message: {
+            type: 'viewportTransitionEnd',
+            payload: { generation },
+          },
         }, window.location.origin)
       })
     })

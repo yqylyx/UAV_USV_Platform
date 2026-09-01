@@ -59,6 +59,7 @@ type CaptureGroupMetric = {
   uavCount?: number
   usvCount?: number
   arrivalRatio?: number
+  maxAngularGapDeg?: number
   holdFrames?: number
   holdRequiredFrames?: number
   missionStage?: string
@@ -114,25 +115,58 @@ const missionPhase = computed(() => String(
   || (state.mission === 'RUNNING' ? 'TRANSIT' : 'READY'),
 ))
 const missionMetrics = computed(() => currentAlgorithmFrame.value?.metrics ?? {})
+const stageSubjectThreatCode = computed(() => String(
+  missionMetrics.value.stageSubjectThreatCode ?? '',
+))
+const missionPhaseLabel = computed(() => (
+  stageSubjectThreatCode.value && missionPhase.value !== 'COMPLETED'
+    ? `${missionPhase.value} · ${stageSubjectThreatCode.value}`
+    : missionPhase.value
+))
 const visibleTargetCount = computed(() => currentAlgorithmFrame.value?.targets.filter(target => target.visible !== false).length ?? configuredTargetCount.value)
 const displayMissionProgress = computed(() => {
   const raw = Math.max(0, Math.min(1, Number(
     missionMetrics.value.missionProgress ?? missionMetrics.value.progress ?? 0,
   )))
   const completed = state.mission === 'COMPLETED'
-  const captured = Number(
-    missionMetrics.value.capturedTargetCount
-    ?? missionMetrics.value.capturedThreatCount
-    ?? 0,
-  )
-  const targetCount = Math.max(0, configuredTargetCount.value)
-  const allTargetsCaptured = targetCount > 0 && captured >= targetCount
-  // 100% is reserved for the terminal state. COMPLETING still waits for
-  // Unity to acknowledge the final pose frame.
-  return Math.round((completed && (allTargetsCaptured || targetCount === 0) ? raw : Math.min(raw, 0.99)) * 100)
+  // The terminal state is committed only after Unity acknowledges the final
+  // pose frame. Treat it as authoritative: the preceding metrics frame can
+  // legitimately still contain the non-terminal 0.99 sentinel.
+  return completed ? 100 : Math.round(Math.min(raw, 0.99) * 100)
 })
 const escortProgress = computed(() => Math.round(Number(missionMetrics.value.escortProgress ?? 0) * 100))
 const captureProgress = computed(() => Math.round(Number(missionMetrics.value.captureProgress ?? 0) * 100))
+const postMissionFormationReadyCount = computed(() => Number(
+  missionMetrics.value.postMissionFormationReadyCount ?? 0,
+))
+const postMissionFormationRequiredCount = computed(() => Number(
+  missionMetrics.value.postMissionFormationRequiredCount ?? 0,
+))
+const postMissionFormationProgress = computed(() => Math.round(Number(
+  missionMetrics.value.postMissionFormationProgress ?? 0,
+) * 100))
+const postMissionStableFrames = computed(() => Number(
+  missionMetrics.value.convoySupportStableFrames ?? 0,
+))
+const postMissionRequiredStableFrames = computed(() => Number(
+  missionMetrics.value.convoySupportRequiredStableFrames ?? 12,
+))
+const closeGuardCount = computed(() => Number(missionMetrics.value.closeGuardCount ?? 0))
+const captureAssignedCount = computed(() => Number(missionMetrics.value.captureAssignedCount ?? 0))
+const mobileSupportCount = computed(() => Number(missionMetrics.value.mobileSupportCount ?? 0))
+const terminalBlockerLabel = computed(() => {
+  const blocker = String(missionMetrics.value.terminalBlocker ?? '')
+  if (!blocker || blocker === 'NONE' || blocker === 'MISSION_IN_PROGRESS') return ''
+  if (blocker === 'THREATS_UNRESOLVED') return '仍有敌船未完成围捕'
+  if (blocker === 'PROTECTED_TARGET_NOT_SAFE') return '护航目标尚未通过安全门'
+  if (blocker === 'CONTAINMENT_RECONFIGURING') return '围捕闭环正在重新稳定'
+  if (blocker === 'POST_MISSION_STABILIZING') return '归队编组正在稳定确认'
+  if (blocker.startsWith('POST_MISSION_FORMATION:')) {
+    return `${blocker.slice(blocker.indexOf(':') + 1)} 尚未到达终态槽位`
+  }
+  if (blocker === 'POST_MISSION_FORMATION') return '归队编组尚未到位'
+  return blocker
+})
 const missionElapsedMs = ref(0)
 const missionClockNow = ref(Date.now())
 const missionClockStartedAt = ref<number | null>(null)
@@ -144,15 +178,21 @@ const missionElapsedSeconds = computed(() => Math.max(0, Math.floor(
       : missionClockNow.value - missionClockStartedAt.value
   )) / 1000,
 )))
-const missionElapsedLabel = computed(() => {
-  const total = missionElapsedSeconds.value
+function formatElapsedSeconds(totalSeconds: number) {
+  const total = Math.max(0, Math.floor(totalSeconds))
   const hours = Math.floor(total / 3600)
   const minutes = Math.floor((total % 3600) / 60)
   const seconds = total % 60
   return hours > 0
     ? `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
     : `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-})
+}
+const missionElapsedLabel = computed(() => formatElapsedSeconds(missionElapsedSeconds.value))
+const simulationElapsedSeconds = computed(() => Number(
+  missionMetrics.value.simulationElapsedSeconds
+  ?? Math.max(0, state.sequence - 1) * 0.1,
+))
+const simulationElapsedLabel = computed(() => formatElapsedSeconds(simulationElapsedSeconds.value))
 const captureGroups = computed(() => Array.isArray(missionMetrics.value.captureGroups)
   ? missionMetrics.value.captureGroups as CaptureGroupMetric[]
   : [])
@@ -212,7 +252,18 @@ const phaseSteps = computed(() => state.algorithm === 'ESCORT_GUARD'
   : ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '完成'])
 const activePhaseIndex = computed(() => {
   const phase = missionPhase.value.toUpperCase()
-  if (state.mission === 'COMPLETED' || phase === 'COMPLETED') return phaseSteps.value.length - 1
+  if (state.mission === 'COMPLETED') return phaseSteps.value.length - 1
+  if (phase === 'COMPLETED') {
+    if (state.algorithm !== 'GB_SFLA_CS') return phaseSteps.value.length - 1
+    const rawProgress = Number(missionMetrics.value.missionProgress ?? missionMetrics.value.progress ?? 0)
+    const capturedTargets = Number(missionMetrics.value.capturedTargetCount ?? 0)
+    // Defensive consistency gate: a stale aggregate stage must never light
+    // the terminal step while progress or any executed global ring is open.
+    if (rawProgress >= 1 && capturedTargets >= scenarioPlan.value.threatCount) {
+      return phaseSteps.value.length - 1
+    }
+    return phaseSteps.value.length - 2
+  }
   if (state.algorithm === 'ESCORT_GUARD') {
     if (phase === 'COMPLETED') return 6
     if (phase === 'STABLE_CONTAINMENT') return 5
@@ -986,12 +1037,15 @@ onBeforeUnmount(() => {
             />
           </div>
           <div class="vf-live-strip">
-            <span><i></i>阶段 <strong>{{ missionPhase }}</strong></span>
+            <span><i></i>阶段 <strong>{{ missionPhaseLabel }}</strong></span>
             <span>综合进度 <strong>{{ displayMissionProgress }}%</strong></span>
             <span>可见目标 <strong>{{ visibleTargetCount }}</strong></span>
             <span v-if="state.algorithm === 'GB_SFLA_CS'">行动距离 <strong>{{ Number(missionMetrics.targetTravelDistanceM ?? 0).toFixed(0) }} m</strong></span>
             <span v-else>已捕获 <strong>{{ Number(missionMetrics.capturedThreatCount ?? 0) }}/{{ scenarioPlan.threatCount }}</strong></span>
-            <span>运行时长 <strong>{{ missionElapsedLabel }}</strong></span>
+            <span v-if="state.algorithm !== 'GB_SFLA_CS' && postMissionFormationRequiredCount > 0">
+              机动余量归队 <strong>{{ postMissionFormationReadyCount }}/{{ postMissionFormationRequiredCount }}</strong>
+            </span>
+            <span>仿真时长 <strong>{{ simulationElapsedLabel }}</strong></span>
           </div>
           <div class="vf-command-bar">
             <div class="vf-command-actions">
@@ -1049,17 +1103,17 @@ onBeforeUnmount(() => {
               <article class="vf-status-card">
                 <span>任务状态</span>
                 <strong :class="state.mission.toLowerCase()">{{ state.mission }}</strong>
-                <small>序列 {{ state.sequence }} · 阶段 {{ missionPhase }}</small>
+                <small>序列 {{ state.sequence }} · 阶段 {{ missionPhaseLabel }}</small>
               </article>
 
               <section class="vf-inspector-section">
                 <h4>目标概览 <span>{{ visibleTargets.length }}</span></h4>
                 <div v-if="visibleTargets.length" class="vf-target-list">
-                  <article v-for="target in visibleTargets.slice(0, 4)" :key="target.code">
+                  <article v-for="target in visibleTargets.slice(0, 6)" :key="target.code">
                     <div><strong>{{ target.code }}</strong><small>{{ target.type }}</small></div>
                     <span>{{ target.state || 'VISIBLE' }}</span>
                   </article>
-                  <p v-if="visibleTargets.length > 4" class="vf-list-overflow">另有 {{ visibleTargets.length - 4 }} 个目标，任务指标仍按全部目标统计</p>
+                  <p v-if="visibleTargets.length > 6" class="vf-list-overflow">另有 {{ visibleTargets.length - 6 }} 个目标，任务指标仍按全部目标统计</p>
                 </div>
                 <p v-else class="vf-empty">生成场景后显示目标状态</p>
               </section>
@@ -1076,24 +1130,42 @@ onBeforeUnmount(() => {
                     <div><dt>全局避障</dt><dd>{{ Number(missionMetrics.globalAvoidanceCount ?? 0) }}</dd></div>
                   </template>
                   <template v-else>
-                    <div><dt>护航进度</dt><dd>{{ escortProgress }}%</dd></div>
-                    <div><dt>围捕进度</dt><dd>{{ captureProgress }}%</dd></div>
+                    <div><dt>护航航程</dt><dd>{{ escortProgress }}%</dd></div>
+                    <div><dt>围捕完成度</dt><dd>{{ captureProgress }}%</dd></div>
                     <div><dt>已捕获</dt><dd>{{ Number(missionMetrics.capturedThreatCount ?? 0) }}/{{ scenarioPlan.threatCount }}</dd></div>
+                    <div>
+                      <dt>兵力分工</dt>
+                      <dd>近卫 {{ closeGuardCount }} · 围捕 {{ captureAssignedCount }} · 机动支援 {{ mobileSupportCount }}</dd>
+                    </div>
+                    <div v-if="postMissionFormationRequiredCount > 0">
+                      <dt>机动余量归队</dt>
+                      <dd>{{ postMissionFormationReadyCount }}/{{ postMissionFormationRequiredCount }} · {{ postMissionFormationProgress }}%</dd>
+                    </div>
+                    <div v-if="postMissionFormationRequiredCount > 0">
+                      <dt>终态稳定</dt>
+                      <dd>{{ postMissionStableFrames }}/{{ postMissionRequiredStableFrames }}</dd>
+                    </div>
+                    <div v-if="terminalBlockerLabel"><dt>完成阻塞</dt><dd>{{ terminalBlockerLabel }}</dd></div>
                   </template>
                   <div><dt>避障修正</dt><dd>{{ Number(missionMetrics.avoidanceCount ?? 0) }}</dd></div>
+                  <div><dt>实际耗时</dt><dd>{{ missionElapsedLabel }}</dd></div>
                 </dl>
               </section>
 
               <section v-if="captureGroups.length" class="vf-inspector-section">
                 <h4>
                   <span>围捕目标</span>
-                  <span>实时闭环 {{ Number(missionMetrics.capturedThreatCount ?? missionMetrics.capturedTargetCount ?? 0) }}/{{ captureGroups.length }}</span>
+                  <span>实时闭环 {{ Number(missionMetrics.capturedThreatCount ?? missionMetrics.capturedTargetCount ?? 0) }}/{{ scenarioPlan.threatCount }}</span>
                 </h4>
                 <div class="vf-capture-groups">
                   <article v-for="group in captureGroups.slice(0, 4)" :key="group.threatCode">
                     <strong>{{ group.threatCode }}</strong>
                     <span>阶段 {{ displayCaptureStage(group.stage) }}/3 · {{ group.uavCount }} UAV + {{ group.usvCount }} USV</span>
-                    <small>到位 {{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}% · 稳定闭环 {{ group.holdFrames ?? 0 }}/{{ group.holdRequiredFrames ?? 25 }}</small>
+                    <small>
+                      阶段槽位到位 {{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}%
+                      · 最大缺口 {{ Number(group.maxAngularGapDeg ?? 360).toFixed(0) }}°
+                    </small>
+                    <small>稳定闭环 {{ group.holdFrames ?? 0 }}/{{ group.holdRequiredFrames ?? 25 }}</small>
                     <small v-if="state.algorithm === 'GB_SFLA_CS'">
                       实际闭环 {{ group.postGlobalContainmentReady ? '是' : '否' }}
                       · 最大缺口 {{ Number(group.postGlobalMaxGapDeg ?? 0).toFixed(0) }}/{{ Number(group.postGlobalMaxAllowedGapDeg ?? 0).toFixed(0) }}°

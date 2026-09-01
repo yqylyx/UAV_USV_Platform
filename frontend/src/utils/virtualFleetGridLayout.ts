@@ -32,6 +32,21 @@ function gridAxis(index: number, count: number, min: number, max: number) {
   return min + (max - min) * index / (count - 1)
 }
 
+function squareFormationOffsets(count: number, spacing: number): PlanarPoint[] {
+  const columns = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, count))))
+  const rows = Math.max(1, Math.ceil(Math.max(1, count) / columns))
+  const raw = Array.from({ length: Math.max(1, count) }, (_, index) => ({
+    eastM: (Math.floor(index / columns) - (rows - 1) / 2) * spacing,
+    northM: (index % columns - (columns - 1) / 2) * spacing,
+  }))
+  const meanEast = raw.reduce((sum, item) => sum + item.eastM, 0) / raw.length
+  const meanNorth = raw.reduce((sum, item) => sum + item.northM, 0) / raw.length
+  return raw.map(item => ({
+    eastM: item.eastM - meanEast,
+    northM: item.northM - meanNorth,
+  }))
+}
+
 function appendGrid(
   poses: GridScenarioPose[],
   type: 'UAV' | 'USV',
@@ -137,6 +152,12 @@ export function buildVirtualFleetGridLayout(
   const usvCount = Math.max(1, Math.min(128, Math.trunc(options.usvCount)))
   const captureColumns = Math.ceil(Math.sqrt(Math.max(uavCount, usvCount)))
   const captureCorridorHalfLength = 55 + Math.max(0, captureColumns - 2) * 4
+  const plan = deriveAdaptiveScenarioPlan(uavCount, usvCount)
+  const escortSafeLeft = -plan.worldWidth / 2 + 28
+  const escortUsableWidth = plan.worldWidth - 56
+  const escortCenterEast = escortSafeLeft
+    + Math.min(90, Math.max(58, escortUsableWidth * .32))
+  const multiEscort = !captureMode && plan.protectedCount > 1
   if (captureMode) {
     const random = createSeededRandom(options.seed)
     const occupied: PlanarPoint[] = []
@@ -147,24 +168,32 @@ export function buildVirtualFleetGridLayout(
     appendRandomStaging(poses, 'UAV', uavCount, options.uavSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength, stagingBandOffset)
     appendRandomStaging(poses, 'USV', usvCount, options.usvSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength, -stagingBandOffset)
   } else {
-    appendGrid(poses, 'UAV', uavCount, -50, 0, options.uavSpeedMps, options.fleetOrigin)
-    appendGrid(poses, 'USV', usvCount, 0, 50, options.usvSpeedMps, options.fleetOrigin)
+    if (multiEscort) {
+      // Preview the same compact convoy envelope used by the algorithm. This
+      // avoids a large visual jump when a 20+20 scene switches from Unity's
+      // generated preview to the first authoritative escort frame.
+      appendGrid(poses, 'UAV', uavCount, escortCenterEast - 60, escortCenterEast - 8, options.uavSpeedMps, options.fleetOrigin)
+      appendGrid(poses, 'USV', usvCount, escortCenterEast + 8, escortCenterEast + 60, options.usvSpeedMps, options.fleetOrigin)
+    } else {
+      appendGrid(poses, 'UAV', uavCount, -50, 0, options.uavSpeedMps, options.fleetOrigin)
+      appendGrid(poses, 'USV', usvCount, 0, 50, options.usvSpeedMps, options.fleetOrigin)
+    }
   }
-  const plan = deriveAdaptiveScenarioPlan(uavCount, usvCount)
   const targetTypes = captureMode
     ? Array.from({ length: plan.threatCount }, () => 'CAPTURE_TARGET')
     : [
         ...Array.from({ length: plan.protectedCount }, () => 'ESCORT_TARGET'),
         ...Array.from({ length: plan.threatCount }, () => 'THREAT_TARGET'),
       ]
+  const protectedOffsets = squareFormationOffsets(plan.protectedCount, 42)
   targetTypes.forEach((targetType, index) => {
     const targetCode = captureMode
       ? `TARGET-${String(index + 1).padStart(3, '0')}`
       : index < plan.protectedCount
         ? `PROTECTED-${String(index + 1).padStart(3, '0')}`
         : `THREAT-${String(index - plan.protectedCount + 1).padStart(3, '0')}`
-    const angle = 2 * Math.PI * index / Math.max(1, targetTypes.length)
-    const radius = captureMode ? 0 : Math.min(plan.worldWidth, plan.worldHeight) * .34
+    const isProtected = !captureMode && index < plan.protectedCount
+    const previewAngle = 2 * Math.PI * index / Math.max(1, targetTypes.length)
     // Multi-target capture starts with every hostile clearly separated in
     // open water.  A single target remains on the corridor centreline.
     const captureSpread = Math.min(90, plan.worldHeight * .26)
@@ -174,6 +203,41 @@ export function buildVirtualFleetGridLayout(
     const captureTargetEast = captureMode
       ? -captureCorridorHalfLength - Math.abs(captureTargetNorth) * .12
       : 0
+    let localEast: number
+    let localNorth: number
+    let headingDeg: number
+    if (captureMode) {
+      localEast = captureTargetEast
+      localNorth = captureTargetNorth
+      headingDeg = (previewAngle * 180 / Math.PI + 180) % 360
+    } else if (!multiEscort) {
+      const radius = Math.min(plan.worldWidth, plan.worldHeight) * .34
+      localEast = Math.cos(previewAngle) * radius
+      localNorth = Math.sin(previewAngle) * radius
+      headingDeg = (previewAngle * 180 / Math.PI + 180) % 360
+    } else if (isProtected) {
+      const protectedOffset = protectedOffsets[index] ?? { eastM: 0, northM: 0 }
+      localEast = escortCenterEast + protectedOffset.eastM
+      localNorth = protectedOffset.northM
+      headingDeg = 0
+    } else {
+      const threatIndex = index - plan.protectedCount
+      const spreadAngle = plan.threatCount <= 1
+        ? 0
+        : -Math.PI / 3 + (2 * Math.PI / 3) * threatIndex / (plan.threatCount - 1)
+      const threatRadius = Math.max(120, Math.min(plan.worldWidth, plan.worldHeight) * .34)
+      localEast = Math.max(
+        -plan.worldWidth / 2 + 46,
+        Math.min(plan.worldWidth / 2 - 46, escortCenterEast + Math.cos(spreadAngle) * threatRadius),
+      )
+      localNorth = Math.max(
+        -plan.worldHeight / 2 + 46,
+        Math.min(plan.worldHeight / 2 - 46, Math.sin(spreadAngle) * threatRadius),
+      )
+      headingDeg = (
+        Math.atan2(-localNorth, escortCenterEast - localEast) * 180 / Math.PI + 360
+      ) % 360
+    }
     poses.push({
       // Keep initial scene identity identical to the algorithm runtime frames.
       // Otherwise Unity creates TARGET-* objects during scene generation and
@@ -181,10 +245,10 @@ export function buildVirtualFleetGridLayout(
       deviceCode: targetCode,
       deviceType: 'TARGET',
       targetType,
-      eastM: options.fleetOrigin.eastM + captureTargetEast + Math.cos(angle) * radius,
-      northM: options.fleetOrigin.northM + captureTargetNorth + Math.sin(angle) * radius,
+      eastM: options.fleetOrigin.eastM + localEast,
+      northM: options.fleetOrigin.northM + localNorth,
       upM: options.fleetOrigin.upM,
-      headingDeg: (angle * 180 / Math.PI + 180) % 360,
+      headingDeg,
       speedMps: 0,
       state: targetType,
       valid: true,

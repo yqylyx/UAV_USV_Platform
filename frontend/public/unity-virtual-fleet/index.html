@@ -16,6 +16,14 @@
         background: #061113;
       }
 
+      #unity-transition-snapshot {
+        display: none;
+      }
+
+      body.embedded {
+        background: #1b3745;
+      }
+
       body.embedded #unity-container,
       body.embedded #unity-canvas {
         position: absolute;
@@ -27,6 +35,28 @@
         transform: none !important;
       }
 
+      body.embedded #unity-container {
+        background: #1b3745;
+      }
+
+      body.embedded #unity-transition-snapshot {
+        position: absolute;
+        z-index: 1;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        visibility: hidden;
+        opacity: 0;
+        background: #1b3745;
+      }
+
+      body.embedded #unity-transition-snapshot.visible {
+        visibility: visible;
+        opacity: 1;
+      }
+
       body.embedded #unity-footer {
         display: none;
       }
@@ -35,6 +65,7 @@
   <body>
     <div id="unity-container" class="unity-desktop">
       <canvas id="unity-canvas" width="960" height="600" tabindex="-1"></canvas>
+      <canvas id="unity-transition-snapshot" width="960" height="600" aria-hidden="true"></canvas>
       <div id="unity-loading-bar">
         <div id="unity-logo"></div>
         <div id="unity-progress-bar-empty">
@@ -51,6 +82,7 @@
     <script>
       var container = document.querySelector('#unity-container');
       var canvas = document.querySelector('#unity-canvas');
+      var transitionSnapshot = document.querySelector('#unity-transition-snapshot');
       var loadingBar = document.querySelector('#unity-loading-bar');
       var progressBarFull = document.querySelector('#unity-progress-bar-full');
       var fullscreenButton = document.querySelector('#unity-fullscreen-button');
@@ -66,7 +98,7 @@
       var platformCapabilities = {};
       var pendingUnityMessages = [];
       var viewportTransitioning = false;
-      var viewportResizeQueued = false;
+      var viewportTransitionSerial = 0;
       var platformBridgeMethods = [
         'InitializePlatform',
         'LoadScenario',
@@ -643,13 +675,62 @@
       function resizeEmbeddedCanvas() {
         if (!embedded) return;
         if (viewportTransitioning) {
-          viewportResizeQueued = true;
           return;
         }
         var width = Math.max(1, window.innerWidth);
         var height = Math.max(1, window.innerHeight);
         canvas.style.width = width + 'px';
         canvas.style.height = height + 'px';
+      }
+
+      function captureViewportSnapshot(serial) {
+        if (!embedded || !transitionSnapshot) return;
+        // Unity registers its animation callback before this callback. Capturing
+        // here copies a freshly rendered frame even when preserveDrawingBuffer
+        // is disabled, without imposing its permanent performance cost.
+        window.requestAnimationFrame(function () {
+          if (!viewportTransitioning || serial !== viewportTransitionSerial) return;
+          var width = Math.max(1, canvas.width || window.innerWidth);
+          var height = Math.max(1, canvas.height || window.innerHeight);
+          transitionSnapshot.width = width;
+          transitionSnapshot.height = height;
+          var context = transitionSnapshot.getContext('2d', { alpha: false });
+          if (context) {
+            context.fillStyle = '#1b3745';
+            context.fillRect(0, 0, width, height);
+            try {
+              context.drawImage(canvas, 0, 0, width, height);
+            } catch (error) {
+              console.warn('Unable to capture the Unity transition frame.', error);
+            }
+          }
+          transitionSnapshot.classList.add('visible');
+          postUnityMessage('viewportSnapshotReady', {
+            width: width,
+            height: height,
+            serial: serial,
+          });
+        });
+      }
+
+      function finishViewportTransition(serial) {
+        viewportTransitioning = false;
+        resizeEmbeddedCanvas();
+        // Keep the frozen frame visible until Unity has had multiple animation
+        // frames to rebuild and present the final-size WebGL backbuffer.
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () {
+              if (serial !== viewportTransitionSerial || viewportTransitioning) return;
+              transitionSnapshot.classList.remove('visible');
+              postUnityMessage('viewportApplied', {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                serial: serial,
+              });
+            });
+          });
+        });
       }
 
       function embeddedRenderPixelRatio() {
@@ -744,27 +825,12 @@
         var message = data.message;
         if (message.type === 'viewportTransitionStart') {
           viewportTransitioning = true;
-          viewportResizeQueued = false;
+          viewportTransitionSerial += 1;
+          captureViewportSnapshot(viewportTransitionSerial);
           return;
         }
         if (message.type === 'viewportTransitionEnd') {
-          viewportTransitioning = false;
-          if (viewportResizeQueued) {
-            viewportResizeQueued = false;
-            window.requestAnimationFrame(function () {
-              window.requestAnimationFrame(resizeEmbeddedCanvas);
-            });
-          } else {
-            resizeEmbeddedCanvas();
-          }
-          window.requestAnimationFrame(function () {
-            window.requestAnimationFrame(function () {
-              postUnityMessage('viewportApplied', {
-                width: window.innerWidth,
-                height: window.innerHeight,
-              });
-            });
-          });
+          finishViewportTransition(viewportTransitionSerial);
           return;
         }
         var bridgeSent = false;

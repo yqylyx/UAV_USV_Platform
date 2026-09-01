@@ -22,9 +22,9 @@ export function deriveAdaptiveScenarioPlan(uavInput: number, usvInput: number): 
   // mandatory 80 m visible escape run used by small escort experiments.
   let worldWidth = 360
   let worldHeight = 280
-  if (effectiveScale >= 25) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [2, 4, 3, 600, 460]
-  else if (effectiveScale >= 20) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [2, 3, 2, 520, 400]
-  else if (effectiveScale >= 15) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [1, 3, 2, 420, 320]
+  if (effectiveScale >= 25) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [2, 4, 4, 600, 460]
+  else if (effectiveScale >= 20) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [2, 3, 3, 520, 400]
+  else if (effectiveScale >= 15) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [1, 3, 3, 420, 320]
   else if (effectiveScale >= 10) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [1, 2, 2, 360, 280]
   if (effectiveScale > 30) {
     protectedCount = Math.min(4, 2 + Math.floor((effectiveScale - 31) / 32))

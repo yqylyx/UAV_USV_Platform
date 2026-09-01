@@ -91,8 +91,10 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
             # patrol/interceptor is a defect; a blocker, observer or final-ring
             # member remaining on its assigned point is expected behaviour.
             allowed_hold = role in {
-                "CONTAINMENT", "RING_MEMBER", "CLOSE_GUARD", "BLOCKER", "CONFRONT",
-                "CAPTURE_RESERVE",
+                "CAPTURE", "CONTAINMENT", "RING_MEMBER", "CLOSE_GUARD",
+                "BLOCKER", "GAP_BLOCKER", "CONFRONT",
+                "CAPTURE_RESERVE", "OUTER_INTERCEPT", "CONVOY_SUPPORT",
+                "LOCAL_OVERWATCH",
             }
             stationary_frames[code] = (
                 stationary_frames.get(code, 0) + 1
