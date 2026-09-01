@@ -9,7 +9,12 @@ const route = useRoute()
 const unityViewportStore = useUnityViewportStore()
 
 const showSystemOverviewUnity = computed(
-  () => route.meta.requiresAuth && (route.name === 'dashboard' || route.name === 'optical-vision'),
+  () => Boolean(route.meta.requiresAuth)
+    && (route.name === 'dashboard' || route.name === 'optical-vision'),
+)
+const systemOverviewUnityActive = computed(
+  () => route.name === 'optical-vision'
+    || (route.name === 'dashboard' && route.query.workspace !== 'simulation'),
 )
 const showMissionCenterUnity = computed(
   () =>
@@ -26,7 +31,7 @@ const showMissionCenterUnity = computed(
     :viewport="route.name === 'optical-vision' ? 'visual-sensors-live' : 'dashboard'"
     runtime-scope="SYSTEM_OVERVIEW"
     runtime-instance-id="overview-unity-01"
-    active
+    :active="systemOverviewUnityActive"
     :layer="route.name === 'optical-vision' ? 3 : 20"
   />
   <UnityRuntimeHost
@@ -41,7 +46,7 @@ const showMissionCenterUnity = computed(
     :layer="95"
   />
   <RouterView v-slot="{ Component }">
-    <KeepAlive include="DashboardView,MissionWorkspaceView">
+    <KeepAlive include="OverviewWorkspaceView,MissionWorkspaceView">
       <component :is="Component" />
     </KeepAlive>
   </RouterView>

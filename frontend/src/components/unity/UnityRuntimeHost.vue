@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, reactive, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
 import type { UnityRuntimeScope } from '@/stores/unityBridge'
@@ -25,10 +25,12 @@ const props = withDefaults(
 )
 
 const frameStyle = reactive<Record<string, string>>({})
+const runtimePanel = ref<InstanceType<typeof UnityWebglPanel> | null>(null)
 let viewportElement: HTMLElement | null = null
 let resizeObserver: ResizeObserver | null = null
 let animationFrame = 0
 let alignmentUntil = 0
+let viewportSettleTimer: number | null = null
 let lastWidth = 1280
 let lastHeight = 720
 
@@ -86,15 +88,29 @@ function scheduleAlignment() {
   })
 }
 
+function scheduleViewportSettle(delay = 180) {
+  if (viewportSettleTimer !== null) window.clearTimeout(viewportSettleTimer)
+  viewportSettleTimer = window.setTimeout(() => {
+    viewportSettleTimer = null
+    if (!props.active) return
+    alignRuntime()
+    runtimePanel.value?.syncViewport()
+  }, delay)
+}
+
 function trackRuntime(event: Event) {
   const duration = event instanceof CustomEvent
     ? Number(event.detail?.duration ?? 500)
     : 500
   alignmentUntil = Math.max(alignmentUntil, performance.now() + Math.max(100, duration))
   scheduleAlignment()
+  scheduleViewportSettle(Math.max(140, duration + 24))
 }
 
-watch(() => [props.viewport, props.active], scheduleAlignment, { immediate: true })
+watch(() => [props.viewport, props.active], () => {
+  scheduleAlignment()
+  scheduleViewportSettle()
+}, { immediate: true })
 
 onMounted(() => {
   window.addEventListener('resize', scheduleAlignment)
@@ -106,6 +122,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   window.cancelAnimationFrame(animationFrame)
+  if (viewportSettleTimer !== null) window.clearTimeout(viewportSettleTimer)
   window.removeEventListener('resize', scheduleAlignment)
   window.removeEventListener('scroll', alignRuntime, true)
   window.removeEventListener('unity-runtime-track', trackRuntime)
@@ -120,6 +137,7 @@ onBeforeUnmount(() => {
     :aria-label="`${runtimeScope} Unity WebGL 运行实例`"
   >
     <UnityWebglPanel
+      ref="runtimePanel"
       :iframe-src="iframeSrc"
       :runtime-scope="runtimeScope"
       :runtime-instance-id="runtimeInstanceId"

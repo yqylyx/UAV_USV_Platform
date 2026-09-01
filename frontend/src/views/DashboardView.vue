@@ -1509,6 +1509,10 @@ watch(
           <span>{{ selectedDeviceCode.toUpperCase() }}</span>
           <small>{{ selectedCameraMode === 'device-follow' ? '设备跟随' : '全局态势' }}</small>
         </div>
+        <nav class="overview-workspace-switch" aria-label="工作空间切换">
+          <span class="active">系统总览</span>
+          <RouterLink :to="{ name: 'dashboard', query: { workspace: 'simulation' } }">算法仿真</RouterLink>
+        </nav>
         <div class="overview-link-status">
           <b :class="{ online: rosBridgeOnline }"><i></i>ROS {{ rosBridgeOnline ? '在线' : '离线' }}</b>
           <b :class="{ online: unityReady }"><i></i>Unity {{ unityReady ? '在线' : '等待' }}</b>

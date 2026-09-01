@@ -924,7 +924,7 @@ onBeforeUnmount(() => {
           <strong>算法仿真</strong>
         </div>
         <nav class="vf-workspace-switch" aria-label="工作空间切换">
-          <RouterLink to="/">系统总览</RouterLink>
+          <RouterLink :to="{ name: 'dashboard' }">系统总览</RouterLink>
           <span class="active">算法仿真</span>
         </nav>
         <div class="vf-instance-status" :class="{ offline: !unityReady }">
