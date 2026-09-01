@@ -227,6 +227,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         self._ring_stalled_frames: dict[int, int] = {}
         self._ring_replans: dict[int, int] = {}
         self._convoy_support_slot_by_code: dict[str, int] = {}
+        self._convoy_support_goal_override_by_code: dict[str, tuple[float, float]] = {}
         self._convoy_support_route_by_code: dict[str, list[tuple[float, float]]] = {}
         self._convoy_support_route_cursor_by_code: dict[str, int] = {}
         self._convoy_support_route_replan_frame_by_code: dict[str, int] = {}
@@ -826,11 +827,17 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             self._convoy_support_route_by_code.pop(item.code, None)
             self._convoy_support_route_cursor_by_code.pop(item.code, None)
             self._convoy_support_route_replan_frame_by_code.pop(item.code, None)
+            self._convoy_support_goal_override_by_code.pop(item.code, None)
+            self._convoy_support_goal_override_by_code.pop(released.code, None)
             support_count = len(self._convoy_support_members())
             goal = self._safe_convoy_support_point(support_slot, support_count)
-            self._convoy_support_route_by_code[released.code] = (
-                self._build_convoy_support_route(released, goal)
-            )
+            route, effective_goal = self._build_convoy_support_route(released, goal)
+            self._convoy_support_route_by_code[released.code] = route
+            if (
+                self._post_mission_final_replan_done
+                and _length(effective_goal[0] - goal[0], effective_goal[1] - goal[1]) > 0.05
+            ):
+                self._convoy_support_goal_override_by_code[released.code] = effective_goal
             self._convoy_support_route_cursor_by_code[released.code] = 0
             self._convoy_support_route_replan_frame_by_code[released.code] = self.sequence
             self._post_mission_initial_error_by_code.pop(item.code, None)
@@ -881,7 +888,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         support = self._convoy_support_members()
         if support:
             self._assign_convoy_support_slots(support)
-            self._assign_convoy_support_routes(support)
+            self._assign_convoy_support_routes(support, allow_terminal_fallback=True)
         self._post_mission_initial_error_by_code = {}
         for item in self._post_mission_members():
             desired_x, desired_y = self._post_mission_point(item)
@@ -903,7 +910,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         if not support:
             return
         self._assign_convoy_support_slots(support)
-        self._assign_convoy_support_routes(support)
+        self._assign_convoy_support_routes(support, allow_terminal_fallback=True)
         for item in support:
             desired_x, desired_y = self._post_mission_point(item)
             self._post_mission_initial_error_by_code[item.code] = max(
@@ -940,6 +947,9 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
 
     def _post_mission_point(self, item: _Vehicle) -> tuple[float, float]:
         if item.role == "CONVOY_SUPPORT":
+            override = self._convoy_support_goal_override_by_code.get(item.code)
+            if override is not None:
+                return override
             support = self._convoy_support_members()
             return self._safe_convoy_support_point(support.index(item), len(support))
         return self._post_watch_point(item)
@@ -1141,11 +1151,18 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         self,
         item: _Vehicle,
         goal: tuple[float, float],
-    ) -> list[tuple[float, float]]:
-        """Find visibility-graph waypoints around completed containment rings."""
+    ) -> tuple[list[tuple[float, float]], tuple[float, float]]:
+        """Find waypoints and a reachable terminal point around fixed obstacles.
+
+        A shoreline can join overlapping convoy/ring avoidance discs into a
+        closed pocket. In that case the nominal outer-square slot is physically
+        unreachable even though the point itself lies just outside both discs.
+        Return the closest reachable visibility node as a deformed-but-safe
+        terminal slot instead of repeatedly sending one craft into the pocket.
+        """
         obstacles = self._convoy_return_obstacles()
         if not obstacles:
-            return []
+            return [], goal
 
         start = (item.x, item.y)
         escape_prefix: list[tuple[float, float]] = []
@@ -1173,7 +1190,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 escaped = self._project_to_safe_water(
                     center_x + math.cos(angle) * (radius + 8.0),
                     center_y + math.sin(angle) * (radius + 8.0),
-                    2.0,
+                    6.0,
                 )
                 if _length(escaped[0] - center_x, escaped[1] - center_y) < radius + 0.5:
                     continue
@@ -1211,7 +1228,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             start = escaped
 
         if self._return_segment_is_clear(start, goal, obstacles):
-            return escape_prefix
+            return escape_prefix, goal
 
         nodes: list[tuple[float, float]] = [start, goal]
         samples_per_ring = 20
@@ -1222,7 +1239,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 candidate = self._project_to_safe_water(
                     center_x + math.cos(angle) * sample_radius,
                     center_y + math.sin(angle) * sample_radius,
-                    2.0,
+                    6.0,
                 )
                 if all(
                     _length(candidate[0] - x, candidate[1] - y) >= other_radius + 0.5
@@ -1260,27 +1277,59 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 previous[neighbour] = index
                 heappush(queue, (candidate, neighbour))
 
-        if not math.isfinite(distances[1]):
-            return escape_prefix
+        target_index = 1
+        effective_goal = goal
+        if not math.isfinite(distances[target_index]):
+            reachable = [
+                index for index in range(2, len(nodes))
+                if math.isfinite(distances[index])
+            ]
+            if not reachable:
+                # The escape point is already outside every conservative
+                # obstacle and is the safest attainable holding station.
+                return escape_prefix, start
+            target_index = min(
+                reachable,
+                key=lambda index: (
+                    _length(nodes[index][0] - goal[0], nodes[index][1] - goal[1]),
+                    distances[index],
+                    nodes[index][0],
+                    nodes[index][1],
+                ),
+            )
+            effective_goal = nodes[target_index]
         indices: list[int] = []
-        cursor = 1
+        cursor = target_index
         while cursor >= 0:
             indices.append(cursor)
             cursor = previous[cursor]
         indices.reverse()
-        return [*escape_prefix, *(nodes[index] for index in indices[1:-1])]
+        return (
+            [*escape_prefix, *(nodes[index] for index in indices[1:-1])],
+            effective_goal,
+        )
 
-    def _assign_convoy_support_routes(self, members: Sequence[_Vehicle]) -> None:
+    def _assign_convoy_support_routes(
+        self,
+        members: Sequence[_Vehicle],
+        *,
+        allow_terminal_fallback: bool = False,
+    ) -> None:
         self._convoy_support_route_by_code = {}
         self._convoy_support_route_cursor_by_code = {}
         self._convoy_support_route_replan_frame_by_code = {}
+        self._convoy_support_goal_override_by_code = {}
         count = len(members)
         for item in members:
             slot = self._convoy_support_slot_by_code[item.code]
             goal = self._safe_convoy_support_point(slot, count)
-            self._convoy_support_route_by_code[item.code] = (
-                self._build_convoy_support_route(item, goal)
-            )
+            route, effective_goal = self._build_convoy_support_route(item, goal)
+            self._convoy_support_route_by_code[item.code] = route
+            if (
+                allow_terminal_fallback
+                and _length(effective_goal[0] - goal[0], effective_goal[1] - goal[1]) > 0.05
+            ):
+                self._convoy_support_goal_override_by_code[item.code] = effective_goal
             self._convoy_support_route_cursor_by_code[item.code] = 0
             self._convoy_support_route_replan_frame_by_code[item.code] = self.sequence
 
@@ -1302,6 +1351,11 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         members = self._convoy_support_members()
         if item not in members:
             return None
+        if item.code in self._convoy_support_goal_override_by_code:
+            # A terminal fallback is a deliberately deformed outer slot chosen
+            # from the reachable visibility component. Replanning it back to
+            # the sealed nominal pocket would recreate the same oscillation.
+            return None
         slot = self._convoy_support_slot_by_code[item.code]
         goal = self._safe_convoy_support_point(slot, len(members))
         obstacles = self._convoy_return_obstacles()
@@ -1318,7 +1372,12 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         )
         if self.sequence - last_replan < 30:
             return None
-        route = self._build_convoy_support_route(item, goal)
+        route, effective_goal = self._build_convoy_support_route(item, goal)
+        if (
+            self._post_mission_final_replan_done
+            and _length(effective_goal[0] - goal[0], effective_goal[1] - goal[1]) > 0.05
+        ):
+            self._convoy_support_goal_override_by_code[item.code] = effective_goal
         self._convoy_support_route_by_code[item.code] = route
         self._convoy_support_route_cursor_by_code[item.code] = 0
         self._convoy_support_route_replan_frame_by_code[item.code] = self.sequence

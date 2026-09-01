@@ -9,6 +9,7 @@ from app.adapters.adaptive_escort import (
     CONTAINMENT_STANDOFF_M,
     POST_CAPTURE_CONVOY_CLEARANCE_M,
     POST_MISSION_OUTER_GUARD_GAP_M,
+    POST_MISSION_SLOT_TOLERANCE_M,
     PROTECTED_SAFE_GATE_OFFSET_M,
     TARGET_SEPARATION_M,
 )
@@ -506,6 +507,42 @@ class NextEscortAcceptanceTests(unittest.TestCase):
 
         self.assertAlmostEqual(0.48, frame.metrics["escortProgress"], places=3)
         self.assertFalse(adapter._protected_reached_safe_gate(protected))
+
+    def test_terminal_support_uses_reachable_slot_beside_shoreline_ring(self):
+        adapter = AdaptiveEscortAdapter(20260814, {
+            "uavCount": 20,
+            "usvCount": 20,
+            "seed": 20260814,
+            "uavSpeedMps": 15,
+            "usvSpeedMps": 3,
+        })
+        frame = None
+        for _ in range(4000):
+            frame = adapter.step()
+            if frame.terminalStatus:
+                break
+
+        self.assertIsNotNone(frame)
+        self.assertEqual("COMPLETED", frame.terminalStatus, frame.metrics)
+        self.assertEqual(
+            frame.metrics["postMissionFormationRequiredCount"],
+            frame.metrics["postMissionFormationReadyCount"],
+        )
+        self.assertGreaterEqual(
+            frame.metrics["convoySupportStableFrames"],
+            frame.metrics["convoySupportRequiredStableFrames"],
+        )
+        # The seeded third ring touches the harbour-side outer square. At least
+        # one nominal slot must be deformed into the reachable water component
+        # instead of repeatedly sending USV-007 into the sealed shoreline gap.
+        self.assertTrue(adapter._convoy_support_goal_override_by_code)
+        self.assertTrue(all(
+            math.hypot(
+                item.x - adapter._post_mission_point(item)[0],
+                item.y - adapter._post_mission_point(item)[1],
+            ) <= POST_MISSION_SLOT_TOLERANCE_M
+            for item in adapter._post_mission_members()
+        ))
 
     def test_convoy_support_assignment_minimizes_crossing_routes(self):
         adapter = AdaptiveEscortAdapter(9154, {
