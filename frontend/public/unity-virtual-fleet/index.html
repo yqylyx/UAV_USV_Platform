@@ -722,7 +722,7 @@
           window.requestAnimationFrame(function () {
             window.requestAnimationFrame(function () {
               if (serial !== viewportTransitionSerial || viewportTransitioning) return;
-              transitionSnapshot.classList.remove('visible');
+          if (transitionSnapshot) transitionSnapshot.classList.remove('visible');
               postUnityMessage('viewportApplied', {
                 width: window.innerWidth,
                 height: window.innerHeight,
@@ -826,7 +826,18 @@
         if (message.type === 'viewportTransitionStart') {
           viewportTransitioning = true;
           viewportTransitionSerial += 1;
-          captureViewportSnapshot(viewportTransitionSerial);
+          // Keep the live WebGL canvas composited at its locked CSS size.
+          // Reading a preserveDrawingBuffer=false canvas into a 2D snapshot
+          // can legally return black, which made a smooth sidebar animation
+          // appear as a WebGL outage. The parent now scales the live iframe
+          // and we resize the backbuffer exactly once at transition end.
+          if (transitionSnapshot) transitionSnapshot.classList.remove('visible');
+          postUnityMessage('viewportSnapshotReady', {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            serial: viewportTransitionSerial,
+            liveCanvas: true,
+          });
           return;
         }
         if (message.type === 'viewportTransitionEnd') {

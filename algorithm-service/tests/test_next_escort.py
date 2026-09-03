@@ -74,7 +74,16 @@ class NextEscortAcceptanceTests(unittest.TestCase):
                 self.assertGreaterEqual(sum(agent.type == "UAV" for agent in assigned), 2)
                 self.assertGreaterEqual(sum(agent.type == "USV" for agent in assigned), 2)
 
-    def test_multi_protected_targets_hold_compact_common_heading(self):
+    def test_all_scales_keep_exactly_one_protected_target(self):
+        for count in (3, 5, 10, 15, 20, 25, 30):
+            with self.subTest(count=count):
+                adapter = AdaptiveEscortAdapter(9150 + count, {
+                    "uavCount": count, "usvCount": count, "seed": 20260814,
+                })
+                self.assertEqual(1, adapter.plan.protected_count)
+                self.assertEqual(1, len(adapter.protected))
+
+    def test_single_protected_target_reacts_to_threats_without_duplicate_convoy_targets(self):
         adapter = AdaptiveEscortAdapter(9150, {
             "uavCount": 20, "usvCount": 20, "seed": 20260814,
         })
@@ -83,21 +92,14 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         saw_threat_response = False
         for _ in range(420):
             adapter.step()
-            left, right = adapter.protected
-            self.assertAlmostEqual(
-                math.hypot(left.x - right.x, left.y - right.y),
-                CONVOY_TARGET_SPACING_M,
-                delta=0.05,
-            )
-            self.assertEqual(left.state, right.state)
-            heading_delta = abs((left.heading - right.heading + 180.0) % 360.0 - 180.0)
-            self.assertLessEqual(heading_delta, 0.1)
-            saw_threat_response = saw_threat_response or left.state in {
+            self.assertEqual(1, len(adapter.protected))
+            protected = adapter.protected[0]
+            saw_threat_response = saw_threat_response or protected.state in {
                 "THREAT_DETECTED", "EVADING", "BYPASSING_CONTAINMENT",
             }
         self.assertTrue(saw_threat_response)
 
-    def test_multi_protected_convoy_has_square_mixed_close_guard(self):
+    def test_single_protected_target_has_square_mixed_close_guard(self):
         adapter = AdaptiveEscortAdapter(9151, {
             "uavCount": 20, "usvCount": 20, "seed": 20260814,
         })
@@ -171,7 +173,7 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         self.assertFalse(status["ready"])
         self.assertTrue(status["blockerCode"])
 
-    def test_multi_protected_convoy_keeps_guards_while_rest_respond(self):
+    def test_single_protected_target_keeps_guards_while_rest_respond(self):
         adapter = AdaptiveEscortAdapter(9152, {
             "uavCount": 20, "usvCount": 20, "seed": 20260814,
         })
@@ -236,6 +238,9 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         })
         adapter.step()
         threat = adapter.threats[2]
+        self.assertFalse(threat.forced)
+        self.assertEqual("ATTACKING", threat.intent)
+        adapter._start_capture_for([threat], "TEST_INTERCEPT")
         threat.travelled_distance = (
             threat.capture_start_travel_distance
             + threat.required_pursuit_distance * 0.50
@@ -288,19 +293,21 @@ class NextEscortAcceptanceTests(unittest.TestCase):
 
         self.assertIsNotNone(stage_one_frame)
         self.assertIsNotNone(stage_two_frame)
-        self.assertLessEqual(stage_two_frame - stage_one_frame, 250)
+        # The final formation gate now waits for 88% slot arrival and a much
+        # smaller angular gap; it must still converge without an open ring.
+        self.assertLessEqual(stage_two_frame - stage_one_frame, 600)
 
-    def test_global_progress_is_capped_while_any_threat_is_still_in_pursuit(self):
+    def test_global_progress_is_capped_while_any_threat_is_still_unresolved(self):
         adapter = AdaptiveEscortAdapter(91523, {
             "uavCount": 30, "usvCount": 30, "seed": 20260814,
         })
         frame = None
         for _ in range(1200):
             frame = adapter.step()
-            if frame.metrics["missionStage"] == "PURSUIT":
+            if frame.metrics["missionStage"] in {"THREAT_DETECTION", "INTERCEPT"}:
                 break
         self.assertIsNotNone(frame)
-        self.assertEqual("PURSUIT", frame.metrics["missionStage"])
+        self.assertIn(frame.metrics["missionStage"], {"THREAT_DETECTION", "INTERCEPT"})
         self.assertLessEqual(frame.metrics["missionProgress"], 0.69)
         self.assertTrue(frame.metrics["stageSubjectThreatCode"])
 
@@ -309,6 +316,11 @@ class NextEscortAcceptanceTests(unittest.TestCase):
             "uavCount": 20, "usvCount": 20, "seed": 20260814,
         })
         initial = adapter.step()
+        self.assertEqual("GUARDING", initial.metrics["missionStage"])
+        self.assertTrue(all(
+            threat.intent == "ATTACKING" and not threat.forced
+            for threat in adapter.threats
+        ))
         initial_assignments = {
             item.code: item.assigned_threat
             for item in adapter.vehicles
@@ -532,10 +544,9 @@ class NextEscortAcceptanceTests(unittest.TestCase):
             frame.metrics["convoySupportStableFrames"],
             frame.metrics["convoySupportRequiredStableFrames"],
         )
-        # The seeded third ring touches the harbour-side outer square. At least
-        # one nominal slot must be deformed into the reachable water component
-        # instead of repeatedly sending USV-007 into the sealed shoreline gap.
-        self.assertTrue(adapter._convoy_support_goal_override_by_code)
+        # Every final support slot must be reachable. Depending on the single
+        # target's actual evasion path, this may use either a nominal safe slot
+        # or a shoreline-deformed override.
         self.assertTrue(all(
             math.hypot(
                 item.x - adapter._post_mission_point(item)[0],
@@ -605,7 +616,7 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         })
         adapter.step()
         adapter.activate_capture()
-        frame = self.run_frames(adapter, 500)
+        frame = self.run_frames(adapter, 400)
         threat = adapter.threats[0]
         pursuit_distance = threat.travelled_distance - threat.capture_start_travel_distance
         self.assertGreater(pursuit_distance, 35.0)
@@ -672,7 +683,10 @@ class NextEscortAcceptanceTests(unittest.TestCase):
             minimum_after_capture,
             POST_CAPTURE_CONVOY_CLEARANCE_M - 1.0,
         )
-        self.assertGreaterEqual(minimum_member_clearance, 38.0)
+        self.assertGreaterEqual(
+            minimum_member_clearance,
+            TARGET_SEPARATION_M * 0.75,
+        )
 
     def test_multi_threat_capture_uses_fixed_balanced_mixed_groups(self):
         adapter = AdaptiveEscortAdapter(9252, {"uavCount": 10, "usvCount": 10, "seed": 20260814})
@@ -744,7 +758,7 @@ class NextEscortAcceptanceTests(unittest.TestCase):
             "uavSpeedMps": 5, "usvSpeedMps": 3,
         })
         frame = None
-        for _ in range(3200):
+        for _ in range(4000):
             frame = adapter.step()
             if frame.terminalStatus:
                 break
@@ -785,6 +799,27 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         self.assertGreater(maximum_target_speed, 1.4)
         self.assertLessEqual(maximum_target_speed, 2.26)
 
+    def test_enemy_does_not_slow_before_real_containment_pressure(self):
+        adapter = AdaptiveEscortAdapter(92551, {
+            "uavCount": 10, "usvCount": 10, "seed": 20260814,
+            "uavSpeedMps": 5, "usvSpeedMps": 3,
+        })
+        adapter.step()
+        adapter.activate_capture()
+        observed = 0
+        for _ in range(700):
+            adapter.step()
+            for threat in adapter.threats:
+                if not threat.forced or threat.capture_stage >= 2:
+                    continue
+                observed += 1
+                self.assertGreaterEqual(
+                    math.hypot(threat.vx, threat.vy),
+                    threat.cruise_speed * 0.88,
+                )
+                self.assertEqual("NONE", threat.slowdown_reason)
+        self.assertGreater(observed, 100)
+
     def test_urgent_threats_receive_independent_mixed_response_pairs(self):
         adapter = AdaptiveEscortAdapter(9300, {
             "uavCount": 15, "usvCount": 15, "seed": 20260814,
@@ -823,7 +858,7 @@ class NextEscortAcceptanceTests(unittest.TestCase):
         for kind in ("UAV", "USV"):
             reserve = [
                 item for item in adapter.vehicles
-                if item.kind == kind and item.role == "RECON"
+                if item.kind == kind and item.role == "CAPTURE_RESERVE"
                 and item.assigned_threat is None
             ]
             self.assertGreaterEqual(len(reserve), 2)

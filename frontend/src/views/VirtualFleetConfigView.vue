@@ -118,11 +118,18 @@ const missionMetrics = computed(() => currentAlgorithmFrame.value?.metrics ?? {}
 const stageSubjectThreatCode = computed(() => String(
   missionMetrics.value.stageSubjectThreatCode ?? '',
 ))
-const missionPhaseLabel = computed(() => (
-  stageSubjectThreatCode.value && missionPhase.value !== 'COMPLETED'
-    ? `${missionPhase.value} · ${stageSubjectThreatCode.value}`
-    : missionPhase.value
-))
+const missionStageLabels: Record<string, string> = {
+  PREVIEW: '预演', READY: '就绪', GUARDING: '警戒护航',
+  THREAT_DETECTION: '威胁侦测', INTERCEPT: '加速拦截', BLOCKING: '阻断攻击',
+  ESCAPE: '目标逃逸', PURSUIT: '协同追击', ENCIRCLEMENT: '动态围捕',
+  GAP_REPAIR: '动态围捕', STABLE_CONTAINMENT: '稳定闭环', COMPLETED: '完成',
+}
+const missionPhaseLabel = computed(() => {
+  const label = missionStageLabels[missionPhase.value.toUpperCase()] ?? missionPhase.value
+  return stageSubjectThreatCode.value && missionPhase.value !== 'COMPLETED'
+    ? `${label} · ${stageSubjectThreatCode.value}`
+    : label
+})
 const visibleTargetCount = computed(() => currentAlgorithmFrame.value?.targets.filter(target => target.visible !== false).length ?? configuredTargetCount.value)
 const displayMissionProgress = computed(() => {
   const raw = Math.max(0, Math.min(1, Number(
@@ -248,8 +255,8 @@ const selectedFrameItem = computed(() => {
     ?? null
 })
 const phaseSteps = computed(() => state.algorithm === 'ESCORT_GUARD'
-  ? ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '完成']
-  : ['逃逸', '追击', '拦截', '围捕', '缺口修复', '稳定闭环', '完成'])
+  ? ['警戒护航', '威胁侦测', '加速拦截', '阻断攻击', '动态围捕', '稳定闭环', '完成']
+  : ['目标逃逸', '协同追击', '截击部署', '动态围捕', '稳定闭环', '完成'])
 const activePhaseIndex = computed(() => {
   const phase = missionPhase.value.toUpperCase()
   if (state.mission === 'COMPLETED') return phaseSteps.value.length - 1
@@ -267,14 +274,14 @@ const activePhaseIndex = computed(() => {
   if (state.algorithm === 'ESCORT_GUARD') {
     if (phase === 'COMPLETED') return 6
     if (phase === 'STABLE_CONTAINMENT') return 5
-    if (phase === 'GAP_REPAIR') return 4
-    if (phase === 'ENCIRCLEMENT') return 3
+    if (phase === 'GAP_REPAIR' || phase === 'ENCIRCLEMENT') return 4
+    if (phase === 'BLOCKING') return 3
     if (phase === 'INTERCEPT') return 2
-    if (phase === 'PURSUIT') return 1
-    if (phase === 'ESCAPE') return 0
+    if (phase === 'THREAT_DETECTION') return 1
+    if (phase === 'GUARDING' || phase === 'ESCORTING') return 0
     return 0
   }
-  return ({ ESCAPE: 0, PURSUIT: 1, INTERCEPT: 2, ENCIRCLEMENT: 3, GAP_REPAIR: 4, STABLE_CONTAINMENT: 5, COMPLETED: 6 } as Record<string, number>)[phase] ?? 0
+  return ({ ESCAPE: 0, PURSUIT: 1, INTERCEPT: 2, ENCIRCLEMENT: 3, GAP_REPAIR: 3, STABLE_CONTAINMENT: 4, COMPLETED: 5 } as Record<string, number>)[phase] ?? 0
 })
 const protocolSnapshot = computed(() => JSON.stringify(
   lastUnityMessage.value ?? {

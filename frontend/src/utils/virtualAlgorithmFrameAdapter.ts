@@ -6,7 +6,7 @@ import type {
 
 export const VIRTUAL_SIMULATION_RUNTIME_MODE = 'VIRTUAL_SIMULATION' as const
 export const UAV_MAX_SPEED_MPS = 15
-export const USV_MAX_SPEED_MPS = 2
+export const USV_MAX_SPEED_MPS = 4
 export type AlgorithmCoordinateFrame = 'FLEET_LOCAL_ENU' | 'GLOBAL_ENU'
 
 export interface EnuOrigin {

@@ -63,16 +63,19 @@ def derive_scenario_plan(uav_count: int, usv_count: int) -> AdaptiveScenarioPlan
         # Keeping the limit at two made THREAT-003 remain invisible until an
         # earlier ring completed, contradicting the advertised three-threat
         # scenario.
-        values = (2, 3, 3, 520.0, 400.0)
+        values = (1, 3, 3, 520.0, 400.0)
     elif scale <= 30:
         # The realtime 25..30 fleet has enough mixed craft for four
         # independent 4 UAV + 4 USV response groups, the 4+4 close guard and
         # a quick-response reserve.  Staging only three attackers made the
         # fourth card appear after an earlier ring completed and reintroduced
         # the serial behaviour that the larger tier is meant to eliminate.
-        values = (2, 4, 4, 600.0, 460.0)
+        values = (1, 4, 4, 600.0, 460.0)
     else:
-        protected = min(4, 2 + max(0, scale - 31) // 32)
+        # One protected vessel is the invariant escort objective at every
+        # scale. Extra fleet capacity increases simultaneous hostile pressure,
+        # not the number of convoy centres the operator has to interpret.
+        protected = 1
         threats = min(8, 4 + max(0, scale - 31) // 16)
         simultaneous = min(4, max(2, (threats + 1) // 2))
         width = 600.0 + min(600.0, max(0, scale - 30) * 8.0)

@@ -29,14 +29,15 @@ CONFIGURATIONS = [
 ]
 
 STAGE_RANK = {
-    "PREVIEW": 0, "ESCAPE": 1, "ESCAPE_PURSUIT": 1,
+    "PREVIEW": 0, "GUARDING": 0, "THREAT_DETECTION": 1,
+    "ESCAPE": 1, "ESCAPE_PURSUIT": 1,
     "PURSUIT": 2, "INTERCEPT": 3, "INTERCEPTING": 3,
-    "ENCIRCLEMENT": 4, "ACTIVE_CAPTURE": 4,
+    "BLOCKING": 4, "ENCIRCLEMENT": 5, "ACTIVE_CAPTURE": 5,
     # Stable hold and gap maintenance are substates of one final-containment
     # macro phase. Moving among them is repair work, not a mission regression.
-    "GAP_REPAIR": 5, "STABLE_CONTAINMENT": 5,
-    "CONTAINMENT": 5, "CAPTURING": 5,
-    "COMPLETED": 6, "CAPTURED": 6,
+    "GAP_REPAIR": 5, "STABLE_CONTAINMENT": 6,
+    "CONTAINMENT": 6, "CAPTURING": 6,
+    "COMPLETED": 7, "CAPTURED": 7,
 }
 
 

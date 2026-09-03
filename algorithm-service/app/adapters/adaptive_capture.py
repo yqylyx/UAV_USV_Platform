@@ -108,11 +108,19 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
         for target_index in range(self.target_count):
             global_uavs = uav_groups[target_index]
             global_usvs = usv_groups[target_index]
-            # A dense fleet uses a ten-member primary ring and an outer support
-            # ring.  Completion therefore becomes easier to scale, not harder,
-            # while every surplus device still has an explicit moving role.
+            # Build one readable mixed core from the capacity actually assigned
+            # to this target.  The former hard-coded 5+5 slice made larger
+            # fleets look identical and prevented an asymmetric group from
+            # using its available craft.  Six per domain is the inner-ring
+            # readability/safety ceiling; surplus craft remain on an explicit
+            # moving support ring and are eligible for ETA-based relief.
+            primary_per_domain = min(
+                6,
+                max(1, min(len(global_uavs), len(global_usvs))),
+            )
             self.ring_member_codes.append(set(
-                global_uavs[:5] + global_usvs[:5]
+                global_uavs[:primary_per_domain]
+                + global_usvs[:primary_per_domain]
             ))
             code_map: Dict[str, str] = {}
             child_poses: List[Dict[str, object]] = []
@@ -282,18 +290,10 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             slot_tolerance_m=12.0,
             minimum_separation_m=0.0,
         )
-        # The target keeps escaping at full speed until pursuers actually reach
-        # its neighbourhood. It then loses manoeuvring room progressively, but
-        # never stops before the strict ring contract is confirmed.
-        if provisional.arrival_ratio >= 0.35:
-            vx, vy = child.target_velocity
-            current_target_speed = math.hypot(vx, vy)
-            speed_cap = max(0.65, 2.2 * (1.0 - provisional.arrival_ratio * 0.68))
-            if current_target_speed > speed_cap > 0.0:
-                child.target_velocity = (
-                    vx * speed_cap / current_target_speed,
-                    vy * speed_cap / current_target_speed,
-                )
+        # Arrival is a pursuer-progress metric, not evidence that the target
+        # has lost manoeuvring room.  Do not slow the target merely because a
+        # fraction of the ring is nearby; the child controller keeps escaping
+        # until the executed strict containment contract starts its hold.
         center = (
             target.x + velocity_x * 0.10,
             target.y + velocity_y * 0.10,
@@ -830,8 +830,8 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             elif executed.get("blocker") != "PURSUIT_DISTANCE":
                 self.ring_stalled_frames[index] += 1
             repairable_local_stall = (
-                arrival >= 0.60
-                and self.ring_stalled_frames[index] >= 120
+                arrival >= 0.50
+                and self.ring_stalled_frames[index] >= 60
             )
             if not ready and repairable_local_stall:
                 # Replace only the worst missing member when a same-type outer
@@ -875,8 +875,17 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                     )
                     candidate = min(
                         reserve_agents,
-                        key=lambda agent: math.hypot(
-                            agent.x - slot_point[0], agent.y - slot_point[1]
+                        key=lambda agent: (
+                            math.hypot(
+                                agent.x - slot_point[0], agent.y - slot_point[1]
+                            )
+                            / max(
+                                0.2,
+                                float(child.config.get(
+                                    "uavSpeedMps" if agent.type == "UAV" else "usvSpeedMps",
+                                    5.0 if agent.type == "UAV" else 3.0,
+                                )),
+                            )
                         ),
                     )
                     candidate_distance = math.hypot(
@@ -974,7 +983,7 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             group["missionStage"] = (
                 "STABLE_CONTAINMENT"
                 if self.containment_stage_latched[index]
-                else "GAP_REPAIR"
+                else "ENCIRCLEMENT"
                 if str(frame.metrics.get("missionStage", frame.phase)) in {
                     "ENCIRCLEMENT", "GAP_REPAIR", "STABLE_CONTAINMENT"
                 } and (
@@ -1017,8 +1026,7 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             # second target is still filling its ring.
             stage_rank = {
                 "ESCAPE": 0, "PURSUIT": 1, "INTERCEPT": 2,
-                "ENCIRCLEMENT": 3, "GAP_REPAIR": 4,
-                "STABLE_CONTAINMENT": 5,
+                "ENCIRCLEMENT": 3, "STABLE_CONTAINMENT": 4,
             }
             unresolved_stages = [
                 group_stages[index]
@@ -1031,8 +1039,7 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             )
         report_rank = {
             "PREVIEW": 0, "ESCAPE": 0, "PURSUIT": 1, "INTERCEPT": 2,
-            "ENCIRCLEMENT": 3, "GAP_REPAIR": 4,
-            "STABLE_CONTAINMENT": 5, "COMPLETED": 6,
+            "ENCIRCLEMENT": 3, "STABLE_CONTAINMENT": 4, "COMPLETED": 5,
         }
         if all_completed:
             self.reported_mission_stage = "COMPLETED"
@@ -1114,7 +1121,7 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             "requiredCaptureHoldFrames": max(int(item.get("requiredCaptureHoldFrames", 0)) for item in metrics_list),
             "captureGroups": groups,
             "missionStage": mission_stage,
-            "stageSequence": ["ESCAPE", "PURSUIT", "INTERCEPT", "ENCIRCLEMENT", "GAP_REPAIR", "STABLE_CONTAINMENT", "COMPLETED"],
+            "stageSequence": ["ESCAPE", "PURSUIT", "INTERCEPT", "ENCIRCLEMENT", "STABLE_CONTAINMENT", "COMPLETED"],
             "ringDiagnostics": ring_diagnostics,
         }
         return RuntimeFrame(

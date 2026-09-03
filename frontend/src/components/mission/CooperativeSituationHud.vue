@@ -45,11 +45,11 @@ const polygon=(items:Array<{x:number;y:number}>)=>items.map(item=>`${sx(item.x)}
 const ringRadius=computed(()=>captureTarget.value&&usvs.value.length?usvs.value.reduce((sum,item)=>sum+Math.hypot(item.x-captureTarget.value!.x,item.y-captureTarget.value!.y),0)/usvs.value.length*plot.w/(bounds.value.maxX-bounds.value.minX):0)
 const currentStage=computed(()=>String(props.frame?.metrics?.missionStage||props.frame?.phase||''))
 const enclosure=computed(()=>['ENCIRCLEMENT','GAP_REPAIR','STABLE_CONTAINMENT','COMPLETED','CAPTURED'].includes(currentStage.value))
-const phaseLabel=computed(()=>({ASSIGNMENT:'任务分配',TRANSIT:'航行接近',ESCAPE:'敌船逃逸',PURSUIT:'持续追击',INTERCEPT:'前出拦截',ENCIRCLEMENT:'形成围捕',GAP_REPAIR:'缺口修复',STABLE_CONTAINMENT:'稳定闭环',CAPTURED:'围捕完成',ESCORTING:'正常护航',APPROACHING:'威胁接近',FORMING:'守卫编队形成',ORBITING:'动态护卫',THREAT_RESPONSE:'威胁响应',COMPLETED:'任务完成'}[currentStage.value]||currentStage.value||'等待算法帧'))
-const steps=computed(()=>props.frame?.algorithmCode==='ESCORT_GUARD'?['任务分配','编队形成','正常护航','威胁接近','威胁响应','任务完成']:['任务分配','航行接近','态势展开','形成围捕','约束收敛','围捕完成'])
+const phaseLabel=computed(()=>({ASSIGNMENT:'任务分配',TRANSIT:'航行接近',ESCAPE:'目标逃逸',PURSUIT:'协同追击',INTERCEPT:'加速拦截',BLOCKING:'阻断攻击',ENCIRCLEMENT:'动态围捕',GAP_REPAIR:'动态围捕',STABLE_CONTAINMENT:'稳定闭环',CAPTURED:'围捕完成',GUARDING:'警戒护航',THREAT_DETECTION:'威胁侦测',ESCORTING:'警戒护航',APPROACHING:'威胁侦测',FORMING:'守卫编队形成',ORBITING:'动态护卫',THREAT_RESPONSE:'威胁响应',COMPLETED:'任务完成'}[currentStage.value]||currentStage.value||'等待算法帧'))
+const steps=computed(()=>props.frame?.algorithmCode==='ESCORT_GUARD'?['警戒护航','威胁侦测','加速拦截','阻断攻击','动态围捕','稳定闭环','完成']:['目标逃逸','协同追击','截击部署','动态围捕','稳定闭环','完成'])
 const phaseIndex=computed(()=>{
-  const capture:Record<string,number>={ASSIGNMENT:0,TRANSIT:0,ESCAPE:0,PURSUIT:1,INTERCEPT:2,ENCIRCLEMENT:3,GAP_REPAIR:4,STABLE_CONTAINMENT:5,CAPTURED:6,COMPLETED:6}
-  const escort:Record<string,number>={ASSIGNMENT:0,FORMING:1,ESCORTING:2,ORBITING:2,APPROACHING:3,THREAT_RESPONSE:4,COMPLETED:5}
+  const capture:Record<string,number>={ASSIGNMENT:0,TRANSIT:0,ESCAPE:0,PURSUIT:1,INTERCEPT:2,ENCIRCLEMENT:3,GAP_REPAIR:3,STABLE_CONTAINMENT:4,CAPTURED:5,COMPLETED:5}
+  const escort:Record<string,number>={GUARDING:0,ESCORTING:0,THREAT_DETECTION:1,INTERCEPT:2,BLOCKING:3,ENCIRCLEMENT:4,GAP_REPAIR:4,STABLE_CONTAINMENT:5,COMPLETED:6}
   const indexes=props.frame?.algorithmCode==='ESCORT_GUARD'?escort:capture
   return indexes[props.frame?.phase||'']??0
 })

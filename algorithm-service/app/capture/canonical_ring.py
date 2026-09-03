@@ -217,7 +217,11 @@ def assess_canonical_ring(
         blocker = "SLOT_ARRIVAL"
     elif max_gap > allowed_gap + 0.25:
         blocker = "ANGULAR_GAP"
-    elif spread > max(4.0, slot_tolerance_m * 1.5):
+    # If every member is within ``slot_tolerance_m`` of one common-radius
+    # canonical ring, the largest valid outer-to-inner difference is twice
+    # that tolerance.  A 1.5x threshold contradicted SLOT_ARRIVAL and could
+    # reject a fully arrived, evenly spaced ring indefinitely.
+    elif spread > max(4.0, slot_tolerance_m * 2.0):
         blocker = "RADIAL_SPREAD"
     elif minimum_separation < minimum_separation_m:
         blocker = "MINIMUM_SEPARATION"

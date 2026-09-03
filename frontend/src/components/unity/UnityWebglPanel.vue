@@ -538,7 +538,12 @@ function syncViewport() {
     window.requestAnimationFrame(() => {
       const frameWindow = iframeRef.value?.contentWindow
       frameWindow?.dispatchEvent(new Event('resize'))
-      frameWindow?.postMessage({ source: 'vue-console', type: 'viewportSettled' }, window.location.origin)
+      frameWindow?.postMessage({
+        source: 'vue-console',
+        runtimeScope: props.runtimeScope,
+        runtimeInstanceId: props.runtimeInstanceId,
+        message: { type: 'viewportSettled', payload: { generation: viewportTransitionGeneration } },
+      }, window.location.origin)
     })
   })
 }

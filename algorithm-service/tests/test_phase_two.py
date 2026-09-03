@@ -6,14 +6,20 @@ from app.scenario import derive_scenario_plan
 
 
 class PhaseTwoScenarioTests(unittest.TestCase):
+    def test_every_supported_scale_has_one_protected_target(self):
+        for count in range(3, 31):
+            with self.subTest(count=count):
+                plan = derive_scenario_plan(count, count)
+                self.assertEqual(1, plan.protected_count)
+
     def test_threshold_plans_through_realtime_limit(self):
         expected = {
             3: (1, 1, 1, 360, 280),
             10: (1, 2, 2, 360, 280),
             15: (1, 3, 3, 420, 320),
-            20: (2, 3, 3, 520, 400),
-            25: (2, 4, 4, 600, 460),
-            30: (2, 4, 4, 600, 460),
+            20: (1, 3, 3, 520, 400),
+            25: (1, 4, 4, 600, 460),
+            30: (1, 4, 4, 600, 460),
         }
         for count, values in expected.items():
             with self.subTest(count=count):
@@ -62,7 +68,11 @@ class PhaseTwoScenarioTests(unittest.TestCase):
             [item["threatCode"] for item in frame.metrics["captureGroups"]],
         )
         self.assertTrue(frame.metrics["parallelResponseStarted"])
-        self.assertTrue(all(item.forced for item in adapter.threats))
+        self.assertEqual("GUARDING", frame.metrics["missionStage"])
+        self.assertTrue(all(
+            not item.forced and item.intent == "ATTACKING"
+            for item in adapter.threats
+        ))
         self.assertTrue(all(
             item["uavCount"] == 4 and item["usvCount"] == 4
             for item in frame.metrics["captureGroups"]
@@ -80,7 +90,11 @@ class PhaseTwoScenarioTests(unittest.TestCase):
                 self.assertTrue(all(item.visible for item in threats))
                 self.assertEqual(3, frame.metrics["simultaneousThreatLimit"])
                 self.assertTrue(frame.metrics["parallelResponseStarted"])
-                self.assertTrue(all(item.forced for item in adapter.threats))
+                self.assertEqual("GUARDING", frame.metrics["missionStage"])
+                self.assertTrue(all(
+                    not item.forced and item.intent == "ATTACKING"
+                    for item in adapter.threats
+                ))
                 self.assertTrue(all(
                     item["uavCount"] == 4 and item["usvCount"] == 4
                     for item in frame.metrics["captureGroups"]
@@ -93,13 +107,13 @@ class PhaseTwoScenarioTests(unittest.TestCase):
         adapter.step()
         for threat, stage in zip(
             adapter.threats,
-            ("GAP_REPAIR", "GAP_REPAIR", "PURSUIT"),
+            ("ENCIRCLEMENT", "ENCIRCLEMENT", "THREAT_DETECTION"),
         ):
             threat.state = "INTERCEPTING"
             threat.forced = True
             threat.mission_stage = stage
-        adapter._reported_mission_stage = "GAP_REPAIR"
-        self.assertEqual("PURSUIT", adapter._reported_stage())
+        adapter._reported_mission_stage = "ENCIRCLEMENT"
+        self.assertEqual("THREAT_DETECTION", adapter._reported_stage())
 
     def test_twenty_five_and_thirty_start_all_four_parallel_groups(self):
         for count in (25, 30):
@@ -114,7 +128,11 @@ class PhaseTwoScenarioTests(unittest.TestCase):
                 self.assertEqual(4, frame.metrics["visibleThreatCount"])
                 self.assertEqual(4, frame.metrics["simultaneousThreatLimit"])
                 self.assertTrue(frame.metrics["parallelResponseStarted"])
-                self.assertTrue(all(item.forced for item in adapter.threats))
+                self.assertEqual("GUARDING", frame.metrics["missionStage"])
+                self.assertTrue(all(
+                    not item.forced and item.intent == "ATTACKING"
+                    for item in adapter.threats
+                ))
                 self.assertEqual(
                     ["THREAT-001", "THREAT-002", "THREAT-003", "THREAT-004"],
                     [item["threatCode"] for item in frame.metrics["captureGroups"]],
@@ -123,6 +141,18 @@ class PhaseTwoScenarioTests(unittest.TestCase):
                     item["uavCount"] == 4 and item["usvCount"] == 4
                     for item in frame.metrics["captureGroups"]
                 ))
+
+    def test_every_large_fleet_vehicle_has_an_explicit_active_job(self):
+        active_roles = {"CLOSE_GUARD", "INTERCEPTOR", "CAPTURE_RESERVE"}
+        for count in (15, 20, 25, 30):
+            with self.subTest(count=count):
+                adapter = AdaptiveEscortAdapter(460 + count, {
+                    "uavCount": count, "usvCount": count, "seed": 20260814,
+                })
+                adapter.step()
+                self.assertEqual(count * 2, len(adapter.vehicles))
+                self.assertTrue(all(item.role in active_roles for item in adapter.vehicles))
+                self.assertTrue(all(bool(item.group_id) for item in adapter.vehicles))
 
     def test_capture_team_scales_beyond_fixed_two_plus_two(self):
         adapter = AdaptiveEscortAdapter(421, {

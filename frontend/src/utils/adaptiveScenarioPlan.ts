@@ -22,12 +22,14 @@ export function deriveAdaptiveScenarioPlan(uavInput: number, usvInput: number): 
   // mandatory 80 m visible escape run used by small escort experiments.
   let worldWidth = 360
   let worldHeight = 280
-  if (effectiveScale >= 25) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [2, 4, 4, 600, 460]
-  else if (effectiveScale >= 20) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [2, 3, 3, 520, 400]
+  if (effectiveScale >= 25) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [1, 4, 4, 600, 460]
+  else if (effectiveScale >= 20) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [1, 3, 3, 520, 400]
   else if (effectiveScale >= 15) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [1, 3, 3, 420, 320]
   else if (effectiveScale >= 10) [protectedCount, threatCount, simultaneousThreats, worldWidth, worldHeight] = [1, 2, 2, 360, 280]
   if (effectiveScale > 30) {
-    protectedCount = Math.min(4, 2 + Math.floor((effectiveScale - 31) / 32))
+    // Escort always protects one authoritative vessel. Fleet growth adds
+    // concurrent threats and response capacity, never duplicate objectives.
+    protectedCount = 1
     threatCount = Math.min(8, 4 + Math.floor((effectiveScale - 31) / 16))
     simultaneousThreats = Math.min(4, Math.max(2, Math.ceil(threatCount / 2)))
     worldWidth = 600 + Math.min(600, (effectiveScale - 30) * 8)

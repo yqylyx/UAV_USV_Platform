@@ -45,7 +45,12 @@ URGENT_DISTANCE_M = 105.0
 CONTAINMENT_STANDOFF_M = 78.0
 CONTAINMENT_REPLAN_M = 108.0
 POST_CAPTURE_CONVOY_CLEARANCE_M = TARGET_SEPARATION_M + 8.0
-POST_MISSION_SLOT_TOLERANCE_M = 7.5
+# A convoy that is already inside overlapping final keep-out circles must be
+# allowed to leave their union.  Transit therefore protects the physical
+# target/ring envelope (34 m); the stricter 42 m margin is still mandatory at
+# the terminal safety gate.
+POST_CAPTURE_TRANSIT_CLEARANCE_M = TARGET_SEPARATION_M
+POST_MISSION_SLOT_TOLERANCE_M = 10.0
 POST_MISSION_STABLE_FRAMES = 12
 POST_MISSION_RING_AVOIDANCE_M = TARGET_SEPARATION_M + 18.0
 POST_MISSION_OUTER_GUARD_GAP_M = 22.0
@@ -156,9 +161,10 @@ class _Threat:
     breach_until_frame: int = 0
     gap_filler_code: str = ""
     gap_center_angle: float = 0.0
-    mission_stage: str = "ESCAPE"
+    mission_stage: str = "GUARDING"
     containment_stage_latched: bool = False
     containment_soft_failure_frames: int = 0
+    slowdown_reason: str = "NONE"
 
 
 class AdaptiveEscortAdapter(AlgorithmAdapter):
@@ -226,6 +232,8 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         self._ring_best_arrival: dict[int, float] = {}
         self._ring_stalled_frames: dict[int, int] = {}
         self._ring_replans: dict[int, int] = {}
+        self._vehicle_stall_frames: dict[str, int] = {}
+        self._vehicle_task_error: dict[str, float] = {}
         self._convoy_support_slot_by_code: dict[str, int] = {}
         self._convoy_support_goal_override_by_code: dict[str, tuple[float, float]] = {}
         self._convoy_support_route_by_code: dict[str, list[tuple[float, float]]] = {}
@@ -408,8 +416,6 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 role = "CLOSE_GUARD" if is_guard else "RECON"
                 group = (
                     "CONVOY-GUARD"
-                    if is_guard and len(self.protected) > 1
-                    else f"GUARD-{protected_index + 1:03d}"
                     if is_guard
                     else f"RECON-{protected_index + 1:03d}"
                 )
@@ -438,16 +444,12 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
     def _separate_initial_response_craft(self) -> None:
         """Resolve overlapping per-target patrol rings before frame one.
 
-        Two protected vessels are deliberately close, so independently seeded
-        patrol circles can intersect even though every circle is valid by
-        itself.  Waiting for the per-frame motion limiter to separate those
-        craft left some USV pairs only 1.2 m apart at startup and still below
-        the 7 m acceptance floor ten frames later.  Keep the compact convoy
-        guard square authoritative and globally project only the free response
-        craft before their initial poses are published.
+        Dense single-target scenes can intersect just as easily as the former
+        multi-target convoy: independently seeded UAV/USV patrol radii share
+        angles and shoreline projection can compress several craft onto one
+        water edge. Keep the close-guard square authoritative and globally
+        project every free response craft before its first pose is published.
         """
-        if len(self.protected) <= 1:
-            return
         movable = [item for item in self.vehicles if item.role != "CLOSE_GUARD"]
         if not movable:
             return
@@ -1551,7 +1553,9 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             threat.capture_stage = 0
             threat.capture_hold = 0
             threat.intercept_stage_frames = 0
-            threat.mission_stage = "ESCAPE"
+            # Escort incidents enter interception from an observed attack.
+            # "ESCAPE" is hostile behaviour, not an escort mission phase.
+            threat.mission_stage = "INTERCEPT"
             threat.containment_stage_latched = False
             threat.containment_soft_failure_frames = 0
             threat.capture_start_travel_distance = threat.travelled_distance
@@ -1591,8 +1595,14 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         ]
         if not simultaneous:
             return
+        # Do not force every visible hostile to flee on the first frame.
+        # Each one must first approach, be detected and meet an interception
+        # gate; the parallel flag only enables simultaneous incident handling.
         self._parallel_response_started = True
-        self._start_capture_for(simultaneous, "PARALLEL_RESPONSE")
+        # Pre-allocate stable mixed response teams so every craft has a job and
+        # simultaneous attackers are covered. Assignment does not set forced,
+        # BREAK_CONTACT or an escape direction; attackers keep approaching.
+        self._rebalance_capture_groups(simultaneous)
 
     def place_threat(self, x: float, y: float) -> None:
         threat = next((item for item in self.threats if item.state == "WAITING"), None) or min(self.threats, key=self._distance_to_protected)
@@ -1688,25 +1698,14 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                     chosen.group_id = f"CAPTURE-{threat_index + 1:03d}"
                     available.remove(chosen)
             available.sort(key=lambda item: item.code)
-            if len(self.protected) > 1:
-                # The fixed 4+4 teams already provide a complete mixed ring
-                # for every simultaneous threat.  Sending the remaining large
-                # fleet on 78 m incident orbits made the advertised escort
-                # force look like scattered stragglers.  Keep every surplus
-                # craft in one ordered outer convoy square instead: it remains
-                # a quick-response reserve, but is visibly part of the escort
-                # formation until a real reassignment is required.
-                for position, reserved in enumerate(available):
-                    threat_index = ordered_threats[position % len(ordered_threats)][0]
-                    reserved.role = "CAPTURE_RESERVE"
-                    reserved.group_id = f"RESERVE-{threat_index + 1:03d}"
-            else:
-                for reserved in available[:reserve]:
-                    reserved.role = "CAPTURE_RESERVE"
-                    reserved.group_id = f"RESERVE-{reserved.protected_index + 1:03d}"
-                for patrol in available[reserve:]:
-                    patrol.role = "RECON"
-                    patrol.group_id = f"RECON-{patrol.protected_index + 1:03d}"
+            # The fixed mixed teams already provide a complete ring for every
+            # active threat. Keep all surplus craft in an ordered mobile reserve
+            # around the single protected target. This gives every craft an
+            # explicit job and avoids a large-fleet cloud of unrelated patrols.
+            for position, reserved in enumerate(available):
+                threat_index = ordered_threats[position % len(ordered_threats)][0]
+                reserved.role = "CAPTURE_RESERVE"
+                reserved.group_id = f"RESERVE-{threat_index + 1:03d}"
             minimum = 2
             for threat_index, threat in ordered_threats:
                 members = [item for item in self.vehicles if item.kind == kind and item.assigned_threat == threat_index]
@@ -1812,7 +1811,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 # group forever.
                 clearance_penalty = max(
                     0.0,
-                    POST_CAPTURE_CONVOY_CLEARANCE_M - minimum_clearance,
+                    POST_CAPTURE_TRANSIT_CLEARANCE_M - minimum_clearance,
                 ) * 16.0
                 score = (
                     route_alignment * 54.0
@@ -1892,7 +1891,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             if route_priority:
                 clearance_penalty = max(
                     0.0,
-                    POST_CAPTURE_CONVOY_CLEARANCE_M - minimum_clearance,
+                    POST_CAPTURE_TRANSIT_CLEARANCE_M - minimum_clearance,
                 ) * 16.0
                 score = (
                     route_alignment * 54.0
@@ -2078,7 +2077,32 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             ),
             default=math.inf,
         )
-        if live_attackers:
+        clearing_completed_rings = (
+            mission_resolved
+            and all(self._escort_route_progress(item) >= 1.0 for item in self.protected)
+            and not all(self._protected_reached_safe_gate(item) for item in self.protected)
+        )
+        if clearing_completed_rings:
+            # The nominal destination can lie inside the union of two completed
+            # containment buffers.  Continuing to attract the convoy to that
+            # point pins it exactly on the transit boundary.  Once the route
+            # gate is crossed, move along the aggregate outward gradient until
+            # every final 42 m safety margin is satisfied, then hold.
+            repel_x = repel_y = 0.0
+            for hazard in persistent_obstacles:
+                away_x, away_y = _unit(
+                    center_x - hazard.x,
+                    center_y - hazard.y,
+                    (common_x, common_y),
+                )
+                separation = max(1.0, _length(center_x - hazard.x, center_y - hazard.y))
+                weight = max(0.25, POST_CAPTURE_CONVOY_CLEARANCE_M + 6.0 - separation)
+                repel_x += away_x * weight
+                repel_y += away_y * weight
+            common_x, common_y = _unit(repel_x, repel_y, (common_x, common_y))
+            common_speed = min(1.55, max(1.2, self.usv_cruise * 0.52))
+            common_state = "CLEARING_CONTAINMENT"
+        elif live_attackers:
             common_speed = min(2.25, max(1.55, self.usv_cruise * 0.70))
             common_x, common_y = self._choose_convoy_escape(
                 live_attackers,
@@ -2102,7 +2126,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 common_state,
                 hazards,
                 (
-                    POST_CAPTURE_CONVOY_CLEARANCE_M
+                    POST_CAPTURE_TRANSIT_CLEARANCE_M
                     if mission_resolved
                     else CONTAINMENT_STANDOFF_M
                 ),
@@ -2122,16 +2146,40 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             desired_vy = common_y * common_speed + correction_y
             target.state = common_state
             desired_vx, desired_vy = _clamp_magnitude(desired_vx, desired_vy, 2.25)
-            accel = 0.085
-            target.vx += max(-accel, min(accel, desired_vx - target.vx))
-            target.vy += max(-accel, min(accel, desired_vy - target.vy))
+            # Preserve forward motion while changing escape corridors. Per-axis
+            # interpolation drove the resultant speed through zero whenever two
+            # successive avoidance headings straddled the current course, which
+            # made a safe convoy orbit a captured ring indefinitely.
+            desired_speed = _length(desired_vx, desired_vy)
+            current_speed = _length(target.vx, target.vy)
+            current_heading = (
+                math.atan2(target.vy, target.vx)
+                if current_speed > 0.05
+                else math.radians(target.heading)
+            )
+            desired_heading = math.atan2(desired_vy, desired_vx)
+            heading_error = (
+                desired_heading - current_heading + math.pi
+            ) % (2.0 * math.pi) - math.pi
+            next_heading = current_heading + max(
+                -math.radians(6.0),
+                min(math.radians(6.0), heading_error),
+            )
+            next_speed = current_speed + max(
+                -0.085,
+                min(0.085, desired_speed - current_speed),
+            )
+            next_speed = max(min(cruise * 0.88, desired_speed), next_speed)
+            next_speed = min(2.25, next_speed)
+            target.vx = math.cos(next_heading) * next_speed
+            target.vy = math.sin(next_heading) * next_speed
             nx, ny = self._project_to_safe_water(target.x + target.vx * DT, target.y + target.vy * DT)
             relevant_hazards = [
                 hazard for hazard in self.threats
                 if hazard.state not in {"WAITING", "ESCAPED"}
             ]
             containment_clearance_m = (
-                POST_CAPTURE_CONVOY_CLEARANCE_M
+                POST_CAPTURE_TRANSIT_CLEARANCE_M
                 if mission_resolved
                 else CONTAINMENT_STANDOFF_M
             )
@@ -2237,7 +2285,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             # terminal failure after an avoidable one-frame overlap is not.
             if any(
                 _length(nx - hazard.x, ny - hazard.y) < (
-                    POST_CAPTURE_CONVOY_CLEARANCE_M
+                    POST_CAPTURE_TRANSIT_CLEARANCE_M
                     if mission_resolved and hazard.state in {"CAPTURED", "SECURED"}
                     else TARGET_SEPARATION_M
                 )
@@ -2245,7 +2293,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             ):
                 previous_is_safe = all(
                     _length(target.x - hazard.x, target.y - hazard.y) >= (
-                        POST_CAPTURE_CONVOY_CLEARANCE_M
+                        POST_CAPTURE_TRANSIT_CLEARANCE_M
                         if mission_resolved and hazard.state in {"CAPTURED", "SECURED"}
                         else TARGET_SEPARATION_M
                     )
@@ -2527,6 +2575,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             distance = max(1e-6, _length(dx, dy))
             if distance <= THREAT_DETECTION_M and threat.detected_frame is None:
                 threat.detected_frame, threat.state = self.sequence, "DETECTED"
+                threat.mission_stage = "THREAT_DETECTION"
                 threat.attack_start_distance = distance
                 threat.closest_attack_distance = distance
             desired_x, desired_y = _unit(dx, dy)
@@ -2534,6 +2583,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             # threat owns a seeded 1.5-2.2 m/s cruise speed and may make a
             # bounded 2.8 m/s burst when defenders close in.
             desired_speed = threat.cruise_speed
+            threat.slowdown_reason = "NONE"
             if threat.detected_frame is not None and not threat.forced:
                 threat.closest_attack_distance = min(threat.closest_attack_distance, distance)
                 # A late incident can become the only remaining live threat
@@ -2546,15 +2596,16 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 # deliberately conditional: it never pre-empts another active
                 # pursuit and therefore does not turn initial escort into an
                 # immediate ready-made encirclement.
-                unresolved_capture = any(
-                    other is not threat
-                    and other.forced
-                    and other.state not in {"CAPTURED", "SECURED", "ESCAPED"}
-                    for other in self.threats
-                )
                 attack_elapsed = self.sequence - threat.detected_frame
-                if attack_elapsed >= 850 and not unresolved_capture:
-                    self._start_capture_for([threat], "SECOND_LINE_REDEPLOY")
+                # Every incident owns a pre-allocated mixed response team.
+                # After a visible approach/probing window, enter interception
+                # independently instead of waiting for an earlier threat to be
+                # captured. A distant attacker still has a bounded deadline.
+                if (
+                    (attack_elapsed >= 180 and distance <= 135.0)
+                    or attack_elapsed >= 500
+                ):
+                    self._start_capture_for([threat], "ADAPTIVE_INTERCEPT")
                 blocker = next((
                     item for item in self.vehicles
                     if item.role == "BLOCKER" and item.group_id == f"BLOCK-{index + 1:03d}"
@@ -2666,22 +2717,91 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                             escape_x * 0.62 + avoid_x * 0.58 - escape_y * 0.28 * side,
                             escape_y * 0.62 + avoid_y * 0.58 + escape_x * 0.28 * side,
                         )
-                        if threat.capture_hold > 0:
+                        if threat.capture_hold > 5:
                             # Deceleration belongs exclusively to a real ring
                             # that is currently passing the geometric hold
                             # contract. A travelled-distance or stage flag can
                             # no longer make an uncontained enemy stop early.
-                            hold_ratio = min(1.0, threat.capture_hold / CAPTURE_HOLD_FRAMES)
+                            hold_ratio = min(
+                                1.0,
+                                (threat.capture_hold - 5)
+                                / max(1, CAPTURE_HOLD_FRAMES - 5),
+                            )
                             desired_speed = max(
                                 0.08,
                                 threat.cruise_speed * (1.0 - 0.94 * hold_ratio),
                             )
+                            threat.slowdown_reason = "CONTAINMENT_DECEL"
                         else:
-                            pressure = max(0.0, min(1.0, (70.0 - nearest_distance) / 46.0))
-                            desired_speed = min(
-                                threat.maximum_speed,
-                                threat.cruise_speed + pressure * 0.6,
+                            # Slot error alone is a poor pressure signal while a
+                            # moving target is still trying to break out: a
+                            # defender can already occupy the correct angular
+                            # sector but trail its translating slot by several
+                            # metres.  Measure the physical cage as well.  The
+                            # hostile yields speed only after at least three
+                            # quarters of its assigned team are close and those
+                            # craft cover the target from both sides (no open
+                            # half-plane).  This lets a low-cruise 3+3 team finish
+                            # closing without making an uncontained target stop.
+                            close_members = [
+                                member for member in members
+                                if _length(member.x - threat.x, member.y - threat.y) <= 48.0
+                            ]
+                            close_ratio = len(close_members) / max(1, len(members))
+                            close_angles = sorted(
+                                math.atan2(member.y - threat.y, member.x - threat.x)
+                                % (2.0 * math.pi)
+                                for member in close_members
                             )
+                            close_max_gap_deg = 360.0
+                            if len(close_angles) >= 3:
+                                close_max_gap_deg = math.degrees(max(
+                                    (
+                                        close_angles[(position + 1) % len(close_angles)]
+                                        - close_angles[position]
+                                    ) % (2.0 * math.pi)
+                                    for position in range(len(close_angles))
+                                ))
+                            geometric_pressure = (
+                                threat.capture_stage >= 2
+                                and close_ratio >= 0.75
+                                and close_max_gap_deg <= 180.0
+                            )
+                            if (
+                                threat.capture_stage >= 2
+                                and (
+                                    threat.capture_arrival_ratio >= 0.65
+                                    or geometric_pressure
+                                )
+                            ):
+                                # The enemy only yields speed after the defenders
+                                # have already occupied most of a real ring. This
+                                # is geometric containment pressure, not a timer
+                                # or a travelled-distance shortcut.
+                                slot_pressure = max(
+                                    0.0,
+                                    (threat.capture_arrival_ratio - 0.65) / 0.35,
+                                )
+                                cage_pressure = max(
+                                    0.0,
+                                    min(
+                                        1.0,
+                                        (close_ratio - 0.75) / 0.25
+                                        + (180.0 - close_max_gap_deg) / 180.0,
+                                    ),
+                                )
+                                pressure = min(1.0, max(slot_pressure, cage_pressure))
+                                desired_speed = max(
+                                    1.05,
+                                    threat.cruise_speed * (1.0 - 0.46 * pressure),
+                                )
+                                threat.slowdown_reason = "CONTAINMENT_PRESSURE"
+                            else:
+                                pressure = max(0.0, min(1.0, (70.0 - nearest_distance) / 46.0))
+                                desired_speed = min(
+                                    threat.maximum_speed,
+                                    threat.cruise_speed + pressure * 0.6,
+                                )
                         threat.intent = "BREAKOUT"
             elif threat.detected_frame is not None:
                 desired_x, desired_y, threat.intent = self._choose_attack_direction(
@@ -2804,10 +2924,42 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                     desired_y * 0.52 + separation_y * 0.92,
                 )
                 desired_speed = max(threat.cruise_speed, desired_speed)
-            desired_vx, desired_vy = desired_x * desired_speed, desired_y * desired_speed
-            accel = 0.05
-            threat.vx += max(-accel, min(accel, desired_vx - threat.vx))
-            threat.vy += max(-accel, min(accel, desired_vy - threat.vy))
+            # Steer heading and scalar speed independently.  Interpolating vx
+            # and vy separately forced the resultant speed through zero on a
+            # large turn even when the hostile still requested cruise speed.
+            # This controller preserves visible intent and applies bounded
+            # turn/acceleration rates at every fleet size.
+            current_speed = _length(threat.vx, threat.vy)
+            current_heading = (
+                math.atan2(threat.vy, threat.vx)
+                if current_speed > 0.05
+                else math.radians(threat.heading)
+            )
+            desired_heading = math.atan2(desired_y, desired_x)
+            heading_error = (
+                desired_heading - current_heading + math.pi
+            ) % (2.0 * math.pi) - math.pi
+            maximum_turn = math.radians(7.0)
+            next_heading = current_heading + max(
+                -maximum_turn, min(maximum_turn, heading_error)
+            )
+            containment_decelerating = (
+                threat.slowdown_reason
+                in {"CONTAINMENT_PRESSURE", "CONTAINMENT_DECEL"}
+            )
+            if not containment_decelerating:
+                threat.slowdown_reason = "NONE"
+                desired_speed = max(threat.cruise_speed, desired_speed)
+            speed_delta_limit = 0.10 if desired_speed < current_speed else 0.08
+            next_speed = current_speed + max(
+                -speed_delta_limit,
+                min(speed_delta_limit, desired_speed - current_speed),
+            )
+            if not containment_decelerating:
+                next_speed = max(threat.cruise_speed * 0.90, next_speed)
+            next_speed = min(threat.maximum_speed, max(0.0, next_speed))
+            threat.vx = math.cos(next_heading) * next_speed
+            threat.vy = math.sin(next_heading) * next_speed
             # Keep enough navigable water around an actively captured target
             # for the complete mixed ring; otherwise slots outside the coast
             # rectangle collapse all pursuers onto the same side.
@@ -2951,7 +3103,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 minimum_type_counts={"UAV": 1, "USV": 1},
                 minimum_radius_m=18.0,
                 maximum_radius_m=72.0,
-                maximum_radial_spread_m=5.25,
+                maximum_radial_spread_m=6.0,
                 minimum_pairwise_separation_m=7.1,
                 participating=0,
                 tolerance_deg=1.0,
@@ -2994,7 +3146,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             minimum_type_counts={"UAV": 1, "USV": 1},
             minimum_radius_m=18.0 if threat.capture_stage >= 2 else 13.5,
             maximum_radius_m=self._capture_radius_limit(members),
-            maximum_radial_spread_m=5.25 if threat.capture_stage >= 2 else 18.0,
+            maximum_radial_spread_m=6.0 if threat.capture_stage >= 2 else 18.0,
             minimum_pairwise_separation_m=7.1,
             participating=participating,
             tolerance_deg=1.0,
@@ -3073,7 +3225,40 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             # selected craft accelerates to its stable angular slot; steering
             # it directly to the midpoint can merely move the opening to the
             # opposite side in sparse 2+2 groups.
-            return slot.point((center_x, center_y, 0.0))
+            final_slot = slot.point((center_x, center_y, 0.0))
+            if (
+                threat.capture_stage == 1
+                and self._ring_stalled_frames.get(item.assigned_threat, 0) < 180
+            ):
+                # Enter a moving ring through an outer tangential lane. Direct
+                # chords make opposite craft cross in front of the target and
+                # leave the global safety resolver with no option except
+                # repeated braking. Stable angular order plus an outer staging
+                # radius gives every USV a visible, purposeful approach path.
+                # Once final containment begins, however, every craft must
+                # converge directly to its fixed slot; retaining the staging
+                # lane there can keep one moving USV orbiting outside forever.
+                rel_x, rel_y = item.x - center_x, item.y - center_y
+                current_radius = max(1.0, _length(rel_x, rel_y))
+                current_angle = math.atan2(rel_y, rel_x)
+                angular_error = (
+                    slot.angle - current_angle + math.pi
+                ) % (2.0 * math.pi) - math.pi
+                if abs(angular_error) > math.radians(10.0):
+                    staging_radius = max(
+                        slot.radius + 12.0,
+                        min(slot.radius + 30.0, current_radius),
+                    )
+                    next_angle = current_angle + max(
+                        -math.radians(18.0),
+                        min(math.radians(18.0), angular_error),
+                    )
+                    return (
+                        center_x + math.cos(next_angle) * staging_radius,
+                        center_y + math.sin(next_angle) * staging_radius,
+                        final_slot[2],
+                    )
+            return final_slot
         if item.role == "CLOSE_GUARD":
             guards = sorted(
                 (guard for guard in self.vehicles if guard.role == "CLOSE_GUARD"),
@@ -3089,6 +3274,9 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             x, y = self._convoy_guard_point(position, len(guards))
             return x, y, item.z
         if item.role == "CONVOY_SUPPORT":
+            if item.kind == "UAV":
+                x, y = self._post_mission_point(item)
+                return x, y, item.z
             inner_escape = self._convoy_inner_escape_point(item)
             if inner_escape is not None:
                 return inner_escape[0], inner_escape[1], item.z
@@ -3102,7 +3290,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         if item.role == "LOCAL_OVERWATCH":
             x, y = self._post_watch_point(item)
             return x, y, item.z
-        if len(self.protected) > 1 and item.role == "CAPTURE_RESERVE":
+        if item.role == "CAPTURE_RESERVE":
             reserves = self._convoy_reserve_members()
             position = reserves.index(item)
             x, y = self._safe_convoy_support_point(position, len(reserves))
@@ -3216,22 +3404,28 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
     def _advance_vehicles(self) -> list[AgentFrame]:
         proposals: dict[str, tuple[str, tuple[float, float, float]]] = {}
         step_limits: dict[str, float] = {}
+        task_errors: dict[str, float] = {}
+        locked_threat_indices = {
+            index
+            for index, threat in enumerate(self.threats)
+            if self._post_mission_formation_initialized
+            and threat.state in {"CAPTURED", "SECURED"}
+            and bool(self._live_containment(index)["ready"])
+        }
         locked_ring_codes = {
             item.code
             for item in self.vehicles
-            if self._post_mission_formation_initialized
-            and item.assigned_threat is not None
-            and self.threats[item.assigned_threat].state in {"CAPTURED", "SECURED"}
+            if item.assigned_threat in locked_threat_indices
         }
         for item in self.vehicles:
             desired = self._desired_position(item)
             if item.code in locked_ring_codes:
                 continue
             distance = _length(desired[0] - item.x, desired[1] - item.y)
+            task_errors[item.code] = distance
             cruise = self.uav_cruise if item.kind == "UAV" else self.usv_cruise
             convoy_follower = (
-                item.role == "CONVOY_SUPPORT"
-                or len(self.protected) > 1 and item.role == "CAPTURE_RESERVE"
+                item.role in {"CONVOY_SUPPORT", "CAPTURE_RESERVE"}
             )
             speed_factor = (
                 1.0
@@ -3370,6 +3564,24 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 )
             if safe is not None and safe.adjusted:
                 self.avoidance_count += 1
+            task_error = task_errors.get(item.code, 0.0)
+            prior_error = self._vehicle_task_error.get(item.code, task_error)
+            making_progress = task_error + 0.08 < prior_error or displacement >= 0.08
+            if (
+                item.assigned_threat is not None
+                and task_error > 12.0
+                and not making_progress
+            ):
+                stalled = self._vehicle_stall_frames.get(item.code, 0) + 1
+                self._vehicle_stall_frames[item.code] = stalled
+                if stalled >= 20:
+                    threat = self.threats[item.assigned_threat]
+                    if threat.capture_stage >= 1:
+                        threat.gap_filler_code = item.code
+                        item.role = "GAP_BLOCKER"
+            else:
+                self._vehicle_stall_frames[item.code] = 0
+            self._vehicle_task_error[item.code] = task_error
             item.vx, item.vy = (current[0] - item.x) / DT, (current[1] - item.y) / DT
             item.x, item.y, item.z = current
             heading = self.stabilize_heading(item.code, old, current, 0.0, 4.5 if item.kind == "UAV" else 4.2)
@@ -3491,7 +3703,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             # spawn to containment.
             formation_handoff_ready = (
                 self._parallel_response_enabled
-                and len(self.protected) > 1
+                and self.plan.effective_scale >= 15
                 and arrival_ratio >= 0.90
                 and pursuit_distance >= threat.required_pursuit_distance * 0.45
             )
@@ -3501,7 +3713,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 or formation_handoff_ready
             )
             just_reached_pursuit = (
-                pursuit_complete and threat.mission_stage in {"ESCAPE", "PURSUIT"}
+                pursuit_complete and threat.mission_stage == "INTERCEPT"
             )
             forced_intercept_stage = just_reached_pursuit or threat.intercept_stage_frames > 0
             if just_reached_pursuit:
@@ -3509,19 +3721,13 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             elif threat.intercept_stage_frames > 0:
                 threat.intercept_stage_frames -= 1
             if not pursuit_complete:
-                threat.mission_stage = (
-                    "ESCAPE"
-                    if self._pursuit_distance(threat) < threat.required_pursuit_distance * 0.35
-                    else "PURSUIT"
-                )
+                threat.mission_stage = "INTERCEPT"
             elif forced_intercept_stage:
                 # Expose the tactical hand-off before the first formation
                 # stage can request a gap repair in the same simulation tick.
                 threat.mission_stage = "INTERCEPT"
             elif threat.capture_stage == 0:
-                threat.mission_stage = "INTERCEPT"
-            elif threat.capture_stage >= 2:
-                threat.mission_stage = "GAP_REPAIR"
+                threat.mission_stage = "BLOCKING"
             else:
                 threat.mission_stage = "ENCIRCLEMENT"
             if threat.capture_stage == 0 and pursuit_complete and arrival_ratio >= 0.70:
@@ -3529,8 +3735,8 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 threat.capture_hold = 0
                 threat.mission_stage = "INTERCEPT" if forced_intercept_stage else "ENCIRCLEMENT"
                 continue
-            stage_two_gap = min(120.0, maximum_capture_gap_deg(len(members)) + 30.0)
-            if threat.capture_stage == 1 and arrival_ratio >= 0.80 and max_gap_deg <= stage_two_gap + 1e-6:
+            stage_two_gap = min(95.0, maximum_capture_gap_deg(len(members)) + 14.0)
+            if threat.capture_stage == 1 and arrival_ratio >= 0.88 and max_gap_deg <= stage_two_gap + 1e-6:
                 threat.capture_stage = 2
                 threat.capture_hold = 0
                 threat.mission_stage = "ENCIRCLEMENT"
@@ -3544,7 +3750,12 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 minimum_type_counts={"UAV": 1, "USV": 1},
                 minimum_radius_m=18.0 if threat.capture_stage >= 2 else 13.5,
                 maximum_radius_m=self._capture_radius_limit(members),
-                maximum_radial_spread_m=5.25,
+                # Two opposite members may each be within the strict 3.5 m
+                # canonical-slot tolerance while their radial difference is
+                # slightly above the former 5.25 m limit. Keep this secondary
+                # thickness check consistent without weakening slot, angular,
+                # separation or inward-heading requirements.
+                maximum_radial_spread_m=6.0,
                 minimum_pairwise_separation_m=7.1,
                 participating=participating,
                 # Sub-degree tolerance absorbs floating-point/one-tick
@@ -3585,23 +3796,12 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             if canonical.ready or canonical.arrival_ratio > best_arrival + 0.02:
                 self._ring_best_arrival[index] = canonical.arrival_ratio
                 self._ring_stalled_frames[index] = 0
-            elif threat.capture_stage >= 2:
+            elif threat.capture_stage >= 1:
                 stalled = self._ring_stalled_frames.get(index, 0) + 1
                 self._ring_stalled_frames[index] = stalled
-                if stalled >= 120:
-                    # Keep assignments stable during normal convergence. Only
-                    # when real slot arrival has stopped improving do we rotate
-                    # the entire canonical ring by a small deterministic
-                    # fraction. This changes a safety-blocked path without
-                    # reassigning craft every frame or relaxing completion.
-                    slot_step = 2.0 * math.pi / max(3, len(members))
-                    threat.capture_phase = (
-                        threat.capture_phase + slot_step * 0.38196601125
-                    ) % (2.0 * math.pi)
-                    self._ring_slots.pop(index, None)
-                    self._ring_replans[index] = self._ring_replans.get(index, 0) + 1
-                    self._ring_stalled_frames[index] = 0
-                    self._ring_best_arrival[index] = canonical.arrival_ratio
+                # Slot identity remains authoritative. Rotating the complete
+                # ring made already-correct USVs cross paths and visibly yaw;
+                # the local gap-filler acceleration closes the remaining slot.
             final_ready = (
                 threat.capture_stage >= 2
                 and contract.ready
@@ -3629,16 +3829,11 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 threat.capture_hold = 0
                 if not pursuit_complete:
                     threat.state = "ESCAPE_PURSUIT"
-                    threat.mission_stage = (
-                        "ESCAPE"
-                        if self._pursuit_distance(threat) < threat.required_pursuit_distance * 0.35
-                        else "PURSUIT"
-                    )
+                    threat.mission_stage = "INTERCEPT"
                 else:
                     threat.state = "ENCIRCLING" if threat.capture_stage >= 1 else "INTERCEPTING"
                     threat.mission_stage = (
-                        "GAP_REPAIR" if threat.capture_stage >= 2
-                        else "ENCIRCLEMENT" if threat.capture_stage >= 1
+                        "ENCIRCLEMENT" if threat.capture_stage >= 1
                         else "INTERCEPT"
                     )
 
@@ -3708,9 +3903,15 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                 self._terminal_status, self._terminal_reason = "FAILED", f"{threat.code} breached {target.code} safety radius"
         for index, left in enumerate(self.vehicles):
             for right in self.vehicles[index + 1:]:
-                if left.kind == right.kind == "UAV" and abs(left.z - right.z) > 6.0:
-                    continue
-                self.min_agent_distance = min(self.min_agent_distance, _length(left.x - right.x, left.y - right.y))
+                # Collision telemetry must use physical 3-D separation.  The
+                # earlier horizontal-only value reported a UAV passing safely
+                # 27 m above a USV as a 6.4 m near-collision.
+                separation = math.sqrt(
+                    (left.x - right.x) ** 2
+                    + (left.y - right.y) ** 2
+                    + (left.z - right.z) ** 2
+                )
+                self.min_agent_distance = min(self.min_agent_distance, separation)
         for x, y in [(item.x, item.y) for item in [*self.protected, *self.threats, *self.vehicles]]:
             self.min_shore_distance = min(self.min_shore_distance, x - self.safe_bounds[0], self.safe_bounds[1] - x, y - self.safe_bounds[2], self.safe_bounds[3] - y)
         resolved = all(item.state in {"CAPTURED", "SECURED", "ESCAPED"} for item in self.threats)
@@ -3804,9 +4005,9 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             return "COMPLETED"
         if active:
             stage_rank = {
-                "ESCAPE": 0, "PURSUIT": 1, "INTERCEPT": 2,
-                "ENCIRCLEMENT": 3, "GAP_REPAIR": 4,
-                "STABLE_CONTAINMENT": 5,
+                "GUARDING": 0, "THREAT_DETECTION": 1,
+                "INTERCEPT": 2, "BLOCKING": 3,
+                "ENCIRCLEMENT": 4, "STABLE_CONTAINMENT": 5,
             }
             # Report the earliest unresolved incident. Per-target cards still
             # show advanced incidents, while the global stepper can only move
@@ -3817,7 +4018,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             )
         if any(item.state in {"CAPTURED", "SECURED"} for item in self.threats):
             return "STABLE_CONTAINMENT"
-        return "ESCORTING"
+        return "GUARDING"
 
     def _reported_stage(self) -> str:
         raw = self._mission_stage()
@@ -3931,6 +4132,9 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                     "requiredPursuitDistanceM": round(threat.required_pursuit_distance, 2),
                     "pursuitProgress": 0.0,
                     "intent": threat.intent,
+                    "speedMps": round(_length(threat.vx, threat.vy), 3),
+                    "cruiseSpeedMps": round(threat.cruise_speed, 3),
+                    "slowdownReason": threat.slowdown_reason,
                     "triggerReason": threat.auto_capture_reason,
                     "gapFillerCode": "",
                     "gapCenterDeg": 0.0,
@@ -3963,6 +4167,9 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
                     "requiredPursuitDistanceM": round(threat.required_pursuit_distance, 2),
                     "pursuitProgress": round(min(1.0, self._pursuit_distance(threat) / max(1.0, threat.required_pursuit_distance)), 3),
                     "intent": threat.intent,
+                    "speedMps": round(_length(threat.vx, threat.vy), 3),
+                    "cruiseSpeedMps": round(threat.cruise_speed, 3),
+                    "slowdownReason": threat.slowdown_reason,
                     "triggerReason": threat.auto_capture_reason,
                     "gapFillerCode": threat.gap_filler_code,
                     "gapCenterDeg": round(math.degrees(threat.gap_center_angle) % 360.0, 2),
@@ -4013,11 +4220,11 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
         # cap is presentation-only; per-target progress and every completion
         # contract remain unchanged.
         stage_progress_ceiling = {
-            "ESCAPE": 0.49,
-            "PURSUIT": 0.69,
-            "INTERCEPT": 0.79,
-            "ENCIRCLEMENT": 0.89,
-            "GAP_REPAIR": 0.97,
+            "GUARDING": 0.24,
+            "THREAT_DETECTION": 0.44,
+            "INTERCEPT": 0.69,
+            "BLOCKING": 0.79,
+            "ENCIRCLEMENT": 0.94,
             "STABLE_CONTAINMENT": 0.999,
         }
         if self._terminal_status != "COMPLETED":
@@ -4044,9 +4251,9 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             if item.state not in {"WAITING", "CAPTURED", "SECURED", "ESCAPED"}
         ]
         stage_rank = {
-            "ESCAPE": 0, "PURSUIT": 1, "INTERCEPT": 2,
-            "ENCIRCLEMENT": 3, "GAP_REPAIR": 4,
-            "STABLE_CONTAINMENT": 5,
+            "GUARDING": 0, "THREAT_DETECTION": 1,
+            "INTERCEPT": 2, "BLOCKING": 3,
+            "ENCIRCLEMENT": 4, "STABLE_CONTAINMENT": 5,
         }
         stage_subject = min(
             unresolved_threats,
@@ -4121,7 +4328,7 @@ class AdaptiveEscortAdapter(AlgorithmAdapter):
             "simulationElapsedSeconds": round(max(0, self.sequence - 1) * DT, 1),
             "captureGroups": capture_groups,
             "missionStage": reported_stage,
-            "stageSequence": ["ESCAPE", "PURSUIT", "INTERCEPT", "ENCIRCLEMENT", "GAP_REPAIR", "STABLE_CONTAINMENT", "COMPLETED"],
+            "stageSequence": ["GUARDING", "THREAT_DETECTION", "INTERCEPT", "BLOCKING", "ENCIRCLEMENT", "STABLE_CONTAINMENT", "COMPLETED"],
             "terminalReason": self._terminal_reason,
             "worldBounds": list(self.safe_bounds),
         }
