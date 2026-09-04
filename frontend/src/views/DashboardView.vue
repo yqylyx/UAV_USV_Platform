@@ -139,6 +139,14 @@ function currentOverviewUnityRuntimeId() {
   return deriveUnityRuntimeId(overviewMissionId.value)
 }
 
+function resolveActiveRun(detail?: MissionDetail | null) {
+  if (!detail) return null
+  if (detail.currentRun) return detail.currentRun
+  return [...detail.runs]
+    .reverse()
+    .find(run => ['PENDING', 'RUNNING', 'PAUSED'].includes(run.status)) ?? null
+}
+
 function nextUnityPoseSequence(runtimeId: number) {
   const wireRunId = String(runtimeId)
   if (unityPoseRunId !== wireRunId) {

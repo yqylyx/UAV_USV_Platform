@@ -143,6 +143,51 @@ function appendRandomStaging(
   }
 }
 
+function appendCaptureLaneStaging(
+  poses: GridScenarioPose[],
+  type: 'UAV' | 'USV',
+  count: number,
+  speedMps: number,
+  origin: GridLayoutOptions['fleetOrigin'],
+  random: () => number,
+  frontEastOffset: number,
+  laneCount: number,
+  laneSpread: number,
+) {
+  const spacing = 14
+  const lanes = Math.max(1, laneCount)
+  for (let index = 0; index < count; index += 1) {
+    const lane = index % lanes
+    const laneRank = Math.floor(index / lanes)
+    const column = Math.floor(laneRank / 2)
+    const row = laneRank % 2
+    const laneNorth = gridAxis(lane, lanes, -laneSpread, laneSpread)
+    // Interleave both vehicle types inside every target lane. Previously all
+    // UAVs started north and all USVs south; with three targets this left one
+    // upper-lane USV more than 100 m from its assigned ring and held progress
+    // at 11/12 for nearly a minute. Four staggered rows retain visible 14 m
+    // clearance while giving every target a local mixed team.
+    const typeOffset = type === 'UAV' ? -7 : 7
+    const rowOffset = (row - .5) * 28 + typeOffset
+    const eastM = origin.eastM + frontEastOffset + column * spacing
+      + (random() - .5) * spacing * .18
+    const northM = origin.northM + laneNorth + rowOffset
+      + (random() - .5) * spacing * .12
+
+    poses.push({
+      deviceCode: `${type}-${String(index + 1).padStart(3, '0')}`,
+      deviceType: type,
+      eastM,
+      northM,
+      upM: origin.upM + (type === 'UAV' ? 20 + (index % 4) * 2 : 0),
+      headingDeg: random() * 360,
+      speedMps,
+      state: type === 'UAV' ? 'AIRBORNE' : 'SAILING',
+      valid: true,
+    })
+  }
+}
+
 export function buildVirtualFleetGridLayout(
   options: GridLayoutOptions,
 ): GridScenarioPose[] {
@@ -153,6 +198,7 @@ export function buildVirtualFleetGridLayout(
   const captureColumns = Math.ceil(Math.sqrt(Math.max(uavCount, usvCount)))
   const captureCorridorHalfLength = 55 + Math.max(0, captureColumns - 2) * 4
   const plan = deriveAdaptiveScenarioPlan(uavCount, usvCount)
+  const captureSpread = Math.min(90, plan.worldHeight * .26)
   const escortSafeLeft = -plan.worldWidth / 2 + 28
   const escortUsableWidth = plan.worldWidth - 56
   const escortCenterEast = escortSafeLeft
@@ -164,9 +210,14 @@ export function buildVirtualFleetGridLayout(
     // Stage the friendly fleet east of the hostile target. The target's
     // initial escape therefore points west into the long open-water corridor,
     // rather than east toward Catalina and its bases.
-    const stagingBandOffset = Math.min(62, 22 + Math.max(0, captureColumns - 2) * 5)
-    appendRandomStaging(poses, 'UAV', uavCount, options.uavSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength, stagingBandOffset)
-    appendRandomStaging(poses, 'USV', usvCount, options.usvSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength, -stagingBandOffset)
+    if (plan.threatCount > 1) {
+      appendCaptureLaneStaging(poses, 'UAV', uavCount, options.uavSpeedMps, options.fleetOrigin, random, captureCorridorHalfLength, plan.threatCount, captureSpread)
+      appendCaptureLaneStaging(poses, 'USV', usvCount, options.usvSpeedMps, options.fleetOrigin, random, captureCorridorHalfLength, plan.threatCount, captureSpread)
+    } else {
+      const stagingBandOffset = Math.min(62, 22 + Math.max(0, captureColumns - 2) * 5)
+      appendRandomStaging(poses, 'UAV', uavCount, options.uavSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength, stagingBandOffset)
+      appendRandomStaging(poses, 'USV', usvCount, options.usvSpeedMps, options.fleetOrigin, random, occupied, captureCorridorHalfLength, -stagingBandOffset)
+    }
   } else {
     if (multiEscort) {
       // Preview the same compact convoy envelope used by the algorithm. This
@@ -196,7 +247,6 @@ export function buildVirtualFleetGridLayout(
     const previewAngle = 2 * Math.PI * index / Math.max(1, targetTypes.length)
     // Multi-target capture starts with every hostile clearly separated in
     // open water.  A single target remains on the corridor centreline.
-    const captureSpread = Math.min(90, plan.worldHeight * .26)
     const captureTargetNorth = captureMode
       ? gridAxis(index, targetTypes.length, -captureSpread, captureSpread)
       : 0

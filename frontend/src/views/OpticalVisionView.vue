@@ -62,8 +62,8 @@ function subscribe(cameraId = focused.value?.cameraId || 'uav_01') {
     quality: quality.value,
     targetFps,
     gpuDirect: true,
-    jpegFallback: false,
-    thumbnailFps: 4,
+    jpegFallback: true,
+    thumbnailFps: 2,
     focusedFps: targetFps,
   })
 }
@@ -141,7 +141,7 @@ onBeforeUnmount(() => {
       quality: quality.value,
       targetFps,
       gpuDirect: true,
-      jpegFallback: false,
+      jpegFallback: true,
     })
   }
   if (timer) window.clearInterval(timer)

@@ -77,6 +77,38 @@ class AdaptiveCaptureAdapterTest(unittest.TestCase):
             self.assertEqual(5, sum(agent.type == "UAV" for agent in assigned))
             self.assertEqual(5, sum(agent.type == "USV" for agent in assigned))
 
+    def test_eighteen_by_eighteen_balances_all_three_target_groups(self):
+        adapter = AdaptiveCaptureAdapter(9018, {
+            "uavCount": 18,
+            "usvCount": 18,
+            "targetCount": 3,
+            "seed": 20260814,
+        })
+        adapter.set_mission_active(False)
+
+        frame = adapter.step()
+
+        self.assertEqual(36, len(frame.agents))
+        self.assertEqual(36, len({agent.code for agent in frame.agents}))
+        self.assertEqual(3, len(frame.metrics["captureGroups"]))
+        groups = {
+            group["threatCode"]: group
+            for group in frame.metrics["captureGroups"]
+        }
+        for target_code in ("TARGET-001", "TARGET-002", "TARGET-003"):
+            assigned = [
+                agent for agent in frame.agents
+                if agent.assignedTargetCode == target_code
+            ]
+            self.assertEqual(12, len(assigned))
+            self.assertEqual(6, sum(agent.type == "UAV" for agent in assigned))
+            self.assertEqual(6, sum(agent.type == "USV" for agent in assigned))
+            self.assertEqual(12, groups[target_code]["ringMemberCount"])
+            self.assertEqual(12, groups[target_code]["requiredMemberCount"])
+            self.assertIsInstance(
+                groups[target_code]["detachedParticipantCodes"], list
+            )
+
     def test_all_groups_advance_after_start(self):
         adapter = AdaptiveCaptureAdapter(9002, {
             "uavCount": 10,

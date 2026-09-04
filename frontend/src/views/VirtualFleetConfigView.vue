@@ -14,7 +14,7 @@ import {
 } from '@lucide/vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
-import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
+import SimulationUnityWebglPanel from '@/components/unity/SimulationUnityWebglPanel.vue'
 import {
   controlAlgorithmRun,
   fetchAlgorithmFrames,
@@ -70,13 +70,17 @@ type CaptureGroupMetric = {
   postGlobalMaxGapDeg?: number
   postGlobalMaxAllowedGapDeg?: number
   globalAvoidanceCount?: number
+  ringMemberCount?: number
+  arrivedMemberCount?: number
+  requiredMemberCount?: number
+  detachedParticipantCodes?: string[]
   intent?: string
   triggerReason?: string
 }
 
 type InspectorTab = 'status' | 'protocol' | 'logs'
 
-const unityPanel = ref<InstanceType<typeof UnityWebglPanel> | null>(null)
+const unityPanel = ref<InstanceType<typeof SimulationUnityWebglPanel> | null>(null)
 const unityReady = ref(false)
 const selectedDevice = ref('')
 const cameraMode = ref('overview')
@@ -435,7 +439,7 @@ function onUnityMessage(message: UnityMessage) {
         && message.payload?.algorithmReady === true
       )
   }
-  if (message.type === 'scenarioReady') {
+  if (message.type === 'scenarioReady' || message.type === 'scenarioLoaded') {
     const readyRunId = Number(message.payload?.runId ?? 0)
     const success = message.payload?.success === true
     // Some compatible Unity builds omit runId from scenarioReady. Accept a
@@ -484,7 +488,7 @@ function onUnityMessage(message: UnityMessage) {
     if (runIdMatches) scenarioLoading.value = false
     if (success && runIdMatches) void prepareExternalAlgorithm()
     addLog(
-      `scenarioReady: ${success ? 'success' : 'failed'}`
+      `${message.type}: ${success ? 'success' : 'failed'}`
       + ` runId=${readyRunId || '-'}`,
     )
   }
@@ -1033,11 +1037,8 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="vf-unity-stage">
-            <UnityWebglPanel
+            <SimulationUnityWebglPanel
               ref="unityPanel"
-              iframe-src="/unity-virtual-fleet/index.html?embedded=1&build=20260825-v8"
-              runtime-scope="VIRTUAL_FLEET"
-              runtime-instance-id="virtual-fleet-v3-01"
               @unity-ready="onUnityReady"
               @unity-error="onUnityError"
               @unity-message="onUnityMessage"
@@ -1167,17 +1168,19 @@ onBeforeUnmount(() => {
                 <div class="vf-capture-groups">
                   <article v-for="group in captureGroups.slice(0, 4)" :key="group.threatCode">
                     <strong>{{ group.threatCode }}</strong>
-                    <span>阶段 {{ displayCaptureStage(group.stage) }}/3 · {{ group.uavCount }} UAV + {{ group.usvCount }} USV</span>
+                    <span>阶段 {{ displayCaptureStage(group.stage) }}/3 · 编组分配 {{ group.uavCount }} UAV + {{ group.usvCount }} USV</span>
                     <small>
-                      阶段槽位到位 {{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}%
-                      · 最大缺口 {{ Number(group.maxAngularGapDeg ?? 360).toFixed(0) }}°
+                      执行槽位到位 {{ Number(group.arrivedMemberCount ?? Math.round(Number(group.arrivalRatio ?? 0) * Number(group.ringMemberCount ?? group.memberCount ?? 0))) }}/{{ Number(group.requiredMemberCount ?? group.ringMemberCount ?? group.memberCount ?? 0) }}
+                      ({{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}%)
+                      · 规划环缺口 {{ Number(group.maxAngularGapDeg ?? 360).toFixed(0) }}°
                     </small>
                     <small>稳定闭环 {{ group.holdFrames ?? 0 }}/{{ group.holdRequiredFrames ?? 25 }}</small>
                     <small v-if="state.algorithm === 'GB_SFLA_CS'">
                       实际闭环 {{ group.postGlobalContainmentReady ? '是' : '否' }}
-                      · 最大缺口 {{ Number(group.postGlobalMaxGapDeg ?? 0).toFixed(0) }}/{{ Number(group.postGlobalMaxAllowedGapDeg ?? 0).toFixed(0) }}°
+                      · 执行环缺口 {{ Number(group.postGlobalMaxGapDeg ?? 0).toFixed(0) }}°（阈值 ≤ {{ Number(group.postGlobalMaxAllowedGapDeg ?? 0).toFixed(0) }}°）
                       · 分组避障 {{ Number(group.globalAvoidanceCount ?? 0) }}
                     </small>
+                    <small v-if="group.detachedParticipantCodes?.length">待到位：{{ group.detachedParticipantCodes.join('、') }}</small>
                     <small v-if="group.captureBlocker && group.captureBlocker !== 'NONE'">阻塞：{{ group.captureBlocker }}</small>
                   </article>
                 </div>

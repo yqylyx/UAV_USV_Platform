@@ -494,6 +494,15 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             require_inward_usv_heading=True,
             usv_heading_tolerance_deg=3.0,
         )
+        center = (target.x, target.y, target.z)
+        detached_codes = [
+            agent.code
+            for agent in agents
+            if math.hypot(
+                agent.x - slots[agent.code].point(center)[0],
+                agent.y - slots[agent.code].point(center)[1],
+            ) > 3.5
+        ]
         if not visible_chase_complete:
             blocker = "PURSUIT_DISTANCE"
         elif not contract.ready:
@@ -525,6 +534,7 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             "detachedParticipants": len(agents) - contract.arrived_count,
             "participating": contract.arrived_count,
             "required": len(agents),
+            "detachedParticipantCodes": detached_codes,
             "arrivalRatio": contract.arrival_ratio,
             "maximumSlotErrorM": contract.maximum_slot_error_m,
             "inwardOrientedUsvCount": contract.inward_oriented_usv_count,
@@ -810,6 +820,11 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             group["postGlobalMaxAllowedGapDeg"] = executed["maxAllowedGapDeg"]
             group["arrivalRatio"] = executed.get("arrivalRatio", 0.0)
             group["ringMemberCount"] = len(executed_agents)
+            group["arrivedMemberCount"] = executed.get("participating", 0)
+            group["requiredMemberCount"] = executed.get("required", len(executed_agents))
+            group["detachedParticipantCodes"] = executed.get(
+                "detachedParticipantCodes", []
+            )
             group["supportMemberCount"] = max(
                 0, int(group.get("memberCount", 0)) - len(executed_agents)
             )
@@ -901,10 +916,15 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                         promoted = candidate.code
                         group["gapFillerCode"] = candidate.code
                         group["replacedRingMemberCode"] = missing.code
-                if promoted is None:
+                if promoted is not None:
+                    self.ring_replans[index] += 1
+                else:
+                    # No reserve can take over this exact slot. Shift the
+                    # whole-ring phase so a pair of crossed polar approaches
+                    # cannot remain blocked behind each other indefinitely.
                     self.ring_slots[index] = {}
                     self._ensure_ring_slots(index, executed_agents, target)
-                self.ring_replans[index] += 1
+                    self.ring_replans[index] += 1
                 self.ring_stalled_frames[index] = 0
                 self.ring_best_arrival[index] = arrival
                 group["slotReplanned"] = True

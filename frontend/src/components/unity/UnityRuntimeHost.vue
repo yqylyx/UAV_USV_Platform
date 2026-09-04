@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
+import OverviewUnityWebglPanel from '@/components/unity/OverviewUnityWebglPanel.vue'
 import UnityWebglPanel from '@/components/unity/UnityWebglPanel.vue'
 import type { UnityRuntimeScope } from '@/stores/unityBridge'
 
@@ -25,7 +26,11 @@ const props = withDefaults(
 )
 
 const frameStyle = reactive<Record<string, string>>({})
-const runtimePanel = ref<InstanceType<typeof UnityWebglPanel> | null>(null)
+type RuntimePanelApi = { syncViewport: () => void }
+const runtimePanel = ref<RuntimePanelApi | null>(null)
+const panelComponent = props.runtimeScope === 'SYSTEM_OVERVIEW'
+  ? OverviewUnityWebglPanel
+  : UnityWebglPanel
 let viewportElement: HTMLElement | null = null
 let resizeObserver: ResizeObserver | null = null
 let animationFrame = 0
@@ -136,13 +141,16 @@ onBeforeUnmount(() => {
     :style="{ ...frameStyle, zIndex: String(layer) }"
     :aria-label="`${runtimeScope} Unity WebGL 运行实例`"
   >
-    <UnityWebglPanel
+    <component
+      :is="panelComponent"
       ref="runtimePanel"
-      :iframe-src="iframeSrc"
-      :runtime-scope="runtimeScope"
-      :runtime-instance-id="runtimeInstanceId"
-      :mission-id="missionId"
-      :run-id="runId"
+      v-bind="runtimeScope === 'SYSTEM_OVERVIEW' ? {} : {
+        iframeSrc,
+        runtimeScope,
+        runtimeInstanceId,
+        missionId,
+        runId,
+      }"
     />
   </div>
 </template>

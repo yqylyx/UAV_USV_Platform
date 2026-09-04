@@ -665,7 +665,10 @@ namespace UavUsv.PlatformTools
                     forward = Vector3.ProjectOnPlane(uav.right, Vector3.up);
                 if (forward.sqrMagnitude < .001f)
                     forward = Vector3.forward;
-                position = uav.position + Vector3.down * Mathf.Max(.9f, sensorSuite.uavCameraHeight);
+                // Match SensorViewPip.TryUavDown: mount the down-looking camera
+                // above the vehicle. Placing it below the UAV can put the camera
+                // inside the airframe or the carrier deck before take-off.
+                position = uav.position + Vector3.up * Mathf.Max(.9f, sensorSuite.uavCameraHeight);
                 rotation = Quaternion.LookRotation(Vector3.down, forward.normalized);
                 fov = 70f;
                 return true;

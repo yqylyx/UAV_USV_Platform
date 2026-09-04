@@ -23,7 +23,7 @@
     var runtimeScope = params.get('scope') || 'SYSTEM_OVERVIEW';
     var runtimeInstanceId = params.get('instanceId') || 'overview-unity-01';
     var queryRunId = params.get('runId') || '';
-    var buildId = 'first-stage-unity-webgl-20260902-1';
+    var buildId = 'overview-unity-d5d34e6-20260904-v2';
     var unityInstance = null;
     var bridgeReady = false;
     var platformInitialized = false;
@@ -45,11 +45,14 @@
         message: { type: type, requestId: requestId || '', timestamp: Date.now(), payload: payload || {} }
       }, window.location.origin);
     }
-    function send(method, payload) {
+    function sendTo(gameObject, method, payload) {
       if (!unityInstance || !unityInstance.SendMessage) return false;
-      unityInstance.SendMessage('PlatformBridge', method, JSON.stringify(payload || {}));
-      log('sent:' + method, payload);
+      unityInstance.SendMessage(gameObject, method, JSON.stringify(payload || {}));
+      log('sent:' + gameObject + '.' + method, payload);
       return true;
+    }
+    function send(method, payload) {
+      return sendTo('PlatformBridge', method, payload);
     }
     function normalizeUnityEvent(value) {
       var parsed = typeof value === 'string' ? JSON.parse(value) : value;
@@ -102,6 +105,27 @@
           poses: Array.isArray(payload.poses) ? payload.poses.map(function (pose) { return { deviceCode: String(pose.deviceCode || ''), position: pose.position }; }) : []
         });
       }
+      if (type === 'visualsensorsubscribe') {
+        return sendTo('UnityVisualSensorBridge', 'ReceiveFromVue', message);
+      }
+      if (type === 'selectdevice') {
+        return send('SelectDevice', Object.assign({ requestId: message.requestId || '' }, payload));
+      }
+      if (type === 'focusdevice') {
+        var selected = send('SelectDevice', Object.assign({ requestId: message.requestId || '' }, payload));
+        var focused = send('SetCameraMode', Object.assign({ requestId: message.requestId || '', mode: 'focus' }, payload));
+        return selected && focused;
+      }
+      if (type === 'switchcamera' || type === 'setcameramode') {
+        return send('SetCameraMode', Object.assign({ requestId: message.requestId || '' }, payload));
+      }
+      if (type === 'toggletrajectory') {
+        return send('SetTrajectoryVisible', Object.assign({ requestId: message.requestId || '' }, payload));
+      }
+      if (type === 'cameracontrol' || type === 'sendcontrolcommand') {
+        return sendTo('WebCommandBridge', 'ReceiveFromVue', message);
+      }
+      console.warn('[Unity first-stage] unsupported Vue message', message);
       return false;
     }
     window.addEventListener('message', function (event) {
@@ -112,12 +136,14 @@
     });
     function banner(message, type) { warning.textContent = message; warning.style.display = message ? 'block' : 'none'; if (type === 'error') console.error(message); }
     var config = {
-      dataUrl: 'Build/WebGLBridgeTest.data', frameworkUrl: 'Build/WebGLBridgeTest.framework.js', codeUrl: 'Build/WebGLBridgeTest.wasm',
-      streamingAssetsUrl: 'StreamingAssets', companyName: 'UAV-USV', productName: 'WebGLBridgeTest', productVersion: '0.1', showBanner: banner
+      dataUrl: 'Build/WebGLBridgeTest.data?build=' + buildId,
+      frameworkUrl: 'Build/WebGLBridgeTest.framework.js?build=' + buildId,
+      codeUrl: 'Build/WebGLBridgeTest.wasm?build=' + buildId,
+      streamingAssetsUrl: 'StreamingAssets', companyName: 'UAV-USV', productName: 'UAV-USV Unity', productVersion: '0.1', showBanner: banner
     };
     loadingBar.style.display = 'block';
     var loader = document.createElement('script');
-    loader.src = 'Build/WebGLBridgeTest.loader.js';
+    loader.src = 'Build/WebGLBridgeTest.loader.js?build=' + buildId;
     loader.onload = function () {
       createUnityInstance(canvas, config, function (value) { progress.style.width = (100 * value) + '%'; post('unityProgress', { progress: value }); })
         .then(function (instance) {
