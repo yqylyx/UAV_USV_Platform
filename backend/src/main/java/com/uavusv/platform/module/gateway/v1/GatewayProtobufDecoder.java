@@ -36,6 +36,7 @@ public class GatewayProtobufDecoder {
                     readTimestamp(envelope.hasTimestamp() ? envelope.getTimestamp() : null),
                     blankToNull(envelope.getRunId()),
                     streamId(envelope, type),
+                    blankToNull(envelope.getFrameId()),
                     envelope.getSequence(),
                     payload(envelope)
             );

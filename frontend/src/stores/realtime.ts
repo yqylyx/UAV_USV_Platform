@@ -65,6 +65,7 @@ function normalizeEnvelope(value: unknown): GatewayEnvelope | null {
     timestamp: String(candidate.timestamp ?? ''),
     runId: candidate.runId ?? null,
     streamId: candidate.streamId,
+    frameId: candidate.frameId ?? null,
     sequence,
     payload: candidate.payload ?? {},
   }

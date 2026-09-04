@@ -15,6 +15,7 @@ export interface GatewayEnvelope<TPayload = unknown> {
   timestamp: string
   runId?: string | null
   streamId: string
+  frameId?: string | null
   sequence: number
   payload: TPayload
 }

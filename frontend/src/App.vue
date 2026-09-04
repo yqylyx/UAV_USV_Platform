@@ -27,7 +27,7 @@ const showMissionCenterUnity = computed(
 <template>
   <UnityRuntimeHost
     v-if="showSystemOverviewUnity"
-    iframe-src="/unity-overview/index.html?embedded=1"
+    iframe-src="/unity-overview-test/index.html?embedded=1"
     :viewport="route.name === 'optical-vision' ? 'visual-sensors-live' : 'dashboard'"
     runtime-scope="SYSTEM_OVERVIEW"
     runtime-instance-id="overview-unity-01"

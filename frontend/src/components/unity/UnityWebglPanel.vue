@@ -23,7 +23,7 @@ const props = withDefaults(
     runId?: number
   }>(),
   {
-    iframeSrc: '/unity-overview/index.html?embedded=1',
+    iframeSrc: '/unity-overview-test/index.html?embedded=1',
     runtimeScope: 'SYSTEM_OVERVIEW',
     runtimeInstanceId: 'overview-unity-01',
   },
@@ -138,8 +138,19 @@ function handleWindowMessage(event: MessageEvent) {
   if (!message) return
 
   if (message.type === 'poseFrameApplied') {
+    const payload = message.payload ?? {}
     const runId = String(message.payload?.runId ?? '')
     const sequence = String(message.payload?.sequence ?? '')
+    const channel = unityBridgeStore.channels[props.runtimeScope]
+    if (
+      payload.success !== true
+      || runId !== channel.sentRunId
+      || Number(sequence) !== channel.sentSequence
+      || Number(payload.appliedCount) <= 0
+    ) {
+      unityBridgeStore.markPoseAppliedFor(props.runtimeScope, payload)
+      return
+    }
     const receiptKey = `${props.runtimeScope}:${runId}:${sequence}`
     if (seenPoseReceiptKeys.has(receiptKey)) {
       console.warn('[UnityWebglPanel] Duplicate poseFrameApplied ignored', {
@@ -154,15 +165,6 @@ function handleWindowMessage(event: MessageEvent) {
       const firstKey = seenPoseReceiptKeys.values().next().value
       if (firstKey) seenPoseReceiptKeys.delete(firstKey)
     }
-  }
-
-  if (
-    message.type === 'sceneLoaded'
-    || message.type === 'unityReady'
-    || message.type === 'platformBridgeReady'
-    || message.type === 'platformInitialized'
-  ) {
-    markReady()
   }
 
   if (message.type === 'unityProgress') {
@@ -212,50 +214,24 @@ function handleWindowMessage(event: MessageEvent) {
   }
 
   if (message.type === 'platformBridgeReady' && message.payload) {
-    // Visual sensors are optional for command/control pages. Older Unity
-    // builds report ready=false when only that optional capability is absent.
-    // Keep the control bridge usable when command, camera, and algorithm
-    // capabilities are available.
-    const controlsAvailable = message.payload.controlsReady === true
-      || (
-        message.payload.ready === true
-        && message.payload.cameraReady !== false
-        && message.payload.algorithmReady !== false
-      )
     const platformAvailable = message.payload.ready === true
-      || (
-        controlsAvailable
-        && message.payload.cameraReady === true
-        && message.payload.algorithmReady === true
-      )
-    const capabilities = {
-      ...message.payload,
-      ready: platformAvailable,
-      controlsReady: controlsAvailable,
-    }
-    unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, capabilities)
-    controlsReady.value = controlsAvailable
-    visualSensorStore.markUnityBridgeReady(
-      props.runtimeScope,
-      message.payload.visualSensorReady === true,
-      visualRuntimeContext.value,
-    )
     if (!platformAvailable) {
-      const missing = [
-        message.payload.cameraReady === true ? '' : '相机控制',
-        message.payload.algorithmReady === true ? '' : '算法场景',
-      ].filter(Boolean)
-      markError(`Unity 平台桥未就绪：${missing.join('、') || '未知能力'}`)
+      markError('Unity platformBridgeReady.payload.ready is not true')
     } else {
-      markReady()
-      flushUnityOutbox()
-      reportRuntimeSnapshot(true)
+      // createUnityInstance resolution is runtime-ready only. The wrapper owns
+      // InitializePlatform; Vue waits for platformInitialized before flushing.
+      unityBridgeStore.setConnectedFor(props.runtimeScope, true)
+      controlsReady.value = false
     }
   }
 
   if (message.type === 'platformInitialized' && message.payload) {
+    if (message.payload.success !== true) {
+      markError(String(message.payload.error ?? 'Unity InitializePlatform failed'))
+      return
+    }
     unityBridgeStore.setPlatformCapabilitiesFor(props.runtimeScope, {
-      ready: message.payload.success !== false,
+      ready: true,
       controlsReady: true,
       cameraReady: true,
       algorithmReady: true,
@@ -266,7 +242,8 @@ function handleWindowMessage(event: MessageEvent) {
         : [],
     })
     controlsReady.value = true
-    flushUnityOutbox()
+    markReady()
+    reportRuntimeSnapshot(true)
   }
 
   if (message.type === 'bridgeReady') {
@@ -299,11 +276,12 @@ function handleWindowMessage(event: MessageEvent) {
     )
   }
 
-  if (message.type === 'scenarioReady' && message.payload) {
+  if (message.type === 'scenarioReadyLegacyDisabled' && message.payload) {
     unityBridgeStore.markScenarioReadyFor(props.runtimeScope, message.payload)
   }
 
   if (message.type === 'scenarioLoaded' && message.payload) {
+    if (message.payload.success !== true) return
     unityBridgeStore.markScenarioReadyFor(props.runtimeScope, {
       ...message.payload,
       algorithmCode: message.payload.algorithmCode ?? message.payload.scenarioId,
@@ -494,6 +472,9 @@ function flushUnityOutbox() {
   while (message) {
     try {
       postEnvelope(message)
+      if (message.type === 'poseFrame') {
+        unityBridgeStore.markPoseSentFor(props.runtimeScope, message.payload)
+      }
       unityBridgeStore.removeNextFor(props.runtimeScope)
       message = unityBridgeStore.peekNextFor(props.runtimeScope)
     } catch (error) {

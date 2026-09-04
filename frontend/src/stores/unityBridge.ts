@@ -41,8 +41,12 @@ interface UnityBridgeChannel {
   scenarioAlgorithmCode: string
   scenarioReadyRunId: number | null
   scenarioReadyAlgorithmCode: string
+  sentRunId: string | null
+  sentSequence: number
   appliedRunId: number | null
   appliedSequence: number
+  rejectReason: string
+  latestPoseFrame: UnityBridgeMessage | null
 }
 
 type PendingCommandAck = {
@@ -74,8 +78,12 @@ function createChannel(): UnityBridgeChannel {
     scenarioAlgorithmCode: '',
     scenarioReadyRunId: null,
     scenarioReadyAlgorithmCode: '',
+    sentRunId: null,
+    sentSequence: 0,
     appliedRunId: null,
     appliedSequence: 0,
+    rejectReason: '',
+    latestPoseFrame: null,
   }
 }
 
@@ -139,8 +147,12 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
         channel.scenarioAlgorithmCode = ''
         channel.scenarioReadyRunId = null
         channel.scenarioReadyAlgorithmCode = ''
+        channel.sentRunId = null
+        channel.sentSequence = 0
         channel.appliedRunId = null
         channel.appliedSequence = 0
+        channel.rejectReason = ''
+        channel.latestPoseFrame = null
         rejectPendingCommandAcks(scope, 'Unity WebGL 连接已断开')
       }
     },
@@ -160,8 +172,12 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       channel.scenarioAlgorithmCode = ''
       channel.scenarioReadyRunId = null
       channel.scenarioReadyAlgorithmCode = ''
+      channel.sentRunId = null
+      channel.sentSequence = 0
       channel.appliedRunId = null
       channel.appliedSequence = 0
+      channel.rejectReason = ''
+      channel.latestPoseFrame = null
       rejectPendingCommandAcks(scope, message)
     },
     setControlsReadyFor(scope: UnityRuntimeScope, ready: boolean) {
@@ -219,28 +235,63 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       payload: Record<string, unknown>,
     ) {
       const channel = this.channels[scope]
-      const runId = Number(payload.runId)
-      if (Number.isFinite(runId)) {
-        channel.scenarioRunId = runId
-        channel.scenarioReadyRunId = runId
+      const wireRunId = String(payload.runId ?? '')
+      const runId = Number(wireRunId)
+      if (!wireRunId || !Number.isSafeInteger(runId) || runId <= 0) {
+        channel.rejectReason = `scenarioReady invalid runId: ${String(payload.runId ?? '')}`
+        return
       }
+      if (channel.scenarioRunId !== runId) {
+        channel.rejectReason = `scenarioReady run mismatch: expected=${channel.scenarioRunId ?? 'none'}, received=${runId}`
+        console.warn('[unityBridge] scenarioReady rejected', { scope, rejectReason: channel.rejectReason })
+        return
+      }
+      channel.scenarioReadyRunId = runId
       channel.scenarioReadyAlgorithmCode = String(
         payload.algorithmCode ?? channel.scenarioAlgorithmCode,
       )
       channel.appliedRunId = null
       channel.appliedSequence = 0
+      channel.sentRunId = null
+      channel.sentSequence = 0
+      const latestPose = channel.latestPoseFrame
+      const latestRunId = String(latestPose?.payload.runId ?? '')
+      if (latestPose && latestRunId === wireRunId) {
+        channel.outbox = channel.outbox.filter(message => message.type !== 'poseFrame')
+        channel.outbox.push(latestPose)
+      }
     },
     markPoseAppliedFor(
       scope: UnityRuntimeScope,
       payload: Record<string, unknown>,
     ) {
       const channel = this.channels[scope]
-      const runId = Number(payload.runId)
+      const runId = String(payload.runId ?? '')
       const sequence = Number(payload.sequence)
-      if (!Number.isFinite(runId) || !Number.isFinite(sequence)) return
-      if (channel.scenarioRunId !== null && runId !== channel.scenarioRunId) return
-      channel.appliedRunId = runId
+      const appliedCount = Number(payload.appliedCount)
+      if (
+        payload.success !== true
+        || !runId
+        || !Number.isSafeInteger(sequence)
+        || sequence <= 0
+        || appliedCount <= 0
+        || channel.sentRunId !== runId
+        || channel.sentSequence !== sequence
+      ) {
+        channel.rejectReason = `poseFrameApplied invalid receipt: runId=${String(payload.runId ?? '')}, sequence=${String(payload.sequence ?? '')}`
+        console.warn('[unityBridge] poseFrameApplied rejected', { scope, rejectReason: channel.rejectReason })
+        return
+      }
+      channel.appliedRunId = Number(runId)
       channel.appliedSequence = Math.max(channel.appliedSequence, sequence)
+    },
+    markPoseSentFor(scope: UnityRuntimeScope, payload: Record<string, unknown>) {
+      const runId = String(payload.runId ?? '')
+      const sequence = Number(payload.sequence)
+      if (!runId || !Number.isSafeInteger(sequence) || sequence <= 0) return
+      const channel = this.channels[scope]
+      channel.sentRunId = runId
+      channel.sentSequence = sequence
     },
     clearPoseFramesFor(scope: UnityRuntimeScope) {
       const channel = this.channels[scope]
@@ -258,12 +309,16 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
       const message = { type, requestId, timestamp: Date.now(), payload }
       if (type === 'loadScenario') {
         const runId = Number(payload.runId)
-        channel.scenarioRunId = Number.isFinite(runId) ? runId : null
+        channel.scenarioRunId = Number.isSafeInteger(runId) && runId > 0 ? runId : null
         channel.scenarioAlgorithmCode = String(payload.algorithmCode ?? '')
         channel.scenarioReadyRunId = null
         channel.scenarioReadyAlgorithmCode = ''
+        channel.sentRunId = null
+        channel.sentSequence = 0
         channel.appliedRunId = null
         channel.appliedSequence = 0
+        channel.rejectReason = ''
+        channel.latestPoseFrame = null
         channel.outbox = channel.outbox.filter(
           queued => queued.type !== 'loadScenario' && queued.type !== 'poseFrame',
         )
@@ -273,20 +328,25 @@ export const useUnityBridgeStore = defineStore('unityBridge', {
         return requestId
       }
       if (type === 'poseFrame') {
-        const runId = Number(payload.runId)
-        if (
-          channel.scenarioRunId !== null
-          && Number.isFinite(runId)
-          && runId !== channel.scenarioRunId
-        ) {
+        const runId = String(payload.runId ?? '')
+        if (!runId) {
+          channel.rejectReason = `poseFrame invalid runId: ${String(payload.runId ?? '')}`
+          console.warn('[unityBridge] poseFrame rejected', { scope, rejectReason: channel.rejectReason })
           return requestId
         }
+        if (String(channel.scenarioRunId ?? '') !== runId) {
+          channel.rejectReason = `poseFrame run mismatch: expected=${channel.scenarioRunId ?? 'none'}, received=${runId}`
+          console.warn('[unityBridge] poseFrame rejected', { scope, rejectReason: channel.rejectReason })
+          return requestId
+        }
+        channel.latestPoseFrame = message
         // A disconnected/hidden WebGL instance only needs the newest pose.
         // Keeping every 10 Hz sample caused a synchronous burst and the
         // apparent "teleport then freeze" behaviour after returning to 3-D.
         channel.outbox = channel.outbox.filter(
           queued => queued.type !== 'poseFrame',
         )
+        if (String(channel.scenarioReadyRunId ?? '') !== runId) return requestId
       }
       channel.outbox.push(message)
       return requestId

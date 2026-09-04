@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <title>UAV/USV Unity First-stage Test</title>
+  <link rel="shortcut icon" href="TemplateData/favicon.ico">
+  <link rel="stylesheet" href="TemplateData/style.css">
+  <style>
+    html, body, #unity-container, #unity-canvas { width: 100%; height: 100%; margin: 0; }
+    body.embedded #unity-footer { display: none; }
+  </style>
+</head>
+<body>
+  <div id="unity-container" class="unity-desktop">
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="unity-loading-bar"><div id="unity-logo"></div><div id="unity-progress-bar-empty"><div id="unity-progress-bar-full"></div></div></div>
+    <div id="unity-warning"></div>
+    <div id="unity-footer"><div id="unity-webgl-logo"></div><div id="unity-fullscreen-button"></div><div id="unity-build-title">First-stage bridge test</div></div>
+  </div>
+  <script>
+    var params = new URLSearchParams(location.search);
+    var runtimeScope = params.get('scope') || 'SYSTEM_OVERVIEW';
+    var runtimeInstanceId = params.get('instanceId') || 'overview-unity-01';
+    var queryRunId = params.get('runId') || '';
+    var buildId = 'first-stage-unity-webgl-20260902-1';
+    var unityInstance = null;
+    var bridgeReady = false;
+    var platformInitialized = false;
+    var scenarioLoaded = false;
+    var queued = [];
+    var canvas = document.querySelector('#unity-canvas');
+    var loadingBar = document.querySelector('#unity-loading-bar');
+    var progress = document.querySelector('#unity-progress-bar-full');
+    var warning = document.querySelector('#unity-warning');
+    if (params.has('embedded')) document.body.classList.add('embedded');
+
+    function log(state, detail) {
+      console.info('[Unity first-stage]', state, detail || '');
+      document.documentElement.dataset.unityBridgeState = state;
+    }
+    function post(type, payload, requestId) {
+      window.parent.postMessage({
+        source: 'unity-webgl', runtimeScope: runtimeScope, runtimeInstanceId: runtimeInstanceId,
+        message: { type: type, requestId: requestId || '', timestamp: Date.now(), payload: payload || {} }
+      }, window.location.origin);
+    }
+    function send(method, payload) {
+      if (!unityInstance || !unityInstance.SendMessage) return false;
+      unityInstance.SendMessage('PlatformBridge', method, JSON.stringify(payload || {}));
+      log('sent:' + method, payload);
+      return true;
+    }
+    function normalizeUnityEvent(value) {
+      var parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      var payload = Object.assign({}, parsed || {}, parsed && parsed.payload || {});
+      delete payload.type; delete payload.payload; delete payload.requestId; delete payload.timestamp;
+      return { type: parsed.type, requestId: parsed.requestId || '', payload: payload };
+    }
+    function flush() {
+      if (!platformInitialized) return;
+      var pending = queued.splice(0);
+      pending.forEach(dispatch);
+    }
+    window.receiveUnityMessage = function (value) {
+      try {
+        var event = normalizeUnityEvent(value);
+        log('received:' + event.type, event.payload);
+        post(event.type, event.payload, event.requestId);
+        if (event.type === 'platformBridgeReady') {
+          bridgeReady = event.payload.ready === true;
+          if (!bridgeReady) return;
+          send('InitializePlatform', {
+            runId: String(queryRunId), coordinateSystem: 'ROS_ENU',
+            platform: 'vue-webgl', protocolVersion: '1.0'
+          });
+        } else if (event.type === 'platformInitialized') {
+          platformInitialized = event.payload.success === true;
+          if (platformInitialized) flush();
+        } else if (event.type === 'scenarioLoaded') {
+          scenarioLoaded = event.payload.success === true;
+          if (scenarioLoaded) flush();
+        }
+      } catch (error) {
+        console.error('[Unity first-stage] invalid Unity event', error, value);
+      }
+    };
+    function dispatch(message) {
+      var payload = message.payload || {};
+      var type = String(message.type || '').toLowerCase();
+      if (type === 'loadscenario') {
+        scenarioLoaded = false;
+        return send('LoadScenario', Object.assign({}, payload, {
+          requestId: message.requestId || '', runId: String(payload.runId || '')
+        }));
+      }
+      if (type === 'poseframe' || type === 'applyposebatch') {
+        if (!scenarioLoaded) { queued = queued.filter(function (item) { return String(item.type).toLowerCase() !== 'poseframe'; }); queued.push(message); return false; }
+        return send('ApplyPoseBatch', {
+          runId: String(payload.runId || ''), sequence: Number(payload.sequence), timestamp: Number(payload.timestamp || 0),
+          source: String(payload.source || 'vue-ros'), coordinateSystem: String(payload.coordinateSystem || 'ROS_ENU'),
+          poses: Array.isArray(payload.poses) ? payload.poses.map(function (pose) { return { deviceCode: String(pose.deviceCode || ''), position: pose.position }; }) : []
+        });
+      }
+      return false;
+    }
+    window.addEventListener('message', function (event) {
+      if (event.origin !== window.location.origin) return;
+      var data = event.data || {};
+      if (data.source !== 'vue-console' || !data.message) return;
+      if (!bridgeReady || !platformInitialized) queued.push(data.message); else dispatch(data.message);
+    });
+    function banner(message, type) { warning.textContent = message; warning.style.display = message ? 'block' : 'none'; if (type === 'error') console.error(message); }
+    var config = {
+      dataUrl: 'Build/WebGLBridgeTest.data', frameworkUrl: 'Build/WebGLBridgeTest.framework.js', codeUrl: 'Build/WebGLBridgeTest.wasm',
+      streamingAssetsUrl: 'StreamingAssets', companyName: 'UAV-USV', productName: 'WebGLBridgeTest', productVersion: '0.1', showBanner: banner
+    };
+    loadingBar.style.display = 'block';
+    var loader = document.createElement('script');
+    loader.src = 'Build/WebGLBridgeTest.loader.js';
+    loader.onload = function () {
+      createUnityInstance(canvas, config, function (value) { progress.style.width = (100 * value) + '%'; post('unityProgress', { progress: value }); })
+        .then(function (instance) {
+          unityInstance = window.uavUsvUnityInstance = instance;
+          loadingBar.style.display = 'none';
+          log('runtime-ready', { buildId: buildId });
+          post('runtimeReady', { ready: true, buildId: buildId });
+          document.querySelector('#unity-fullscreen-button').onclick = function () { instance.SetFullscreen(1); };
+        }).catch(function (error) { banner(String(error), 'error'); post('unityError', { message: String(error) }); });
+    };
+    loader.onerror = function () { banner('WebGLBridgeTest.loader.js failed to load', 'error'); };
+    document.body.appendChild(loader);
+  </script>
+</body>
+</html>

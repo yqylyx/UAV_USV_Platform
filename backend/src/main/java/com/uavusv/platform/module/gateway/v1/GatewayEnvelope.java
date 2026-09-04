@@ -12,9 +12,23 @@ public record GatewayEnvelope(
         Instant timestamp,
         String runId,
         String streamId,
+        String frameId,
         long sequence,
         JsonNode payload
 ) {
+    public GatewayEnvelope(
+            String version,
+            GatewayMessageType type,
+            String source,
+            Instant timestamp,
+            String runId,
+            String streamId,
+            long sequence,
+            JsonNode payload
+    ) {
+        this(version, type, source, timestamp, runId, streamId, null, sequence, payload);
+    }
+
     @JsonIgnore
     public boolean isTelemetryPoseBatch() {
         return type == GatewayMessageType.TELEMETRY_POSE_BATCH;

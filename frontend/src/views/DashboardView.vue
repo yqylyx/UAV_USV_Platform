@@ -30,8 +30,9 @@ import { useUnityBridgeStore } from '@/stores/unityBridge'
 import { useUnityViewportStore } from '@/stores/unityViewport'
 import {
   isPoseBatchLive,
+  normalizeRealtimeDeviceCode,
   poseBatchToTrajectoryPayload,
-  trajectoryFrameToSystemOverviewPoseFrame,
+  poseBatchTimestampMs,
 } from '@/services/realtimeTrajectoryAdapter'
 import type { RuntimeNode } from '@/types/monitoring'
 import { normalizeOperationalState } from '@/utils/runtimeOperationalState'
@@ -112,12 +113,40 @@ const freshnessClock = ref(Date.now())
 const overviewMissionId = ref<number | null>(null)
 const overviewMissionName = ref('三机三艇协同围捕')
 const overviewMissionStatus = ref<MissionStatus>('READY')
+const overviewActiveMissionRunId = ref<number | null>(null)
 const overviewMissionControlSource = ref('UNKNOWN')
 const overviewDeploymentAcknowledged = ref(false)
 let poseFrameSequence = 0
+let unityPoseRunId = ''
 let freshnessTimer: number | null = null
 const unityInstanceId = 'overview-unity-01'
 let lastRealOverviewScenarioKey = ''
+
+// SYSTEM_REALTIME runtime correlation ID v1: deterministic 31-bit FNV-1a
+// over the local Unity instance and mission. It never leaves this Unity channel.
+function deriveUnityRuntimeId(missionId: number, runtimeInstanceId = unityInstanceId) {
+  const input = `SYSTEM_REALTIME:v1:${runtimeInstanceId}:${missionId}`
+  let hash = 0x811c9dc5
+  for (let index = 0; index < input.length; index += 1) {
+    hash = Math.imul(hash ^ input.charCodeAt(index), 0x01000193)
+  }
+  return (hash >>> 0) % 0x7ffffffe + 1
+}
+
+function currentOverviewUnityRuntimeId() {
+  if (overviewActiveMissionRunId.value) return overviewActiveMissionRunId.value
+  if (!overviewMissionId.value) return null
+  return deriveUnityRuntimeId(overviewMissionId.value)
+}
+
+function nextUnityPoseSequence(runtimeId: number) {
+  const wireRunId = String(runtimeId)
+  if (unityPoseRunId !== wireRunId) {
+    unityPoseRunId = wireRunId
+    poseFrameSequence = 0
+  }
+  return ++poseFrameSequence
+}
 
 const cameraModes = [
   { label: '全局态势', value: 'overview' },
@@ -570,15 +599,8 @@ function operationalStateAfterCommand(commandType: RuntimeCommandType) {
 
 function toUnityPose(node: RuntimeNode) {
   return {
-    code: node.code,
-    name: node.name,
-    type: node.type,
-    status: node.status,
-    source: node.source,
-    position: [node.positionX, node.positionY, node.positionZ],
-    orientation: [0, 0, 0, 1],
-    heartbeatAgeSeconds: node.heartbeatAgeSeconds,
-    detail: node.detail,
+    deviceCode: node.code,
+    position: [node.positionX!, node.positionY!, node.positionZ!],
   }
 }
 
@@ -592,10 +614,15 @@ function pushPoseFrameToUnity() {
 
   if (poses.length === 0) return
 
+  const runId = currentOverviewUnityRuntimeId()
+  if (!runId) return
   unityBridgeStore.send('poseFrame', {
-    sequence: ++poseFrameSequence,
-    source: 'spring-monitoring',
-    timestampMs: Date.now(),
+    runId: String(runId),
+    sequence: nextUnityPoseSequence(runId),
+    timestamp: Date.now(),
+    source: 'vue-ros',
+    // Current runtime positions are already in the shared display map ENU.
+    coordinateSystem: 'ROS_ENU',
     poses,
   })
 }
@@ -605,26 +632,53 @@ function pushRealtimePoseFrameToUnity() {
     pushPoseFrameToUnity()
     return
   }
-  const payload = poseBatchToTrajectoryPayload(realtimeStore.poseBatch, {
+  const realtimePoseBatch = realtimeStore.poseBatch
+  if (!realtimePoseBatch) return
+  const runtimeId = currentOverviewUnityRuntimeId()
+  if (!runtimeId) return
+  const payload = poseBatchToTrajectoryPayload(realtimePoseBatch, {
     missionId: realMissionRuntimeStore.currentMissionId,
-    runId: realMissionRuntimeStore.currentRunId,
+    runId: runtimeId,
     phase: overviewRosMissionPhase.value,
   })
   if (!payload) return
-  const frameKey = `${payload.runId ?? 'no-run'}:${payload.source}:${payload.sequence}`
+  const frameKey = `${runtimeId}:${payload.source}:${payload.sequence}`
   if (frameKey === lastOverviewRealtimePoseFrameKey) return
   lastOverviewRealtimePoseFrameKey = frameKey
   trajectoryStore.ingestFor('SYSTEM_OVERVIEW', payload)
-  const frame = trajectoryStore.channels.SYSTEM_OVERVIEW.frame
-  const poseFrame = trajectoryFrameToSystemOverviewPoseFrame(frame, {
-    missionId: realMissionRuntimeStore.currentMissionId,
-    runId: payload.runId ?? realMissionRuntimeStore.currentRunId,
+  const poses = realtimePoseBatch.payload.vehicles
+    .filter(vehicle => {
+      const position = vehicle.localPositionEnuM
+      return !!position
+        && vehicle.fresh !== false
+        && vehicle.positionValid !== false
+        && Number.isFinite(position.x)
+        && Number.isFinite(position.y)
+        && Number.isFinite(position.z)
+    })
+    .map(vehicle => {
+      const deviceCode = normalizeRealtimeDeviceCode(vehicle.deviceCode)
+      const localPosition = vehicle.localPositionEnuM!
+      return {
+        deviceCode,
+        position: [localPosition.x, localPosition.y, localPosition.z],
+      }
+    })
+  if (!poses.length) return
+  unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'poseFrame', {
+    runId: String(runtimeId),
+    sequence: nextUnityPoseSequence(runtimeId),
+    timestamp: poseBatchTimestampMs(realtimePoseBatch) || Date.now(),
+    source: 'vue-ros',
+    // Current realtime positions are already in the shared display map ENU.
+    coordinateSystem: 'ROS_ENU',
+    poses,
   })
-  if (!poseFrame) return
-  unityBridgeStore.sendFor('SYSTEM_OVERVIEW', 'poseFrame', poseFrame)
 }
 
 function applyOverviewMissionDetail(detail: MissionDetail) {
+  const activeRun = resolveActiveRun(detail)
+  overviewActiveMissionRunId.value = activeRun?.id ?? null
   activeExperimentStore.sync(detail)
   const missionChanged = overviewMissionId.value !== null && overviewMissionId.value !== detail.mission.id
   if (missionChanged || ['DRAFT', 'COMPLETED', 'FAILED', 'CANCELLED'].includes(detail.mission.status)) {
@@ -1039,14 +1093,17 @@ async function runOverviewDemoCommand(action: 'start' | 'pause' | 'resume' | 'ca
 function sendRealOverviewScenario(detail?: MissionDetail | null) {
   const missionId = detail?.mission.id ?? overviewMissionId.value
   if (!missionId) return
-  const runId = detail?.currentRun?.id ?? realMissionRuntimeStore.currentRunId ?? null
+  const activeRun = resolveActiveRun(detail)
+  if (detail) overviewActiveMissionRunId.value = activeRun?.id ?? null
+  const runId = activeRun?.id ?? currentOverviewUnityRuntimeId()
   const algorithmCode = detail?.mission.algorithmCode ?? selectedOverviewAlgorithm.value
-  const scenarioKey = `${missionId}:${runId ?? 'missing-run'}:${algorithmCode}`
+  if (!runId) return
+  const scenarioKey = `${missionId}:${runId}:${algorithmCode}`
   const channel = unityBridgeStore.channels.SYSTEM_OVERVIEW
   if (
     scenarioKey === lastRealOverviewScenarioKey
     && channel.platformReady
-    && channel.scenarioRunId === (runId ?? null)
+    && channel.scenarioRunId === runId
   ) {
     return
   }
@@ -1055,7 +1112,7 @@ function sendRealOverviewScenario(detail?: MissionDetail | null) {
     runtimeMode: 'REAL',
     algorithmCode,
     missionId,
-    runId: runId ?? undefined,
+    runId,
   })
 }
 
@@ -1260,6 +1317,11 @@ function handleUnityMessage(message: UnityMessage) {
   unityConnection.value = payload.source === 'mock' ? 'Unity Mock 已接入' : 'Unity WebGL 已连接'
   lastUnityEvent.value = message.type
 
+  if (message.type === 'scenarioLoaded' && payload.success === true) {
+    unityPoseRunId = String(payload.runId ?? currentOverviewUnityRuntimeId() ?? '')
+    poseFrameSequence = 0
+  }
+
   if (message.type === 'vueCommandReceived') {
     const commandType = String(payload.type ?? 'unknown')
     const bridgeSent = payload.bridgeSent === true ? '已送达 Unity' : '等待 Unity 实例'
@@ -1417,6 +1479,7 @@ watch(
   () => [
     overviewRuntimeMode.value,
     overviewMissionId.value ?? 0,
+    overviewActiveMissionRunId.value ?? 0,
     realMissionRuntimeStore.currentRunId ?? 0,
     overviewUnityChannel.value.connected,
     overviewUnityChannel.value.platformReady,
