@@ -4,6 +4,8 @@ import math
 import time
 from typing import Dict, List, Mapping
 
+import numpy as np
+
 from app.adapters.base import AlgorithmAdapter
 from app.adapters.capture import CaptureAdapter
 from app.capture import (
@@ -14,6 +16,7 @@ from app.capture import (
     build_canonical_slots,
     maximum_capture_gap_deg,
 )
+from app.decision import DecisionAgent, DecisionTarget, DynamicTaskAllocator
 from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
 from app.scenario import derive_scenario_plan
 from app.schemas import AgentFrame, RuntimeFrame, TargetFrame
@@ -147,10 +150,265 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 "targetCount": 1,
                 "seed": int(self.config.get("seed", 42)) + target_index * 997,
                 "initialPoses": child_poses,
+                "externalContainmentAuthority": True,
             })
             child = CaptureAdapter(run_id * 100 + target_index + 1, child_config)
             self.children.append(child)
             self.agent_code_maps.append(code_map)
+
+        self.dynamic_allocator = DynamicTaskAllocator(
+            evaluation_interval_frames=max(
+                5, int(self.config.get("assignmentEvaluationFrames", 10))
+            ),
+            minimum_improvement_ratio=float(
+                self.config.get("assignmentMinimumImprovement", 0.12)
+            ),
+            confirmation_cycles=max(
+                1, int(self.config.get("assignmentConfirmationCycles", 2))
+            ),
+            cooldown_frames=max(
+                10, int(self.config.get("assignmentCooldownFrames", 30))
+            ),
+        )
+        self.assignment_changes: List[Dict[str, object]] = []
+        self.assignment_last_result: Dict[str, object] = {
+            "reason": "INITIAL_DISTANCE_BALANCE",
+            "improvementRatio": 0.0,
+        }
+        self.agent_assignment_stalls: Dict[str, int] = {}
+        self.agent_assignment_distances: Dict[str, float] = {}
+
+    @staticmethod
+    def _local_agent_rows(child: CaptureAdapter) -> Dict[str, np.ndarray]:
+        rows: Dict[str, np.ndarray] = {}
+        uav_no = usv_no = 0
+        for raw in child.env.agents:
+            if int(raw[6]) == 0:
+                uav_no += 1
+                code = f"UAV-{uav_no:03d}"
+            else:
+                usv_no += 1
+                code = f"USV-{usv_no:03d}"
+            rows[code] = raw
+        return rows
+
+    @staticmethod
+    def _gap_geometry(
+        target: tuple[float, float, float],
+        members: List[tuple[float, float, float]],
+    ) -> tuple[float, float | None]:
+        if len(members) < 2:
+            return 360.0, None
+        angles = sorted(
+            math.atan2(item[1] - target[1], item[0] - target[0])
+            % (2.0 * math.pi)
+            for item in members
+        )
+        gap, start = max(
+            (
+                (angles[(index + 1) % len(angles)] - angles[index])
+                % (2.0 * math.pi),
+                angles[index],
+            )
+            for index in range(len(angles))
+        )
+        return math.degrees(gap), math.degrees((start + gap * 0.5) % (2.0 * math.pi))
+
+    def _current_assignment_snapshot(
+        self,
+    ) -> tuple[List[DecisionAgent], List[DecisionTarget], Dict[str, Dict[str, int]]]:
+        target_centers: Dict[str, tuple[float, float, float]] = {}
+        for index, child in enumerate(self.children):
+            target_code = f"TARGET-{index + 1:03d}"
+            target_centers[target_code] = child.previous_scene.get(
+                "TARGET",
+                child._to_scene(child.env.targets[0, :3], "TARGET"),
+            )
+
+        decisions: List[DecisionAgent] = []
+        positions_by_target: Dict[str, List[tuple[float, float, float]]] = {
+            code: [] for code in target_centers
+        }
+        for target_index, (child, code_map) in enumerate(
+            zip(self.children, self.agent_code_maps)
+        ):
+            current_target = f"TARGET-{target_index + 1:03d}"
+            rows = self._local_agent_rows(child)
+            for local_code, global_code in code_map.items():
+                raw = rows[local_code]
+                kind = "UAV" if int(raw[6]) == 0 else "USV"
+                position = self.previous_scene.get(
+                    global_code,
+                    child.previous_scene.get(local_code, child._to_scene(raw[:3], kind)),
+                )
+                center = target_centers[current_target]
+                distance = math.hypot(position[0] - center[0], position[1] - center[1])
+                previous_distance = self.agent_assignment_distances.get(global_code)
+                outer_radius = self.children[int(current_target.rsplit("-", 1)[1]) - 1].outer_formation_radius
+                if (
+                    previous_distance is not None
+                    and distance > outer_radius + 18.0
+                    and distance >= previous_distance - 0.10
+                ):
+                    self.agent_assignment_stalls[global_code] = (
+                        self.agent_assignment_stalls.get(global_code, 0) + 1
+                    )
+                else:
+                    self.agent_assignment_stalls[global_code] = 0
+                self.agent_assignment_distances[global_code] = distance
+                positions_by_target[current_target].append(position)
+                heading = math.degrees(float(raw[4])) % 360.0
+                decisions.append(DecisionAgent(
+                    code=global_code,
+                    kind=kind,
+                    x=position[0],
+                    y=position[1],
+                    speed_mps=max(0.0, float(raw[3])),
+                    heading_deg=heading,
+                    maximum_speed_mps=(
+                        min(15.0, max(0.1, float(self.config.get("uavSpeedMps", 5.0))))
+                        if kind == "UAV"
+                        else 4.0
+                    ),
+                    current_target=current_target,
+                    stalled_frames=self.agent_assignment_stalls[global_code],
+                ))
+
+        targets: List[DecisionTarget] = []
+        capacities: Dict[str, Dict[str, int]] = {}
+        for index, child in enumerate(self.children):
+            target_code = f"TARGET-{index + 1:03d}"
+            center = target_centers[target_code]
+            gap_deg, gap_bearing = self._gap_geometry(
+                center,
+                positions_by_target[target_code],
+            )
+            target_speed = math.hypot(*child.target_velocity)
+            confidence = max(0.0, min(1.0, child.last_containment_confidence))
+            targets.append(DecisionTarget(
+                code=target_code,
+                x=center[0],
+                y=center[1],
+                vx=child.target_velocity[0],
+                vy=child.target_velocity[1],
+                urgency=min(1.0, 0.25 + target_speed / 3.5 + (1.0 - confidence) * 0.25),
+                gap_bearing_deg=gap_bearing,
+                gap_deg=gap_deg,
+                locked=(
+                    self.containment_stage_latched[index]
+                    or self.executed_hold_frames[index] > 0
+                    or child.captured_at_sequence is not None
+                ),
+            ))
+            mapped_codes = list(self.agent_code_maps[index].values())
+            capacities[target_code] = {
+                "UAV": sum(code.startswith("UAV-") for code in mapped_codes),
+                "USV": sum(code.startswith("USV-") for code in mapped_codes),
+            }
+        return decisions, targets, capacities
+
+    def _apply_dynamic_assignments(
+        self,
+        assignments: Mapping[str, str],
+    ) -> None:
+        raw_by_global: Dict[str, np.ndarray] = {}
+        pose_by_global: Dict[str, tuple[float, float, float]] = {}
+        for child, code_map in zip(self.children, self.agent_code_maps):
+            rows = self._local_agent_rows(child)
+            for local_code, global_code in code_map.items():
+                raw_by_global[global_code] = rows[local_code].copy()
+                kind = "UAV" if global_code.startswith("UAV-") else "USV"
+                pose_by_global[global_code] = self.previous_scene.get(
+                    global_code,
+                    child.previous_scene.get(local_code, child._to_scene(rows[local_code][:3], kind)),
+                )
+
+        for target_index, child in enumerate(self.children):
+            target_code = f"TARGET-{target_index + 1:03d}"
+            old_map = self.agent_code_maps[target_index]
+            rows = self._local_agent_rows(child)
+            new_map: Dict[str, str] = {}
+            for kind in ("UAV", "USV"):
+                local_codes = sorted(code for code in old_map if code.startswith(f"{kind}-"))
+                assigned_codes = sorted(
+                    code for code, assigned in assignments.items()
+                    if assigned == target_code and code.startswith(f"{kind}-")
+                )
+                retained = {
+                    local_code: global_code
+                    for local_code, global_code in old_map.items()
+                    if local_code in local_codes and global_code in assigned_codes
+                }
+                remaining_locals = [code for code in local_codes if code not in retained]
+                remaining_globals = [code for code in assigned_codes if code not in retained.values()]
+                new_map.update(retained)
+                new_map.update(zip(remaining_locals, remaining_globals))
+
+            changed = new_map != old_map
+            self.agent_code_maps[target_index] = new_map
+            for local_code, global_code in new_map.items():
+                destination = rows[local_code]
+                source = raw_by_global[global_code]
+                destination[:6] = source[:6]
+                kind = "UAV" if global_code.startswith("UAV-") else "USV"
+                scene_pose = pose_by_global[global_code]
+                destination[:3] = child._to_internal(scene_pose, kind)
+                child.previous_scene[local_code] = scene_pose
+            if changed:
+                child.presentation_slot_assignments.clear()
+                child.env.previous_assignments = {}
+                self.ring_slots[target_index].clear()
+                self.support_slots[target_index].clear()
+                primary_per_domain = min(
+                    6,
+                    max(
+                        1,
+                        min(
+                            sum(code.startswith("UAV-") for code in new_map.values()),
+                            sum(code.startswith("USV-") for code in new_map.values()),
+                        ),
+                    ),
+                )
+                uavs = sorted(code for code in new_map.values() if code.startswith("UAV-"))
+                usvs = sorted(code for code in new_map.values() if code.startswith("USV-"))
+                self.ring_member_codes[target_index] = set(
+                    uavs[:primary_per_domain] + usvs[:primary_per_domain]
+                )
+
+    def _maybe_reassign_capture_groups(self) -> None:
+        if not self.mission_active or self.target_count < 2:
+            return
+        agents, targets, capacities = self._current_assignment_snapshot()
+        result = self.dynamic_allocator.evaluate(
+            agents,
+            targets,
+            capacities,
+            frame=self.sequence,
+        )
+        self.assignment_last_result = {
+            "reason": result.reason,
+            "improvementRatio": round(result.improvement_ratio, 4),
+            "currentCost": round(result.current_cost, 3),
+            "proposedCost": round(result.proposed_cost, 3),
+        }
+        if not result.accepted:
+            return
+        self._apply_dynamic_assignments(result.assignments)
+        for change in result.changes:
+            self.assignment_changes.append({
+                "sequence": self.sequence,
+                "deviceCode": change.agent_code,
+                "deviceType": change.kind,
+                "previousTarget": change.previous_target,
+                "targetCode": change.target,
+                "reason": change.reason,
+                "previousEtaSec": (
+                    None if change.previous_eta_sec is None
+                    else round(change.previous_eta_sec, 2)
+                ),
+                "interceptEtaSec": round(change.intercept_eta_sec, 2),
+            })
+        self.assignment_changes = self.assignment_changes[-48:]
 
     @staticmethod
     def _partition_codes(
@@ -637,6 +895,7 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
 
     def step(self) -> RuntimeFrame:
         self.sequence += 1
+        self._maybe_reassign_capture_groups()
         target_centers = [
             child.previous_scene.get("TARGET")
             for child in self.children
@@ -711,7 +970,27 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 "pursuitDistanceM": frame.metrics.get("targetTravelDistanceM", 0.0),
                 "requiredPursuitDistanceM": frame.metrics.get("requiredPursuitDistanceM", 0.0),
                 "targetSpeedMps": frame.metrics.get("targetSpeedMps", 0.0),
+                "maximumSpeedMps": round(child.target_max_mps, 3),
+                "targetTravelDistanceM": frame.metrics.get("targetTravelDistanceM", 0.0),
                 "targetBehavior": frame.metrics.get("targetBehavior", ""),
+                "intent": frame.metrics.get("targetIntent", frame.metrics.get("targetBehavior", "")),
+                "intentConfidence": frame.metrics.get("targetIntentConfidence", 0.0),
+                "targetHeadingDeg": frame.metrics.get("targetHeadingDeg", target.heading),
+                "targetSpeedReason": frame.metrics.get("targetSpeedReason", ""),
+                "gapCenterDeg": frame.metrics.get("gapCenterDeg", target.heading),
+                "nearestInterceptorCode": code_map.get(
+                    str(frame.metrics.get("nearestInterceptorCode", "")),
+                    frame.metrics.get("nearestInterceptorCode"),
+                ),
+                "nearestInterceptorDistanceM": frame.metrics.get("nearestInterceptorDistanceM"),
+                "assignmentStrategy": "PREDICTIVE_DYNAMIC",
+                "assignmentRevision": self.dynamic_allocator.assignment_revision,
+                "reassignmentCount": self.dynamic_allocator.reassignment_count,
+                "recentReassignments": [
+                    change for change in self.assignment_changes
+                    if change.get("targetCode") == target_code
+                    or change.get("previousTarget") == target_code
+                ][-4:],
                 "ringGeometryReady": frame.metrics.get("ringGeometryReady", False),
                 "captureBlocker": "NONE" if child_captured else frame.metrics.get("captureBlocker", ""),
                 "containmentConfidence": frame.metrics.get("containmentConfidence", 0.0),
@@ -808,6 +1087,21 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
                 )
             ]
             executed = self._executed_containment(index, child, executed_agents, target)
+            gap_limit = max(1.0, float(executed.get("maxAllowedGapDeg", 0.0)))
+            gap_score = max(
+                0.0,
+                min(1.0, gap_limit / max(gap_limit, float(executed.get("maxGapDeg", 360.0)))),
+            )
+            child.set_executed_containment_feedback(
+                ready=bool(executed["ready"]),
+                confidence=min(
+                    1.0,
+                    float(executed.get("arrivalRatio", 0.0)) * 0.62
+                    + gap_score * 0.38,
+                ),
+                max_gap_deg=float(executed.get("maxGapDeg", 360.0)),
+                allowed_gap_deg=float(executed.get("maxAllowedGapDeg", 0.0)),
+            )
             frame.metrics["postGlobalContainmentReady"] = executed["ready"]
             frame.metrics["postGlobalTargetInsideFormation"] = executed["targetInside"]
             frame.metrics["postGlobalCombinedMaxGapDeg"] = executed["maxGapDeg"]
@@ -1140,6 +1434,24 @@ class AdaptiveCaptureAdapter(AlgorithmAdapter):
             ),
             "requiredCaptureHoldFrames": max(int(item.get("requiredCaptureHoldFrames", 0)) for item in metrics_list),
             "captureGroups": groups,
+            "assignmentStrategy": "PREDICTIVE_DYNAMIC",
+            "assignmentRevision": self.dynamic_allocator.assignment_revision,
+            "reassignmentCount": self.dynamic_allocator.reassignment_count,
+            "assignmentDecision": self.assignment_last_result,
+            "recentAssignmentChanges": self.assignment_changes[-12:],
+            "agentDecisions": [
+                {
+                    "deviceCode": agent.code,
+                    "assignedTarget": agent.assignedTargetCode,
+                    "role": agent.role,
+                    "decisionReason": (
+                        "GAP_INTERCEPT"
+                        if agent.role in {"GAP_BLOCKER", "CAPTURE_RESERVE"}
+                        else "PREDICTED_INTERCEPT"
+                    ),
+                }
+                for agent in agents
+            ],
             "missionStage": mission_stage,
             "stageSequence": ["ESCAPE", "PURSUIT", "INTERCEPT", "ENCIRCLEMENT", "STABLE_CONTAINMENT", "COMPLETED"],
             "ringDiagnostics": ring_diagnostics,

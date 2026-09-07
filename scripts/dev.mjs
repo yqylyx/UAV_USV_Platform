@@ -15,11 +15,18 @@ function resolvePythonCommand() {
   const candidates = [
     process.env.APP_ALGORITHM_PYTHON_COMMAND,
     process.env.PYTHON_EXECUTABLE,
+    path.join(
+      root,
+      'algorithm-service',
+      isWindows ? path.join('.venv', 'Scripts', 'python.exe') : path.join('.venv', 'bin', 'python'),
+    ),
     ...(['Python313', 'Python312', 'Python311', 'Python310', 'Python39'].map(version => (
       process.env.LOCALAPPDATA
         ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Python', version, 'python.exe')
         : ''
     ))),
+    isWindows ? 'python.exe' : 'python3',
+    'python',
     process.env.USERPROFILE
       ? path.join(
         process.env.USERPROFILE,
@@ -27,19 +34,35 @@ function resolvePythonCommand() {
         'dependencies', 'python', 'python.exe',
       )
       : '',
-    isWindows ? 'python.exe' : 'python3',
-    'python',
-  ].filter(Boolean)
+  ].filter(Boolean).filter((candidate, index, all) => all.indexOf(candidate) === index)
+  const rejected = []
   for (const candidate of candidates) {
-    const check = spawnSync(candidate, ['-c', 'import numpy'], {
+    const check = spawnSync(candidate, ['-c', 'import numpy, scipy, sklearn, matplotlib'], {
       cwd: root,
+      encoding: 'utf8',
       windowsHide: true,
-      stdio: 'ignore',
-      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 30000,
     })
-    if (!check.error && check.status === 0) return candidate
+    if (!check.error && check.status === 0) {
+      const resolved = spawnSync(candidate, ['-c', 'import sys; print(sys.executable)'], {
+        cwd: root,
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 5000,
+      })
+      return resolved.status === 0 && resolved.stdout.trim()
+        ? resolved.stdout.trim()
+        : candidate
+    }
+    rejected.push(candidate)
   }
-  return isWindows ? 'python.exe' : 'python3'
+  throw new Error(
+    'No Python runtime satisfies algorithm-service/requirements.txt. '
+    + `Checked: ${rejected.join(', ')}. `
+    + 'Install the requirements or set APP_ALGORITHM_PYTHON_COMMAND to a compatible interpreter.',
+  )
 }
 
 const pythonCommand = resolvePythonCommand()

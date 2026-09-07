@@ -80,6 +80,9 @@ public class AlgorithmRuntimeManager {
             return status(runId);
         }
         stopExisting(runId);
+        if (standaloneVirtualSimulation) {
+            stopOtherStandaloneSimulations(runId);
+        }
         if (!Files.isRegularFile(runnerPath)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "算法运行器不存在：" + runnerPath);
         }
@@ -104,7 +107,7 @@ public class AlgorithmRuntimeManager {
             builder.environment().put("PYTHONUNBUFFERED", "1");
             builder.environment().put("MPLCONFIGDIR", Path.of(System.getProperty("java.io.tmpdir"), "uav-usv-matplotlib").toString());
             Process process = builder.start();
-            RuntimeHandle handle = new RuntimeHandle(runId, algorithmCode, process,
+            RuntimeHandle handle = new RuntimeHandle(runId, algorithmCode, standaloneVirtualSimulation, process,
                     new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)));
             handles.put(runId, handle);
             startReaders(handle);
@@ -317,6 +320,15 @@ public class AlgorithmRuntimeManager {
         }
     }
 
+    private void stopOtherStandaloneSimulations(Long retainedRunId) {
+        List<Long> staleRunIds = handles.values().stream()
+                .filter(handle -> handle.standaloneVirtualSimulation)
+                .map(handle -> handle.runId)
+                .filter(runId -> !runId.equals(retainedRunId))
+                .toList();
+        staleRunIds.forEach(this::stopExisting);
+    }
+
     private static Path resolveRunnerPath(String configuredPath) {
         Path configured = Path.of(configuredPath).toAbsolutePath().normalize();
         if (Files.isRegularFile(configured)) return configured;
@@ -337,6 +349,7 @@ public class AlgorithmRuntimeManager {
     private static final class RuntimeHandle {
         final Long runId;
         final String algorithmCode;
+        final boolean standaloneVirtualSimulation;
         final Process process;
         final BufferedWriter writer;
         final CountDownLatch ready = new CountDownLatch(1);
@@ -349,9 +362,16 @@ public class AlgorithmRuntimeManager {
         final AtomicLong latestSequence = new AtomicLong();
         final Deque<JsonNode> frameBuffer = new ArrayDeque<>();
 
-        RuntimeHandle(Long runId, String algorithmCode, Process process, BufferedWriter writer) {
+        RuntimeHandle(
+                Long runId,
+                String algorithmCode,
+                boolean standaloneVirtualSimulation,
+                Process process,
+                BufferedWriter writer
+        ) {
             this.runId = runId;
             this.algorithmCode = algorithmCode;
+            this.standaloneVirtualSimulation = standaloneVirtualSimulation;
             this.process = process;
             this.writer = writer;
         }

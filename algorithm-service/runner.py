@@ -15,12 +15,17 @@ sys.path.insert(0, str(ROOT))
 from app.adapters import AdaptiveCaptureAdapter, AdaptiveEscortAdapter, CaptureAdapter, EscortAdapter
 
 
-def command_reader(commands: queue.Queue) -> None:
-    for line in sys.stdin:
-        try:
-            commands.put(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+def command_reader(commands: queue.Queue, input_closed: threading.Event) -> None:
+    try:
+        for line in sys.stdin:
+            try:
+                commands.put(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    finally:
+        # The Java backend owns stdin.  EOF means its owning runtime no longer
+        # exists, so the child must not remain as an orphaned preview process.
+        input_closed.set()
 
 
 def emit(payload: dict) -> None:
@@ -58,7 +63,12 @@ def main() -> int:
     else:
         adapter = EscortAdapter(args.run_id, config)
     commands: queue.Queue = queue.Queue()
-    threading.Thread(target=command_reader, args=(commands,), daemon=True).start()
+    input_closed = threading.Event()
+    threading.Thread(
+        target=command_reader,
+        args=(commands, input_closed),
+        daemon=True,
+    ).start()
     preview_enabled = bool(config.get("previewEnabled", False)) and not args.autostart
     state = "RUNNING" if args.autostart else "PREVIEW" if preview_enabled else "PREPARED"
     adapter.set_mission_active(state != "PREVIEW")
@@ -100,6 +110,10 @@ def main() -> int:
                     "selectedThreatCode": selected,
                 })
             emit({"event": "stateChanged", "runId": args.run_id, "state": state})
+        if input_closed.is_set() and commands.empty():
+            # Avoid writing a final protocol event to a pipe whose reader has
+            # already disappeared.  Returning also releases vendor resources.
+            return 0
         if state in {"RUNNING", "PREVIEW"}:
             frame = adapter.step().to_dict()
             emit({"event": "frame", "payload": frame})

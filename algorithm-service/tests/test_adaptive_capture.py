@@ -8,6 +8,52 @@ from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
 
 
 class AdaptiveCaptureAdapterTest(unittest.TestCase):
+    def test_predictive_reassignment_changes_members_but_preserves_balanced_quotas(self):
+        adapter = AdaptiveCaptureAdapter(91, {
+            "uavCount": 6,
+            "usvCount": 6,
+            "targetCount": 2,
+            "seed": 20260814,
+            "assignmentEvaluationFrames": 1,
+            "assignmentConfirmationCycles": 2,
+            "assignmentMinimumImprovement": 0.01,
+        })
+        adapter.set_mission_active(True)
+        initial = {
+            global_code: f"TARGET-{target_index + 1:03d}"
+            for target_index, mapping in enumerate(adapter.agent_code_maps)
+            for global_code in mapping.values()
+        }
+        centers = [(-120.0, 0.0, 0.0), (120.0, 0.0, 0.0)]
+        for child, center in zip(adapter.children, centers):
+            child.previous_scene["TARGET"] = center
+            child.target_velocity = (0.0, 0.0)
+        for target_index, mapping in enumerate(adapter.agent_code_maps):
+            opposite = centers[1 - target_index]
+            for offset, global_code in enumerate(sorted(mapping.values())):
+                adapter.previous_scene[global_code] = (
+                    opposite[0] + (offset % 3) * 0.4,
+                    opposite[1] + (offset // 3) * 0.4,
+                    25.0 if global_code.startswith("UAV-") else 0.0,
+                )
+        adapter.sequence = 10
+        adapter._maybe_reassign_capture_groups()
+        adapter.sequence = 15
+        adapter._maybe_reassign_capture_groups()
+
+        updated = {
+            global_code: f"TARGET-{target_index + 1:03d}"
+            for target_index, mapping in enumerate(adapter.agent_code_maps)
+            for global_code in mapping.values()
+        }
+        self.assertNotEqual(initial, updated)
+        self.assertGreater(adapter.dynamic_allocator.reassignment_count, 0)
+        for mapping in adapter.agent_code_maps:
+            values = list(mapping.values())
+            self.assertEqual(3, sum(code.startswith("UAV-") for code in values))
+            self.assertEqual(3, sum(code.startswith("USV-") for code in values))
+        self.assertEqual(12, len(updated))
+
     def test_stale_completed_stage_is_revoked_when_a_global_ring_is_open(self):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             adapter = AdaptiveCaptureAdapter(8997, {

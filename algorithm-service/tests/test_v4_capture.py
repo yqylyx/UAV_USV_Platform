@@ -89,6 +89,37 @@ class CaptureV4AcceptanceTests(unittest.TestCase):
             frame.metrics["targetTravelDistanceM"] * 0.65,
         )
 
+    def test_external_executed_ring_is_the_only_authority_that_can_slow_target(self):
+        config = self.config()
+        config["externalContainmentAuthority"] = True
+        adapter = CaptureAdapter(7004, config)
+        target = adapter._to_scene(adapter.env.targets[0, :3], "TARGET")
+        adapter.containment_candidate_at_sequence = 1
+        adapter.target_travelled_distance = adapter.required_pursuit_distance + 5.0
+        adapter.target_velocity = (
+            adapter.target_escape_direction[0] * adapter.target_cruise_mps,
+            adapter.target_escape_direction[1] * adapter.target_cruise_mps,
+        )
+
+        adapter.sequence = 2
+        adapter._advance_capture_target(target)
+        self.assertGreaterEqual(
+            math.hypot(*adapter.target_velocity),
+            adapter.target_cruise_mps * 0.99,
+        )
+        self.assertNotEqual("EXECUTED_CONTAINMENT_DECEL", adapter.target_speed_reason)
+
+        adapter.set_executed_containment_feedback(
+            ready=True,
+            confidence=1.0,
+            max_gap_deg=25.0,
+            allowed_gap_deg=38.0,
+        )
+        adapter.sequence += adapter.capture_hold_frames
+        adapter._advance_capture_target(target)
+        self.assertLess(math.hypot(*adapter.target_velocity), adapter.target_cruise_mps * 0.35)
+        self.assertEqual("EXECUTED_CONTAINMENT_DECEL", adapter.target_speed_reason)
+
 
 if __name__ == "__main__":
     unittest.main()

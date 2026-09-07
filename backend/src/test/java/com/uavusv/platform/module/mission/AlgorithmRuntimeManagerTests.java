@@ -133,6 +133,34 @@ class AlgorithmRuntimeManagerTests {
         assertEquals("所选算法已停用：GB_SFLA_CS", exception.getMessage());
     }
 
+    @Test
+    void shouldReplacePreviousStandaloneSimulationWhenRunIdChanges() throws Exception {
+        long firstRunId = 92001L;
+        long secondRunId = 92002L;
+        MissionRunRepository runRepository = mock(MissionRunRepository.class);
+        AlgorithmCatalogService catalogService = mock(AlgorithmCatalogService.class);
+        when(catalogService.requireEnabled("GB_SFLA_CS")).thenReturn(mock(AlgorithmDefinition.class));
+        AlgorithmRuntimeManager manager = manager(runRepository, catalogService);
+        Map<String, Object> config = Map.of(
+                "standaloneVirtualSimulation", true,
+                "seed", 42,
+                "targetBehavior", "STATIC"
+        );
+        try {
+            assertEquals("PREPARED", manager.prepare(firstRunId, "GB_SFLA_CS", config).state());
+            assertEquals("PREPARED", manager.prepare(secondRunId, "GB_SFLA_CS", config).state());
+
+            BusinessException exception = assertThrows(
+                    BusinessException.class,
+                    () -> manager.status(firstRunId)
+            );
+            assertEquals(ErrorCode.NOT_FOUND, exception.getErrorCode());
+            assertNotNull(manager.status(secondRunId).latestFrame());
+        } finally {
+            manager.close();
+        }
+    }
+
     private AlgorithmRuntimeManager manager(
             MissionRunRepository runRepository,
             AlgorithmCatalogService catalogService

@@ -232,6 +232,14 @@ class CaptureAdapter(AlgorithmAdapter):
         self.settling_started_at_sequence: int | None = None
         self.containment_candidate_at_sequence: int | None = None
         self.formation_ready_at_sequence: int | None = None
+        self.external_containment_authority = bool(
+            self.config.get("externalContainmentAuthority", False)
+        )
+        self.executed_containment_ready = False
+        self.executed_containment_confidence = 0.0
+        self.executed_containment_started_at: int | None = None
+        self.executed_max_gap_deg = 360.0
+        self.executed_allowed_gap_deg = 0.0
         self.presentation_slot_assignments: Dict[str, int] = {}
         self.last_usv_angular_error_deg = 180.0
         target = self._to_scene(self.env.targets[0, :3], "TARGET")
@@ -248,6 +256,7 @@ class CaptureAdapter(AlgorithmAdapter):
             self.target_escape_direction[1] * self.target_cruise_mps,
         )
         self.target_behavior_state = "ESCAPE"
+        self.target_speed_reason = "ESCAPE_CRUISE"
         self.mission_stage = "ESCAPE"
         self.last_containment_confidence = 0.0
         self.capture_hold_frames = max(10, int(self.config.get("captureHoldFrames", 20)))
@@ -297,11 +306,17 @@ class CaptureAdapter(AlgorithmAdapter):
                 self.target_escape_direction[1] * self.target_cruise_mps,
             )
             self.target_behavior_state = "ESCAPE"
+            self.target_speed_reason = "ESCAPE_CRUISE"
             self.last_containment_confidence = 0.0
             self.captured_at_sequence = None
             self.settling_started_at_sequence = None
             self.containment_candidate_at_sequence = None
             self.formation_ready_at_sequence = None
+            self.executed_containment_ready = False
+            self.executed_containment_confidence = 0.0
+            self.executed_containment_started_at = None
+            self.executed_max_gap_deg = 360.0
+            self.executed_allowed_gap_deg = 0.0
             self.presentation_slot_assignments.clear()
             self.last_usv_angular_error_deg = 180.0
             self.display_progress = 0.0
@@ -329,6 +344,24 @@ class CaptureAdapter(AlgorithmAdapter):
         self.env.permanently_captured.add(0)
         self.target_behavior_state = "CAPTURED"
         self.target_velocity = (0.0, 0.0)
+
+    def set_executed_containment_feedback(
+        self,
+        *,
+        ready: bool,
+        confidence: float,
+        max_gap_deg: float,
+        allowed_gap_deg: float,
+    ) -> None:
+        """Accept authoritative geometry from the multi-target coordinator."""
+        self.executed_containment_confidence = max(0.0, min(1.0, confidence))
+        self.executed_max_gap_deg = max(0.0, max_gap_deg)
+        self.executed_allowed_gap_deg = max(0.0, allowed_gap_deg)
+        if ready and not self.executed_containment_ready:
+            self.executed_containment_started_at = self.sequence
+        elif not ready:
+            self.executed_containment_started_at = None
+        self.executed_containment_ready = ready
 
     def revoke_executed_containment(self) -> None:
         """Release a previously latched capture when executed geometry opens."""
@@ -753,14 +786,24 @@ class CaptureAdapter(AlgorithmAdapter):
                 )
                 desired_x += peer_dx / peer_length * repulsion
                 desired_y += peer_dy / peer_length * repulsion
-        gap_direction = self._largest_gap_direction(previous, scene_agents)
-        if not preview and gap_direction is not None and (
-            not pursuit or self.last_containment_confidence >= 0.35
-        ):
+        local_gap_agents = [
+            item for item in scene_agents
+            if math.hypot(previous[0] - item[0], previous[1] - item[1])
+            <= max(92.0, self.outer_formation_radius * 2.2)
+        ]
+        gap_direction = self._largest_gap_direction(previous, local_gap_agents)
+        if not preview and gap_direction is not None:
             # A target under pressure should exploit the largest opening,
             # instead of circling around whichever single craft is nearest.
-            desired_x = desired_x * 0.35 + gap_direction[0] * 0.65
-            desired_y = desired_y * 0.35 + gap_direction[1] * 0.65
+            # Use it as soon as a meaningful local interception line exists;
+            # waiting for the legacy pursuit-distance gate made the hostile
+            # appear unaware of an obvious opening during most of the chase.
+            gap_weight = min(
+                0.78,
+                0.38 + len(local_gap_agents) / max(3.0, len(scene_agents)) * 0.34,
+            )
+            desired_x = desired_x * (1.0 - gap_weight) + gap_direction[0] * gap_weight
+            desired_y = desired_y * (1.0 - gap_weight) + gap_direction[1] * gap_weight
         desired_length = math.hypot(desired_x, desired_y) or 1.0
         desired_x, desired_y = desired_x / desired_length, desired_y / desired_length
         # Receding-horizon escape choice: test several feasible headings
@@ -837,10 +880,16 @@ class CaptureAdapter(AlgorithmAdapter):
             math.hypot(previous[0] - item[0], previous[1] - item[1])
             for item in scene_agents
         ), default=math.inf)
+        authoritative_containment = (
+            self.executed_containment_ready
+            if self.external_containment_authority
+            else self.containment_candidate_at_sequence is not None
+        )
         if preview:
             speed = min(1.4, self.target_cruise_mps * 0.65)
             self.target_behavior_state = "CRUISE"
-        elif self.containment_candidate_at_sequence is None:
+            self.target_speed_reason = "PREVIEW_CRUISE"
+        elif not authoritative_containment:
             # Travel distance and a nearby interceptor are not capture.  The
             # target keeps at least its seeded cruise speed until the executed
             # formation has become a genuinely closed ring.  Pressure may
@@ -861,19 +910,30 @@ class CaptureAdapter(AlgorithmAdapter):
                 self.target_max_mps,
                 self.target_cruise_mps + pressure * 0.6,
             )
-            self.target_behavior_state = "COAST_AVOID" if coast_avoid else "ESCAPE"
+            if gap_direction is not None and pressure > 0.08:
+                self.target_behavior_state = "BREAKOUT"
+                self.target_speed_reason = "GAP_BREAKOUT"
+            else:
+                self.target_behavior_state = "COAST_AVOID" if coast_avoid else "ESCAPE"
+                self.target_speed_reason = "COAST_AVOID" if coast_avoid else "ESCAPE_CRUISE"
         else:
-            held = max(0, self.sequence - self.containment_candidate_at_sequence)
+            started_at = (
+                self.executed_containment_started_at
+                if self.external_containment_authority
+                else self.containment_candidate_at_sequence
+            )
+            held = max(0, self.sequence - (started_at or self.sequence))
             reduction = min(0.94, held / max(1, self.capture_hold_frames) * 0.94)
             speed = max(0.08, self.target_cruise_mps * (1.0 - reduction))
             self.target_behavior_state = "CONTAINED"
+            self.target_speed_reason = "EXECUTED_CONTAINMENT_DECEL"
         desired_vx, desired_vy = desired_x * speed, desired_y * speed
         vx, vy = self.target_velocity
         accel = 0.065 if preview else 0.05
         vx += max(-accel, min(accel, desired_vx - vx))
         vy += max(-accel, min(accel, desired_vy - vy))
         velocity_length = math.hypot(vx, vy)
-        confirmed_containment = self.containment_candidate_at_sequence is not None
+        confirmed_containment = authoritative_containment
         if (
             not preview
             and not confirmed_containment
@@ -890,7 +950,12 @@ class CaptureAdapter(AlgorithmAdapter):
             # The cap decays across the same confirmation window used by the
             # capture latch, so a ring that opens again immediately restores a
             # real breakout instead of leaving the target parked at 0.1 m/s.
-            held = max(0, self.sequence - self.containment_candidate_at_sequence)
+            started_at = (
+                self.executed_containment_started_at
+                if self.external_containment_authority
+                else self.containment_candidate_at_sequence
+            )
+            held = max(0, self.sequence - (started_at or self.sequence))
             decay = min(1.0, held / max(1, self.capture_hold_frames))
             velocity_cap = max(0.12, self.target_cruise_mps * (1.0 - 0.92 * decay))
         else:
@@ -1581,7 +1646,7 @@ class CaptureAdapter(AlgorithmAdapter):
             and domain_formation_ready
             and containment_contract.ready
         )
-        if formation_ready:
+        if formation_ready and not self.external_containment_authority:
             if self.containment_candidate_at_sequence is None:
                 self.containment_candidate_at_sequence = self.sequence
         elif self.captured_at_sequence is None:
@@ -1608,6 +1673,7 @@ class CaptureAdapter(AlgorithmAdapter):
             formation_ready
             and hold_frames >= self.capture_hold_frames
             and self.captured_at_sequence is None
+            and not self.external_containment_authority
         ):
             self.captured_at_sequence = self.sequence
             guard_ids = {int(raw[7]) for raw in self.env.agents}
@@ -1742,6 +1808,36 @@ class CaptureAdapter(AlgorithmAdapter):
             )
             if gap_direction is not None:
                 self.target_escape_direction = gap_direction
+        target_heading_deg = (
+            math.degrees(math.atan2(self.target_velocity[1], self.target_velocity[0]))
+            % 360.0
+            if math.hypot(*self.target_velocity) > 1e-6
+            else math.degrees(float(self.env.targets[0, 4])) % 360.0
+        )
+        target_angles = sorted(
+            math.atan2(agent.y - safe_target.y, agent.x - safe_target.x)
+            % (2.0 * math.pi)
+            for agent in agents
+        )
+        if len(target_angles) >= 2:
+            target_gap, target_gap_start = max(
+                (
+                    (target_angles[(index + 1) % len(target_angles)] - target_angles[index])
+                    % (2.0 * math.pi),
+                    target_angles[index],
+                )
+                for index in range(len(target_angles))
+            )
+            target_gap_bearing_deg = math.degrees(
+                (target_gap_start + target_gap * 0.5) % (2.0 * math.pi)
+            )
+        else:
+            target_gap_bearing_deg = target_heading_deg
+        nearest_interceptor = min(
+            agents,
+            key=lambda agent: math.hypot(agent.x - safe_target.x, agent.y - safe_target.y),
+            default=None,
+        )
         metrics = {
             "progress": round(self.display_progress, 3),
             "captured": captured,
@@ -1801,6 +1897,28 @@ class CaptureAdapter(AlgorithmAdapter):
             "pursuitProgress": round(pursuit_progress, 3),
             "targetSpeedMps": round(math.hypot(*self.target_velocity), 3),
             "targetBehavior": self.target_behavior_state,
+            "targetIntent": self.target_behavior_state,
+            "targetIntentConfidence": round(
+                min(1.0, 0.45 + self.last_containment_confidence * 0.4),
+                3,
+            ),
+            "targetHeadingDeg": round(target_heading_deg, 2),
+            "targetSpeedReason": self.target_speed_reason,
+            "gapCenterDeg": round(target_gap_bearing_deg, 2),
+            "nearestInterceptorCode": (
+                None if nearest_interceptor is None else nearest_interceptor.code
+            ),
+            "nearestInterceptorDistanceM": (
+                None
+                if nearest_interceptor is None
+                else round(
+                    math.hypot(
+                        nearest_interceptor.x - safe_target.x,
+                        nearest_interceptor.y - safe_target.y,
+                    ),
+                    2,
+                )
+            ),
             "operationalBoundaryClearanceM": round(
                 self._operational_clearance(safe_target.x, safe_target.y),
                 2,

@@ -27,7 +27,9 @@ export async function setDefaultAlgorithm(code: string): Promise<AlgorithmDefini
 export async function prepareAlgorithmRun(runId: number, algorithmCode: string, config: Record<string, unknown>): Promise<AlgorithmRuntimeStatus> {
   const csrf = await fetchCsrfToken()
   const response = await http.post<ApiResponse<AlgorithmRuntimeStatus>>(`/algorithm-runs/${runId}/prepare`, { algorithmCode, config }, {
-    headers: { [csrf.headerName]: csrf.token }, timeout: 20000,
+    // Backend readiness and authoritative first-frame checks may each wait up
+    // to 60 seconds on a cold scientific-Python runtime.
+    headers: { [csrf.headerName]: csrf.token }, timeout: 130000,
   })
   return response.data.data
 }

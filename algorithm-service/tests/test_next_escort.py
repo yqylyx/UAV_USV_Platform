@@ -688,6 +688,47 @@ class NextEscortAcceptanceTests(unittest.TestCase):
             TARGET_SEPARATION_M * 0.75,
         )
 
+    def test_escort_advances_in_parallel_then_crosses_safe_gate(self):
+        for count in (3, 5):
+            with self.subTest(count=count):
+                adapter = AdaptiveEscortAdapter(9350 + count, {
+                    "uavCount": count, "usvCount": count,
+                    "seed": 20260814,
+                    "uavSpeedMps": 15, "usvSpeedMps": 3,
+                })
+                observed_stages = []
+                escort_at_capture = None
+                frame = None
+                for _ in range(3000):
+                    frame = adapter.step()
+                    stage = frame.metrics["missionStage"]
+                    if not observed_stages or observed_stages[-1] != stage:
+                        observed_stages.append(stage)
+                    if (
+                        escort_at_capture is None
+                        and frame.metrics["capturedThreatCount"]
+                        == frame.metrics["threatCount"]
+                    ):
+                        escort_at_capture = frame.metrics["escortProgress"]
+                    if frame.terminalStatus:
+                        break
+                self.assertEqual("COMPLETED", frame.terminalStatus)
+                self.assertIsNotNone(escort_at_capture)
+                self.assertGreaterEqual(escort_at_capture, 0.65)
+                stable_index = observed_stages.index("STABLE_CONTAINMENT")
+                gate_index = observed_stages.index("SAFE_GATE_TRANSIT")
+                completed_index = observed_stages.index("COMPLETED")
+                self.assertLess(stable_index, gate_index)
+                self.assertLess(gate_index, completed_index)
+                self.assertEqual(
+                    [
+                        "GUARDING", "THREAT_DETECTION", "INTERCEPT",
+                        "BLOCKING", "ENCIRCLEMENT", "STABLE_CONTAINMENT",
+                        "SAFE_GATE_TRANSIT", "COMPLETED",
+                    ],
+                    frame.metrics["stageSequence"],
+                )
+
     def test_multi_threat_capture_uses_fixed_balanced_mixed_groups(self):
         adapter = AdaptiveEscortAdapter(9252, {"uavCount": 10, "usvCount": 10, "seed": 20260814})
         adapter.step()
@@ -819,6 +860,96 @@ class NextEscortAcceptanceTests(unittest.TestCase):
                 )
                 self.assertEqual("NONE", threat.slowdown_reason)
         self.assertGreater(observed, 100)
+
+    def test_capture_members_reassign_predictively_without_changing_quotas(self):
+        adapter = AdaptiveEscortAdapter(92552, {
+            "uavCount": 10, "usvCount": 10, "seed": 20260814,
+            "assignmentEvaluationFrames": 1,
+            "assignmentConfirmationCycles": 2,
+            "assignmentMinimumImprovement": 0.01,
+        })
+        adapter._start_capture_for(adapter.threats[:2], "TEST_DYNAMIC_ASSIGNMENT")
+        initial = {
+            item.code: item.assigned_threat
+            for item in adapter.vehicles
+            if item.assigned_threat in {0, 1}
+        }
+        initial_counts = {
+            index: {
+                kind: sum(
+                    item.kind == kind and item.assigned_threat == index
+                    for item in adapter.vehicles
+                )
+                for kind in ("UAV", "USV")
+            }
+            for index in (0, 1)
+        }
+        for index, threat in enumerate(adapter.threats[:2]):
+            threat.x = -115.0 if index == 0 else 115.0
+            threat.y = 0.0
+            threat.vx = threat.vy = 0.0
+            threat.capture_hold = 0
+        for item in adapter.vehicles:
+            if item.assigned_threat not in {0, 1}:
+                continue
+            destination = adapter.threats[1 - item.assigned_threat]
+            item.x = destination.x
+            item.y = destination.y
+
+        adapter.sequence = 10
+        adapter._maybe_reassign_capture_members()
+        adapter.sequence = 15
+        adapter._maybe_reassign_capture_members()
+        updated = {
+            item.code: item.assigned_threat
+            for item in adapter.vehicles
+            if item.assigned_threat in {0, 1}
+        }
+
+        self.assertNotEqual(initial, updated)
+        self.assertGreater(adapter.dynamic_allocator.reassignment_count, 0)
+        for index in (0, 1):
+            for kind in ("UAV", "USV"):
+                self.assertEqual(
+                    initial_counts[index][kind],
+                    sum(
+                        item.kind == kind and item.assigned_threat == index
+                        for item in adapter.vehicles
+                    ),
+                )
+
+    def test_hostile_changes_course_instead_of_forcing_blocker_to_yield(self):
+        adapter = AdaptiveEscortAdapter(92553, {
+            "uavCount": 3, "usvCount": 3, "seed": 20260814,
+        })
+        threat = adapter.threats[0]
+        protected = adapter.protected[threat.protected_index]
+        protected.x, protected.y = 100.0, 0.0
+        protected.vx = protected.vy = 0.0
+        threat.x, threat.y = 0.0, 0.0
+        threat.vx, threat.vy = threat.cruise_speed, 0.0
+        threat.heading = 0.0
+        threat.state = "DETECTED"
+        threat.detected_frame = 1
+        threat.activate_frame = 0
+        adapter.sequence = 2
+        for item in adapter.vehicles:
+            item.x, item.y = -140.0, -140.0
+            item.vx = item.vy = 0.0
+            item.role = "RECON"
+            item.group_id = f"RECON-{item.protected_index + 1:03d}"
+            item.assigned_threat = None
+        blocker = next(item for item in adapter.vehicles if item.kind == "USV")
+        blocker.x, blocker.y = 18.0, 0.0
+        blocker.role = "BLOCKER"
+        blocker.group_id = "BLOCK-001"
+
+        adapter._advance_threats()
+
+        self.assertEqual(blocker.code, threat.nearest_defender_code)
+        self.assertEqual("FLANKING", threat.intent)
+        self.assertGreaterEqual(threat.intent_confidence, 0.66)
+        self.assertGreater(abs(threat.vy), 0.01)
 
     def test_urgent_threats_receive_independent_mixed_response_pairs(self):
         adapter = AdaptiveEscortAdapter(9300, {

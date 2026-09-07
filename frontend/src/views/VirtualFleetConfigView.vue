@@ -75,6 +75,27 @@ type CaptureGroupMetric = {
   requiredMemberCount?: number
   detachedParticipantCodes?: string[]
   intent?: string
+  intentConfidence?: number
+  speedMps?: number
+  targetSpeedMps?: number
+  maximumSpeedMps?: number
+  targetHeadingDeg?: number
+  targetTravelDistanceM?: number
+  targetSpeedReason?: string
+  slowdownReason?: string
+  gapCenterDeg?: number
+  nearestInterceptorCode?: string
+  nearestInterceptorDistanceM?: number
+  assignmentStrategy?: string
+  assignmentRevision?: number
+  reassignmentCount?: number
+  recentReassignments?: Array<{
+    deviceCode?: string
+    previousTarget?: string
+    targetCode?: string
+    reason?: string
+    interceptEtaSec?: number
+  }>
   triggerReason?: string
 }
 
@@ -87,6 +108,7 @@ const cameraMode = ref('overview')
 const scenarioReadyRunId = ref<number | null>(null)
 const scenarioLoading = ref(false)
 const algorithmPrepared = ref(false)
+const algorithmPrepareError = ref('')
 const algorithmPreparing = ref(false)
 const missionActionMessage = ref('')
 const webglExpanded = ref(false)
@@ -126,7 +148,8 @@ const missionStageLabels: Record<string, string> = {
   PREVIEW: '预演', READY: '就绪', GUARDING: '警戒护航',
   THREAT_DETECTION: '威胁侦测', INTERCEPT: '加速拦截', BLOCKING: '阻断攻击',
   ESCAPE: '目标逃逸', PURSUIT: '协同追击', ENCIRCLEMENT: '动态围捕',
-  GAP_REPAIR: '动态围捕', STABLE_CONTAINMENT: '稳定闭环', COMPLETED: '完成',
+  GAP_REPAIR: '动态围捕', STABLE_CONTAINMENT: '稳定闭环',
+  SAFE_GATE_TRANSIT: '通过安全门', COMPLETED: '完成',
 }
 const missionPhaseLabel = computed(() => {
   const label = missionStageLabels[missionPhase.value.toUpperCase()] ?? missionPhase.value
@@ -169,6 +192,8 @@ const terminalBlockerLabel = computed(() => {
   const blocker = String(missionMetrics.value.terminalBlocker ?? '')
   if (!blocker || blocker === 'NONE' || blocker === 'MISSION_IN_PROGRESS') return ''
   if (blocker === 'THREATS_UNRESOLVED') return '仍有敌船未完成围捕'
+  if (blocker === 'STABLE_CONTAINMENT_CONFIRMING') return '稳定闭环正在确认'
+  if (blocker === 'SAFE_GATE_TRANSIT') return '护航目标正在通过安全门'
   if (blocker === 'PROTECTED_TARGET_NOT_SAFE') return '护航目标尚未通过安全门'
   if (blocker === 'CONTAINMENT_RECONFIGURING') return '围捕闭环正在重新稳定'
   if (blocker === 'POST_MISSION_STABILIZING') return '归队编组正在稳定确认'
@@ -207,6 +232,54 @@ const simulationElapsedLabel = computed(() => formatElapsedSeconds(simulationEla
 const captureGroups = computed(() => Array.isArray(missionMetrics.value.captureGroups)
   ? missionMetrics.value.captureGroups as CaptureGroupMetric[]
   : [])
+const intentLabels: Record<string, string> = {
+  ATTACKING: '逼近攻击', FLANKING: '侧翼试探', FLANKING_BREAKTHROUGH: '侧翼突破',
+  ESCAPING: '持续逃逸', BREAKOUT: '寻找缺口', EVADING_GUARD: '规避拦截',
+  CLEARING_CONVOY: '脱离护航队', CONTAINED: '受控减速', CAPTURED: '已被控制',
+  COAST_AVOID: '规避岸线', ESCAPE: '持续逃逸', CRUISE: '巡航观察',
+}
+const speedReasonLabels: Record<string, string> = {
+  ESCAPE_CRUISE: '保持逃逸巡航', GAP_BREAKOUT: '缺口突破加速',
+  COAST_AVOID: '岸线规避转向', EXECUTED_CONTAINMENT_DECEL: '实际闭环后受控减速',
+  CONTAINMENT_PRESSURE: '围捕压力下减速', CONTAINMENT_DECEL: '稳定闭环后减速',
+  NONE: '自主航行',
+}
+const assignmentReasonLabels: Record<string, string> = {
+  PREDICTED_ETA_GAIN: '预测截击时间更短', STALLED_RELIEF: '原成员停滞，启用机动替补',
+  PREDICTED_INTERCEPT_GAIN: '预测截击收益更高', STALLED_OVERRIDE: '原成员停滞，启用机动替补',
+  TARGET_URGENCY: '目标威胁升级', GAP_ALIGNMENT: '更适合封堵当前缺口',
+}
+function normalizeHeading(value: unknown) {
+  const heading = Number(value ?? 0)
+  return ((heading % 360) + 360) % 360
+}
+function compassDirection(value: unknown) {
+  const directions = ['北', '东北', '东', '东南', '南', '西南', '西', '西北']
+  return directions[Math.round(normalizeHeading(value) / 45) % directions.length]
+}
+function intentLabel(value: unknown) {
+  const key = String(value ?? '').toUpperCase()
+  return intentLabels[key] ?? (key || '态势评估中')
+}
+function speedReasonLabel(group: CaptureGroupMetric) {
+  const key = String(group.targetSpeedReason ?? group.slowdownReason ?? '').toUpperCase()
+  return speedReasonLabels[key] ?? (key || '自主航行')
+}
+function groupSpeed(group: CaptureGroupMetric) {
+  return Number(group.targetSpeedMps ?? group.speedMps ?? 0)
+}
+function latestReassignment(group: CaptureGroupMetric) {
+  const changes = group.recentReassignments
+  return changes?.length ? changes[changes.length - 1] : null
+}
+function reassignmentLabel(group: CaptureGroupMetric) {
+  const change = latestReassignment(group)
+  if (!change) return ''
+  const reason = assignmentReasonLabels[String(change.reason ?? '').toUpperCase()]
+    ?? change.reason
+    ?? '动态重分配'
+  return `${change.deviceCode ?? '设备'}：${change.previousTarget ?? '待命'} → ${change.targetCode ?? group.threatCode}（${reason}）`
+}
 const pendingTerminalSequence = ref<number | null>(null)
 const pendingTerminalStatus = ref<string | null>(null)
 
@@ -259,7 +332,7 @@ const selectedFrameItem = computed(() => {
     ?? null
 })
 const phaseSteps = computed(() => state.algorithm === 'ESCORT_GUARD'
-  ? ['警戒护航', '威胁侦测', '加速拦截', '阻断攻击', '动态围捕', '稳定闭环', '完成']
+  ? ['警戒护航', '威胁侦测', '加速拦截', '阻断攻击', '动态围捕', '稳定闭环', '通过安全门', '完成']
   : ['目标逃逸', '协同追击', '截击部署', '动态围捕', '稳定闭环', '完成'])
 const activePhaseIndex = computed(() => {
   const phase = missionPhase.value.toUpperCase()
@@ -276,7 +349,8 @@ const activePhaseIndex = computed(() => {
     return phaseSteps.value.length - 2
   }
   if (state.algorithm === 'ESCORT_GUARD') {
-    if (phase === 'COMPLETED') return 6
+    if (phase === 'COMPLETED') return 7
+    if (phase === 'SAFE_GATE_TRANSIT') return 6
     if (phase === 'STABLE_CONTAINMENT') return 5
     if (phase === 'GAP_REPAIR' || phase === 'ENCIRCLEMENT') return 4
     if (phase === 'BLOCKING') return 3
@@ -602,6 +676,7 @@ function prepareExternalAlgorithm(): Promise<boolean> {
 
   const prepareRunId = state.runId
   algorithmPreparing.value = true
+  algorithmPrepareError.value = ''
   algorithmPreparePromise = (async () => {
     try {
       const status = await prepareAlgorithmRun(prepareRunId, state.algorithm, {
@@ -637,7 +712,8 @@ function prepareExternalAlgorithm(): Promise<boolean> {
       return true
     } catch (error) {
       algorithmPrepared.value = false
-      addLog(`algorithm prepare failed: ${error instanceof Error ? error.message : String(error)}`)
+      algorithmPrepareError.value = error instanceof Error ? error.message : String(error)
+      addLog(`algorithm prepare failed: ${algorithmPrepareError.value}`)
       return false
     } finally {
       algorithmPreparing.value = false
@@ -666,7 +742,9 @@ async function startMission() {
   if (!algorithmPrepared.value) {
     addLog(`missionStart: preparing algorithm runId=${state.runId}`)
     if (!(await prepareExternalAlgorithm())) {
-      missionActionMessage.value = '算法准备失败，请稍后重试。'
+      missionActionMessage.value = algorithmPrepareError.value
+        ? `算法准备失败：${algorithmPrepareError.value}`
+        : '算法准备失败，请稍后重试。'
       return
     }
   }
@@ -1138,7 +1216,7 @@ onBeforeUnmount(() => {
                     <div><dt>全局避障</dt><dd>{{ Number(missionMetrics.globalAvoidanceCount ?? 0) }}</dd></div>
                   </template>
                   <template v-else>
-                    <div><dt>护航航程</dt><dd>{{ escortProgress }}%</dd></div>
+                    <div><dt>安全通航进度</dt><dd>{{ escortProgress }}%</dd></div>
                     <div><dt>围捕完成度</dt><dd>{{ captureProgress }}%</dd></div>
                     <div><dt>已捕获</dt><dd>{{ Number(missionMetrics.capturedThreatCount ?? 0) }}/{{ scenarioPlan.threatCount }}</dd></div>
                     <div>
@@ -1167,12 +1245,24 @@ onBeforeUnmount(() => {
                 </h4>
                 <div class="vf-capture-groups">
                   <article v-for="group in captureGroups.slice(0, 4)" :key="group.threatCode">
-                    <strong>{{ group.threatCode }}</strong>
-                    <span>阶段 {{ displayCaptureStage(group.stage) }}/3 · 编组分配 {{ group.uavCount }} UAV + {{ group.usvCount }} USV</span>
+                    <header class="vf-capture-group-head">
+                      <strong>{{ group.threatCode }}</strong>
+                      <b>{{ intentLabel(group.intent) }} · {{ Math.round(Number(group.intentConfidence ?? 0) * 100) }}%</b>
+                    </header>
+                    <span>阶段 {{ displayCaptureStage(group.stage) }}/3 · 当前编组 {{ group.uavCount }} UAV + {{ group.usvCount }} USV</span>
+                    <dl class="vf-target-intelligence">
+                      <div><dt>航速</dt><dd>{{ groupSpeed(group).toFixed(1) }}<small v-if="group.maximumSpeedMps">/{{ Number(group.maximumSpeedMps).toFixed(1) }}</small> m/s</dd></div>
+                      <div><dt>航向</dt><dd>{{ normalizeHeading(group.targetHeadingDeg).toFixed(0) }}° · {{ compassDirection(group.targetHeadingDeg) }}</dd></div>
+                      <div><dt>已移动</dt><dd>{{ Number(group.targetTravelDistanceM ?? group.pursuitDistanceM ?? 0).toFixed(0) }} m</dd></div>
+                      <div><dt>当前决策</dt><dd>{{ speedReasonLabel(group) }}</dd></div>
+                      <div><dt>逃逸缺口</dt><dd>{{ Number(group.postGlobalMaxGapDeg ?? group.maxAngularGapDeg ?? 360).toFixed(0) }}°<template v-if="group.gapCenterDeg !== undefined"> · 朝 {{ compassDirection(group.gapCenterDeg) }}</template></dd></div>
+                      <div><dt>最近拦截</dt><dd>{{ group.nearestInterceptorCode || '暂无' }}<template v-if="group.nearestInterceptorDistanceM !== undefined"> · {{ Number(group.nearestInterceptorDistanceM).toFixed(0) }} m</template></dd></div>
+                    </dl>
+                    <small v-if="reassignmentLabel(group)" class="vf-decision-event">智能换组：{{ reassignmentLabel(group) }}</small>
                     <small>
                       执行槽位到位 {{ Number(group.arrivedMemberCount ?? Math.round(Number(group.arrivalRatio ?? 0) * Number(group.ringMemberCount ?? group.memberCount ?? 0))) }}/{{ Number(group.requiredMemberCount ?? group.ringMemberCount ?? group.memberCount ?? 0) }}
                       ({{ Math.round(Number(group.arrivalRatio ?? 0) * 100) }}%)
-                      · 规划环缺口 {{ Number(group.maxAngularGapDeg ?? 360).toFixed(0) }}°
+                      · 规划槽位缺口 {{ Number(group.maxAngularGapDeg ?? 360).toFixed(0) }}°
                     </small>
                     <small>稳定闭环 {{ group.holdFrames ?? 0 }}/{{ group.holdRequiredFrames ?? 25 }}</small>
                     <small v-if="state.algorithm === 'GB_SFLA_CS'">
@@ -1331,6 +1421,14 @@ onBeforeUnmount(() => {
 .vf-target-list strong, .vf-capture-groups strong { color: #ffcf72; font-size: 10px; }
 .vf-target-list small, .vf-capture-groups span, .vf-capture-groups small { color: #789c99; font-size: 9px; }
 .vf-target-list article > span { color: #dff8f4; font-size: 9px; }
+.vf-capture-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vf-capture-group-head b { color: #6ce4d5; font-size: 9px; font-weight: 800; }
+.vf-target-intelligence { display: grid; margin: 2px 0 1px; gap: 4px 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vf-target-intelligence div { display: grid; min-width: 0; padding: 4px 5px; gap: 2px; background: rgba(21, 67, 70, .18); border-radius: 3px; }
+.vf-target-intelligence dt { color: #648b88; font-size: 8px; }
+.vf-target-intelligence dd { min-width: 0; margin: 0; overflow: hidden; color: #d8f5f1; font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.vf-target-intelligence dd small { color: #9fc0bd; }
+.vf-capture-groups .vf-decision-event { padding: 5px 6px; color: #b8f4e9; background: rgba(63, 190, 169, .1); border-left: 2px solid #55d9c7; }
 .vf-list-overflow { margin: 1px 0 0; color: #6f9693; font-size: 9px; line-height: 1.45; }
 .vf-metric-list { display: grid; margin: 0; gap: 0; }
 .vf-metric-list div { display: flex; padding: 7px 0; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(108,228,213,.07); }
