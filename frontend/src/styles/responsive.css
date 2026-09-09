@@ -1,0 +1,92 @@
+/* Query the usable workspace, including the space consumed by navigation. */
+.console-workspace {
+  container: workspace / inline-size;
+}
+
+.overview-taskbar {
+  display: grid;
+  grid-template-columns: minmax(190px, .85fr) minmax(230px, 1fr) minmax(290px, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 74px;
+  padding: 10px 16px;
+  color: #e9f7fa;
+  background: linear-gradient(110deg, #0a202c, #05151e);
+  border-bottom: 1px solid #23434e;
+}
+.overview-taskbar > * { min-width: 0; }
+.overview-taskbar-title h3 { margin: 0 0 4px; font-size: 20px; line-height: 1.3; color: #f0fbff; }
+.overview-taskbar-title > span { display: block; overflow: hidden; color: #9bb4bd; font-size: 12px; line-height: 1.4; white-space: nowrap; text-overflow: ellipsis; }
+.overview-taskbar-algorithm { display: flex; align-items: center; gap: 6px; padding-inline: 14px; border-inline: 1px solid #24404b; }
+.overview-taskbar-algorithm small { flex: none; padding: 3px 6px; color: #aac3cd; border: 1px solid #28414c; border-radius: 4px; font-size: 11px; }
+.overview-taskbar-algorithm select {
+  width: 100%; min-width: 0; height: 36px; padding: 0 8px;
+  color: #e4f2f6; background: #081c27; border: 1px solid transparent;
+  border-radius: 5px; font-size: 14px; cursor: pointer;
+}
+.overview-taskbar-views { display: flex; min-width: 0; padding: 2px; border: 1px solid #24404b; border-radius: 6px; }
+.overview-taskbar-views button {
+  flex: 1; min-width: 0; min-height: 36px; padding: 0 10px;
+  color: #b5cbd2; background: transparent; border: 0; border-bottom: 2px solid transparent;
+  border-radius: 4px; font-size: 14px; white-space: nowrap; cursor: pointer;
+}
+.overview-taskbar-views button.active { color: #edfffc; background: #112e39; border-bottom-color: #62e4d6; }
+.overview-taskbar-views button:hover:not(:disabled) { background: #173744; }
+.overview-taskbar-action { display: flex; align-items: center; justify-content: flex-end; gap: 16px; }
+.overview-taskbar-state { display: inline-flex; align-items: center; gap: 8px; color: #adbec7; font-size: 14px; white-space: nowrap; }
+.overview-taskbar-state i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #7b929b; }
+.overview-taskbar-state[data-state='RUNNING'] i,
+.overview-taskbar-state[data-state='COMPLETED'] i { background: #43dfa7; box-shadow: 0 0 8px #43dfa740; }
+.overview-taskbar-state[data-state='STARTING'] i,
+.overview-taskbar-state[data-state='CANCELLING'] i { background: #ffd16d; }
+.overview-taskbar-state[data-state='FAILED'] i { background: #ff7770; }
+.overview-taskbar-action button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 36px; padding: 0 14px; border: 1px solid #4ebfb8; border-radius: 5px;
+  color: #83e3d9; background: #0b2b31; font-size: 14px; white-space: nowrap; cursor: pointer;
+}
+.overview-taskbar-action button.danger { color: #ff827b; border-color: #bc514f; background: #3b1d252f; }
+.overview-taskbar button:disabled, .overview-taskbar select:disabled { opacity: .48; cursor: not-allowed; }
+.overview-taskbar :is(button, select):focus-visible { outline: 2px solid #6ce4d5; outline-offset: 2px; }
+
+/* Wide screens gain viewport area instead of an arbitrary 760/1040px cap. */
+.overview-hf { max-width: none; }
+.overview-hf .overview-unity-stage,
+.overview-hf .overview-unity-stage.unity-webgl-panel {
+  height: max(320px, calc(100dvh - 356px)); min-height: 320px; aspect-ratio: auto;
+}
+.console-workspace > .console-topbar { max-width: none; width: 100%; }
+.console-workspace .console-topbar { flex-wrap: wrap; }
+.console-workspace .console-topbar-actions { min-width: 0; max-width: 100%; }
+.console-workspace .table-panel { min-width: 0; }
+.console-workspace .panel-heading { flex-wrap: wrap; gap: 12px; }
+.console-workspace .table-footer { max-width: 100%; overflow-x: auto; padding-bottom: 8px; }
+.el-dialog { max-width: calc(100vw - 32px); }
+.el-message-box { max-width: calc(100vw - 32px); }
+
+@container workspace (max-width: 1100px) {
+  .overview-taskbar { grid-template-columns: minmax(180px, .85fr) minmax(210px, 1fr) auto; gap: 10px 14px; }
+  .overview-taskbar-views { grid-column: 1 / 3; grid-row: 2; }
+  .overview-taskbar-action { grid-column: 3; grid-row: 1 / 3; flex-direction: column; align-items: stretch; gap: 10px; }
+  .overview-hf .overview-hf-statusbar { display: flex; flex-wrap: wrap; gap: 10px; }
+  .overview-hf .overview-link-status { flex-wrap: wrap; gap: 6px; }
+  .overview-hf .overview-unity-stage { height: max(320px, calc(100dvh - 480px)); }
+  .overview-hf .overview-fleet-ribbon { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .console-workspace .page-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container workspace (max-width: 680px) {
+  .overview-taskbar { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .overview-taskbar > * { grid-column: 1; grid-row: auto; }
+  .overview-taskbar-algorithm { padding: 0; border: 0; }
+  .overview-taskbar-action { flex-direction: row; justify-content: space-between; }
+  .overview-taskbar-title h3 { font-size: 18px; }
+  .overview-taskbar-views button { padding-inline: 6px; font-size: 13px; }
+  .overview-hf .overview-fleet-ribbon { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-hf .overview-link-status b { padding-inline: 6px; }
+  .overview-hf .overview-selected-control { grid-template-columns: minmax(0, 1fr); }
+  .overview-hf .overview-selected-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 540px) {
+  .device-dialog .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .console-workspace .page-metric-grid { grid-template-columns: minmax(0, 1fr); }
+}

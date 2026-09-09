@@ -165,6 +165,8 @@ class SceneSafetyFilter:
         last neighbour and back into an earlier one. Projected iterations make
         the final frame satisfy every pair, while fixed mission targets remain
         authoritative instead of being pushed around by their guards.
+        max_steps accepts per-device codes as well as kind defaults, so an
+        adapter need not clip safe output positions after the joint solve.
         """
         previous = previous or {}
         fixed = fixed or {}
@@ -176,7 +178,7 @@ class SceneSafetyFilter:
 
         for code, point in raw.items():
             old = tuple(float(value) for value in previous.get(code, point))
-            candidate = self._limit_step(old, point, kinds[code], max_steps.get(kinds[code])) if code in previous else point
+            candidate = self._limit_step(old, point, kinds[code], max_steps.get(code.upper(), max_steps.get(kinds[code]))) if code in previous else point
             projected = self.constrain(old, candidate, kinds[code], (), 0.0)
             positions[code] = [projected.x, projected.y, projected.z]
             if projected.adjusted or candidate != point:
@@ -291,7 +293,7 @@ class SceneSafetyFilter:
                         previous[code],
                         positions[code],
                         kinds[code],
-                        max_steps.get(kinds[code]),
+                        max_steps.get(code.upper(), max_steps.get(kinds[code])),
                     )
                     motion_correction = hypot(
                         limited[0] - positions[code][0],

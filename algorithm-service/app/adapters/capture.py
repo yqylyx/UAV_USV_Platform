@@ -301,9 +301,12 @@ class CaptureAdapter(AlgorithmAdapter):
             self.target_start_scene = (target[0], target[1])
             self.target_travelled_distance = 0.0
             self.target_escape_direction = self._choose_target_escape_direction(target)
+            # START changes intent, not the preview's physical velocity or bow.
+            resume_heading = getattr(self, "target_motion_heading", float(self.env.targets[0, 4]))
+            resume_speed = math.hypot(*self.target_velocity)
             self.target_velocity = (
-                self.target_escape_direction[0] * self.target_cruise_mps,
-                self.target_escape_direction[1] * self.target_cruise_mps,
+                math.cos(resume_heading) * resume_speed,
+                math.sin(resume_heading) * resume_speed,
             )
             self.target_behavior_state = "ESCAPE"
             self.target_speed_reason = "ESCAPE_CRUISE"
@@ -371,10 +374,9 @@ class CaptureAdapter(AlgorithmAdapter):
         self.env.permanently_captured.discard(0)
         self.env.guarding_agents.pop(0, None)
         self.target_behavior_state = "BREAKOUT"
-        self.target_velocity = (
-            self.target_escape_direction[0] * self.target_cruise_mps,
-            self.target_escape_direction[1] * self.target_cruise_mps,
-        )
+        # The regular controller accelerates from the held pose; no burst
+        # vector or heading jump merely because the capture latch opened.
+        self.target_velocity = (0.0, 0.0)
 
     def _activate_vendor_runtime_config(self) -> None:
         for name, value in self._vendor_runtime_config.items():
@@ -927,112 +929,35 @@ class CaptureAdapter(AlgorithmAdapter):
             speed = max(0.08, self.target_cruise_mps * (1.0 - reduction))
             self.target_behavior_state = "CONTAINED"
             self.target_speed_reason = "EXECUTED_CONTAINMENT_DECEL"
-        desired_vx, desired_vy = desired_x * speed, desired_y * speed
-        vx, vy = self.target_velocity
-        accel = 0.065 if preview else 0.05
-        vx += max(-accel, min(accel, desired_vx - vx))
-        vy += max(-accel, min(accel, desired_vy - vy))
-        velocity_length = math.hypot(vx, vy)
-        confirmed_containment = authoritative_containment
-        if (
-            not preview
-            and not confirmed_containment
-            and velocity_length < self.target_cruise_mps
-        ):
-            # A sharp coast/gap turn can temporarily cancel old and new
-            # velocity components. Preserve the promised pre-containment
-            # speed floor instead of showing an unexplained slowdown.
-            vx = desired_x * self.target_cruise_mps
-            vy = desired_y * self.target_cruise_mps
-            velocity_length = self.target_cruise_mps
-        if confirmed_containment:
-            # Do not visually stop the target on the first candidate frame.
-            # The cap decays across the same confirmation window used by the
-            # capture latch, so a ring that opens again immediately restores a
-            # real breakout instead of leaving the target parked at 0.1 m/s.
-            started_at = (
-                self.executed_containment_started_at
-                if self.external_containment_authority
-                else self.containment_candidate_at_sequence
-            )
-            held = max(0, self.sequence - (started_at or self.sequence))
-            decay = min(1.0, held / max(1, self.capture_hold_frames))
-            velocity_cap = max(0.12, self.target_cruise_mps * (1.0 - 0.92 * decay))
+        # Single bow-first motion integrator. Safety evaluates proposals but
+        # never substitutes a lateral position or an unrelated velocity.
+        current_speed = math.hypot(*self.target_velocity)
+        heading = getattr(self, "target_motion_heading", float(self.env.targets[0, 4]))
+        desired_heading = math.atan2(desired_y, desired_x)
+        delta = (desired_heading-heading+math.pi) % math.tau-math.pi
+        heading += max(-math.radians(7), min(math.radians(7), delta))
+        self.target_motion_heading = heading
+        next_speed = current_speed + max(-0.10, min(0.08, speed-current_speed))
+        next_speed = min(self.target_max_mps, max(0.0, next_speed))
+        vx, vy = math.cos(heading)*next_speed, math.sin(heading)*next_speed
+        proposed = (previous[0]+vx*.1, previous[1]+vy*.1, 0.0)
+        checked = self.safety.constrain(previous, proposed, "TARGET", (), 0.0)
+        valid = (
+            math.hypot(checked.x-proposed[0], checked.y-proposed[1]) < 1e-5
+            and self._operational_clearance(proposed[0], proposed[1]) >= min(
+                0.0, self._operational_clearance(previous[0], previous[1]),
+            )-1e-5
+        )
+        if valid:
+            safe = SafePoint(*proposed, False)
         else:
-            velocity_cap = float("inf")
-        if confirmed_containment and velocity_length > velocity_cap:
-            settle_scale = velocity_cap / velocity_length
-            vx, vy = vx * settle_scale, vy * settle_scale
-            velocity_length = velocity_cap
-        if (
-            self.formation_ready_at_sequence is None
-            and not confirmed_containment
-            and velocity_length < 0.36
-        ):
-            # Turning at the coast must change heading rather than visually
-            # stop while opposite velocity components cancel out.
-            vx, vy = desired_x * 0.36, desired_y * 0.36
-        proposed = (previous[0] + vx * 0.1, previous[1] + vy * 0.1, 0.0)
-        safe = self.safety.constrain(previous, proposed, "TARGET", (), 0.0)
-        proposed_step = math.hypot(safe.x - previous[0], safe.y - previous[1])
-        # A target may evade laterally through a gap, but it must not complete
-        # a visible pursuit after circling back toward its spawn point. Keep
-        # the net escape distance monotonic until containment is actually
-        # latched; this also makes the mission metric meaningful for the UI.
-        if not preview and self.captured_at_sequence is None:
-            start_dx = previous[0] - self.target_start_scene[0]
-            start_dy = previous[1] - self.target_start_scene[1]
-            current_net = math.hypot(start_dx, start_dy)
-            next_net = math.hypot(
-                safe.x - self.target_start_scene[0],
-                safe.y - self.target_start_scene[1],
-            )
-            if next_net + 1e-6 < current_net:
-                outward_length = math.hypot(start_dx, start_dy)
-                outward = (
-                    (start_dx / outward_length, start_dy / outward_length)
-                    if outward_length > 1e-6
-                    else self.target_escape_direction
-                )
-                safe = self.safety.constrain(
-                    previous,
-                    (
-                        previous[0] + outward[0] * max(proposed_step, 0.08),
-                        previous[1] + outward[1] * max(proposed_step, 0.08),
-                        0.0,
-                    ),
-                    "TARGET",
-                    (),
-                    0.0,
-                )
-        if self._operational_clearance(safe.x, safe.y) < 0.0:
-            # SceneSafetyFilter protects the abstract arena bounds; the
-            # visible mission has a smaller water operating box. Bisect the
-            # final movement so the rendered target never enters that box's
-            # shoreline margin.
-            previous_clearance = self._operational_clearance(previous[0], previous[1])
-            if previous_clearance >= 0.0:
-                original = safe
-                for fraction in (0.75, 0.5, 0.25, 0.0):
-                    candidate_x = previous[0] + (original.x - previous[0]) * fraction
-                    candidate_y = previous[1] + (original.y - previous[1]) * fraction
-                    if self._operational_clearance(candidate_x, candidate_y) >= 0.0:
-                        safe = SafePoint(candidate_x, candidate_y, original.z, fraction < 1.0)
-                        break
-        step = math.hypot(safe.x - previous[0], safe.y - previous[1])
-        if safe.adjusted:
-            self.target_escape_direction = self._choose_target_escape_direction((safe.x, safe.y, 0.0))
-            # A shoreline is a steering constraint, not a reason to surrender.
-            # Retain cruise speed after choosing the clearer tangent corridor.
-            fallback_speed = min(
-                self.target_max_mps,
-                max(self.target_cruise_mps, speed, math.hypot(vx, vy)),
-            )
-            vx = self.target_escape_direction[0] * fallback_speed
-            vy = self.target_escape_direction[1] * fallback_speed
+            safe = SafePoint(*previous, True)
+            vx = vy = 0.0
+            self.target_speed_reason = "COAST_BRAKING"
+            self.target_escape_direction = self._choose_target_escape_direction(previous)
         self.target_velocity = (vx, vy)
         if not preview:
-            self.target_travelled_distance += step
+            self.target_travelled_distance += math.hypot(safe.x-previous[0], safe.y-previous[1])
         return safe
 
     def _reset_positions(self) -> None:
@@ -1194,7 +1119,9 @@ class CaptureAdapter(AlgorithmAdapter):
         # escape corridor instead of restarting its turn from that pose.
         if not mission_start_frame:
             self.env.targets[0, :3] = self._to_internal((safe_target.x, safe_target.y, 0.0), "TARGET")
-        if math.hypot(*self.target_velocity) > 1e-5:
+        if hasattr(self, "target_motion_heading"):
+            self.env.targets[0, 4] = self.target_motion_heading
+        elif math.hypot(*self.target_velocity) > 1e-5:
             self.env.targets[0, 4] = math.atan2(self.target_velocity[1], self.target_velocity[0])
 
         proposals: Dict[str, Tuple[str, Tuple[float, float, float]]] = {}

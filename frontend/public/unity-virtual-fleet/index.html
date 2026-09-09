@@ -672,6 +672,12 @@
         }
       }
 
+      var embeddedResizeTimer = 0;
+      function scheduleEmbeddedResize() {
+        window.clearTimeout(embeddedResizeTimer);
+        embeddedResizeTimer = window.setTimeout(resizeEmbeddedCanvas, 100);
+      }
+
       function resizeEmbeddedCanvas() {
         if (!embedded) return;
         if (viewportTransitioning) {
@@ -681,6 +687,16 @@
         var height = Math.max(1, window.innerHeight);
         canvas.style.width = width + 'px';
         canvas.style.height = height + 'px';
+        // CSS size alone does not resize the drawing buffer on all Unity/Edge
+        // resize paths. Keep the backing buffer and Unity's pixel ratio in sync;
+        // otherwise Unity renders a large viewport into the old, smaller buffer.
+        var ratio = embeddedRenderPixelRatio();
+        var module = window.uavUsvUnityInstance && window.uavUsvUnityInstance.Module;
+        if (module) module.devicePixelRatio = ratio;
+        var renderWidth = Math.max(1, Math.round(width * ratio));
+        var renderHeight = Math.max(1, Math.round(height * ratio));
+        if (canvas.width !== renderWidth) canvas.width = renderWidth;
+        if (canvas.height !== renderHeight) canvas.height = renderHeight;
       }
 
       function captureViewportSnapshot(serial) {
@@ -754,9 +770,17 @@
 
       loadingBar.style.display = 'block';
       resizeEmbeddedCanvas();
-      window.addEventListener('resize', resizeEmbeddedCanvas);
+      window.addEventListener('resize', scheduleEmbeddedResize);
       if (window.ResizeObserver) {
-        new ResizeObserver(resizeEmbeddedCanvas).observe(container);
+        new ResizeObserver(scheduleEmbeddedResize).observe(container);
+      }
+      if (embedded && window.MutationObserver) {
+        // A delayed native resize can restore the pre-transition dimensions
+        // after Unity has already switched its viewport. Observe only backing
+        // attributes, not every render frame, and reconcile the settled size.
+        new MutationObserver(scheduleEmbeddedResize).observe(canvas, {
+          attributes: true, attributeFilter: ['width', 'height'],
+        });
       }
 
       if (!hasWebGL()) {
@@ -840,7 +864,7 @@
           });
           return;
         }
-        if (message.type === 'viewportTransitionEnd') {
+        if (message.type === 'viewportTransitionEnd' || message.type === 'viewportSettled') {
           finishViewportTransition(viewportTransitionSerial);
           return;
         }

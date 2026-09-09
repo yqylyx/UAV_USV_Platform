@@ -1158,4 +1158,16 @@ button:disabled {
     min-height: 0;
   }
 }
+.mission-workspace { max-width: none; min-height: 460px; height: max(460px, calc(100dvh - 156px)); }
+.mission-identity { min-width: 0; overflow-wrap: anywhere; }
+@container workspace (max-width: 1050px) {
+  .run-toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .situation-view-label { grid-column: 1 / -1; grid-row: 2; }
+  .run-sync { display: none; }
+}
+@container workspace (max-width: 550px) {
+  .run-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .situation-view-label { grid-row: auto; flex-wrap: wrap; }
+  .read-only-badge { justify-self: start; }
+}
 </style>

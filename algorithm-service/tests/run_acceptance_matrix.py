@@ -30,14 +30,27 @@ CONFIGURATIONS = [
 
 STAGE_RANK = {
     "PREVIEW": 0, "GUARDING": 0, "THREAT_DETECTION": 1,
-    "ESCAPE": 1, "ESCAPE_PURSUIT": 1,
-    "PURSUIT": 2, "INTERCEPT": 3, "INTERCEPTING": 3,
-    "BLOCKING": 4, "ENCIRCLEMENT": 5, "ACTIVE_CAPTURE": 5,
+    "GUARD_RECONFIGURATION": 2,
+    "ESCAPE": 1,
+    "INTERCEPT": 3, "INTERCEPTING": 3, "BLOCKING": 4,
+    "PURSUIT": 5, "ESCAPE_PURSUIT": 5,
+    "ENCIRCLEMENT": 6, "ACTIVE_CAPTURE": 6,
     # Stable hold and gap maintenance are substates of one final-containment
     # macro phase. Moving among them is repair work, not a mission regression.
-    "GAP_REPAIR": 5, "STABLE_CONTAINMENT": 6,
-    "CONTAINMENT": 6, "CAPTURING": 6,
-    "COMPLETED": 7, "CAPTURED": 7,
+    "GAP_REPAIR": 6, "STABLE_CONTAINMENT": 7,
+    "SAFE_GATE_TRANSIT": 8,
+    "CONTAINMENT": 7, "CAPTURING": 7,
+    "COMPLETED": 9, "CAPTURED": 9,
+}
+
+CAPTURE_STAGE_RANK = {
+    "PREVIEW": 0, "ESCAPE": 0, "ESCAPE_PURSUIT": 0,
+    "PURSUIT": 1,
+    "INTERCEPT": 2, "INTERCEPTING": 2,
+    "ENCIRCLEMENT": 3, "ACTIVE_CAPTURE": 3,
+    "GAP_REPAIR": 4, "STABLE_CONTAINMENT": 4,
+    "CONTAINMENT": 4, "CAPTURING": 4,
+    "COMPLETED": 5, "CAPTURED": 5,
 }
 
 
@@ -64,21 +77,62 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
     maximum_stationary = 0
     maximum_stationary_code = ""
     maximum_stationary_role = ""
+    worst_diagnostic: dict[str, object] = {}
     macro_regressions = 0
+    regression_transitions: list[dict[str, object]] = []
     previous_rank = 0
     high_water_rank = 0
     minimum_pair_distance = math.inf
+    process_violations: list[dict[str, object]] = []
+    seen_events: set[tuple[str, str]] = set()
     started = time.perf_counter()
     frame = None
     for _ in range(frame_limit):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             frame = adapter.step()
+        if mode == "escort":
+            for event in frame.metrics.get("tacticalEvents", []):
+                key = (event["threatCode"], event["type"])
+                if key in seen_events:
+                    continue
+                threat = next(t for t in adapter.threats if t.code == key[0])
+                if key[1] == "GUARD_RESPONSE_DISPATCHED" and (
+                    (key[0], "ATTACK_INTENT_CONFIRMED") not in seen_events
+                    or threat.response_motion_frames < 5
+                ):
+                    process_violations.append({"sequence": frame.sequence, "reason": "PREMATURE_DISPATCH", "target": key[0]})
+                if key[1] == "GUARD_SCREEN_ESTABLISHED" and (
+                    (key[0], "GUARD_RESPONSE_DISPATCHED") not in seen_events
+                    or threat.intercept_stage_frames < 5
+                ):
+                    process_violations.append({"sequence": frame.sequence, "reason": "PREMATURE_SCREEN", "target": key[0]})
+                if key[1] in {"PROTECTED_WITHDRAWAL_CONFIRMED", "DEFENSE_HANDOFF_CONFIRMED"} and (
+                    (key[0], "COVER_RETREAT_OBSERVED") not in seen_events
+                    or threat.cover_frames < 40 or threat.cover_distance < 2.5
+                    or not threat.cover_released
+                ):
+                    process_violations.append({"sequence": frame.sequence, "reason": "PREMATURE_WITHDRAWAL", "target": key[0]})
+                seen_events.add(key)
+            if frame.sequence % 10 == 0 and len(process_violations) < 20:
+                for guard in (v for v in adapter.vehicles if v.role == "CLOSE_GUARD"):
+                    if guard.assigned_threat is not None or any(
+                        t.forced and t.capture_stage >= 1 and math.hypot(guard.x - t.x, guard.y - t.y) < 30.0
+                        for t in adapter.threats
+                    ):
+                        process_violations.append({"sequence": frame.sequence, "reason": "GUARD_INSIDE_RING", "device": guard.code})
         stage = str(frame.metrics.get("missionStage", frame.phase))
-        rank = STAGE_RANK.get(stage, previous_rank)
+        stage_order = CAPTURE_STAGE_RANK if mode == "capture" else STAGE_RANK
+        rank = stage_order.get(stage, previous_rank)
         # Count a regression once at the transition edge. The former high-water
         # comparison counted every frame spent in the repaired stage.
         if rank < high_water_rank and rank != previous_rank:
             macro_regressions += 1
+            regression_transitions.append({
+                "sequence": frame.sequence,
+                "fromRank": previous_rank,
+                "toRank": rank,
+                "stage": stage,
+            })
         previous_rank = rank
         high_water_rank = max(high_water_rank, rank)
         current_positions = {item.code: (item.x, item.y) for item in frame.agents}
@@ -95,8 +149,22 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
                 "CAPTURE", "CONTAINMENT", "RING_MEMBER", "CLOSE_GUARD",
                 "BLOCKER", "GAP_BLOCKER", "CONFRONT",
                 "CAPTURE_RESERVE", "OUTER_INTERCEPT", "CONVOY_SUPPORT",
-                "LOCAL_OVERWATCH",
+                "LOCAL_OVERWATCH", "FORMATION_GUARD",
             }
+            if mode == "escort" and moved < 0.002 and not allowed_hold:
+                runtime_vehicle = next(
+                    item for item in adapter.vehicles if item.code == code
+                )
+                if runtime_vehicle.assigned_threat is not None:
+                    assigned_point = adapter._desired_position(runtime_vehicle)
+                    # An interceptor exactly on its moving assigned point is
+                    # deliberately holding a tactical station, not frozen.
+                    # Devices away from their task point still accumulate the
+                    # strict no-response counter below.
+                    allowed_hold = math.hypot(
+                        current[0] - assigned_point[0],
+                        current[1] - assigned_point[1],
+                    ) <= 0.35
             stationary_frames[code] = (
                 stationary_frames.get(code, 0) + 1
                 if moved < 0.002 and not allowed_hold
@@ -106,6 +174,16 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
                 maximum_stationary = stationary_frames[code]
                 maximum_stationary_code = code
                 maximum_stationary_role = role
+                if mode == "escort":
+                    vehicle = next(item for item in adapter.vehicles if item.code == code)
+                    desired = adapter._desired_position(vehicle)
+                    worst_diagnostic = {
+                        "sequence": frame.sequence,
+                        "assignedThreat": vehicle.assigned_threat,
+                        "current": [round(vehicle.x, 2), round(vehicle.y, 2)],
+                        "desired": [round(desired[0], 2), round(desired[1], 2)],
+                        "distanceToDesiredM": round(math.hypot(desired[0] - vehicle.x, desired[1] - vehicle.y), 2),
+                    }
         previous_positions = current_positions
         if frame.sequence % 10 == 0:
             for index, left in enumerate(frame.agents):
@@ -118,6 +196,12 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
             break
     assert frame is not None
     groups = frame.metrics.get("captureGroups", [])
+    if mode == "escort":
+        for threat in adapter.threats:
+            if not threat.cover_released or threat.auto_capture_reason in {
+                "DEFENSIVE_SCREEN_INTERCEPT", "EMERGENCY_BREACH_PREVENTION",
+            }:
+                process_violations.append({"reason": "MISSING_WITHDRAWAL_HANDOFF", "target": threat.code})
     max_gap = max(
         (float(group.get(
             "postGlobalMaxGapDeg",
@@ -162,7 +246,6 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
             groups, strict_contracts, group_max_gaps, group_allowed_gaps, group_slot_errors
         )
     ]
-    worst_diagnostic: dict[str, object] = {}
     not_arrived: list[list[dict[str, object]]] = []
     if mode == "escort":
         for threat_index, threat in enumerate(adapter.threats):
@@ -191,19 +274,6 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
                         ),
                     })
             not_arrived.append(missed)
-    if mode == "escort" and maximum_stationary_code:
-        vehicle = next(
-            (item for item in adapter.vehicles if item.code == maximum_stationary_code),
-            None,
-        )
-        if vehicle is not None:
-            desired = adapter._desired_position(vehicle)
-            worst_diagnostic = {
-                "assignedThreat": vehicle.assigned_threat,
-                "current": [round(vehicle.x, 2), round(vehicle.y, 2)],
-                "desired": [round(desired[0], 2), round(desired[1], 2)],
-                "distanceToDesiredM": round(math.hypot(desired[0] - vehicle.x, desired[1] - vehicle.y), 2),
-            }
     return {
         "mode": mode,
         "uav": uav,
@@ -215,6 +285,7 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
         "progress": frame.metrics.get("progress"),
         "captured": frame.metrics.get("capturedTargetCount", frame.metrics.get("capturedThreatCount")),
         "macroRegressions": macro_regressions,
+        "regressionTransitions": regression_transitions,
         "maxUnexpectedStationaryFrames": maximum_stationary,
         "maxUnexpectedStationaryCode": maximum_stationary_code,
         "maxUnexpectedStationaryRole": maximum_stationary_role,
@@ -262,6 +333,9 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
             for index, threat in enumerate(getattr(adapter, "threats", []))
         ],
         "elapsedSeconds": round(time.perf_counter() - started, 3),
+        "escortProcessViolations": process_violations,
+        "guardWithdrawal": frame.metrics.get("guardWithdrawalStates", []),
+        "defenseCoordination": frame.metrics.get("defenseCoordination", {}),
         "passed": (
             frame.terminalStatus == "COMPLETED"
             and macro_regressions == 0
@@ -271,6 +345,7 @@ def run_one(mode: str, uav: int, usv: int, seed: int) -> dict[str, object]:
             and all(strict_group_ready)
             and all(value >= 1.0 for value in group_arrivals)
             and all(value in {"CAPTURED", "SECURED"} for value in group_states)
+            and not process_violations
         ),
     }
 

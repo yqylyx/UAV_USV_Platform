@@ -16,6 +16,7 @@ const WEBGL_SOURCE = '/unity-virtual-fleet/index.html?embedded=1&build=20260825-
 
 const emit = defineEmits<{
   unityReady: []
+  unityLoading: []
   unityMessage: [message: UnityWindowMessage]
   unityError: [message: string]
   unityCommand: [message: UnityWindowMessage]
@@ -258,6 +259,7 @@ function handleIframeLoad() {
   readyEmitted = false
   errorMessage.value = ''
   loadHint.value = '正在加载算法仿真 Unity WebGL'
+  emit('unityLoading')
   startProbe()
 }
 
@@ -267,6 +269,7 @@ function reload() {
   ready.value = false
   readyEmitted = false
   errorMessage.value = ''
+  emit('unityLoading')
   reloadToken.value += 1
 }
 

@@ -115,8 +115,14 @@ class CaptureV4AcceptanceTests(unittest.TestCase):
             max_gap_deg=25.0,
             allowed_gap_deg=38.0,
         )
-        adapter.sequence += adapter.capture_hold_frames
-        adapter._advance_capture_target(target)
+        # Exercise real 0.1 s control steps, not a sequence jump followed by
+        # one step that demanded an instantaneous velocity collapse.
+        for _ in range(adapter.capture_hold_frames):
+            previous_speed = math.hypot(*adapter.target_velocity)
+            adapter.sequence += 1
+            safe = adapter._advance_capture_target(target)
+            target = (safe.x, safe.y, safe.z)
+            self.assertLessEqual(previous_speed-math.hypot(*adapter.target_velocity), .10001)
         self.assertLess(math.hypot(*adapter.target_velocity), adapter.target_cruise_mps * 0.35)
         self.assertEqual("EXECUTED_CONTAINMENT_DECEL", adapter.target_speed_reason)
 

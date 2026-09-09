@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,7 +14,13 @@ import {
 } from '@lucide/vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
-import SimulationUnityWebglPanel from '@/components/unity/SimulationUnityWebglPanel.vue'
+import {
+  simulationRuntime,
+  enqueueTacticalNotices,
+  acknowledgeTacticalFrame,
+  resetTacticalNotices,
+  type SimulationTacticalNotice,
+} from '@/composables/simulationRuntime'
 import {
   controlAlgorithmRun,
   fetchAlgorithmFrames,
@@ -101,7 +107,15 @@ type CaptureGroupMetric = {
 
 type InspectorTab = 'status' | 'protocol' | 'logs'
 
-const unityPanel = ref<InstanceType<typeof SimulationUnityWebglPanel> | null>(null)
+type TacticalEvent = SimulationTacticalNotice
+
+const unityPanel = simulationRuntime.panel
+const recoveringScene = simulationRuntime.recovering
+let savedScenario: Record<string, unknown> | null = null
+let latestPoseBatch: Record<string, unknown> | null = null
+let recoveryTimer: number | undefined
+let recoveryPoseSequence: number | null = null
+let restoredCamera = { mode: 'overview', deviceCode: '' }
 const unityReady = ref(false)
 const selectedDevice = ref('')
 const cameraMode = ref('overview')
@@ -119,6 +133,8 @@ const inspectorTab = ref<InspectorTab>('status')
 const logEntries = ref<string[]>([])
 const lastUnityMessage = ref<UnityMessage | null>(null)
 const currentAlgorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
+const tacticalHistory = simulationRuntime.tacticalHistory
+const consumedTacticalEventIds = new Set<string>()
 const initialScenarioPoses = ref<ScenarioInitialPose[]>([])
 const plannedScenarioPoses = ref<GridScenarioPose[]>([])
 const sceneLocked = computed(() => (
@@ -145,8 +161,8 @@ const stageSubjectThreatCode = computed(() => String(
   missionMetrics.value.stageSubjectThreatCode ?? '',
 ))
 const missionStageLabels: Record<string, string> = {
-  PREVIEW: '预演', READY: '就绪', GUARDING: '警戒护航',
-  THREAT_DETECTION: '威胁侦测', INTERCEPT: '加速拦截', BLOCKING: '阻断攻击',
+  PREVIEW: '预演', READY: '就绪', GUARDING: '编队护航', ESCORTING: '编队护航',
+  THREAT_DETECTION: '意图识别', GUARD_RECONFIGURATION: '分向守卫', INTERCEPT: '加速拦截', BLOCKING: '阻断攻击',
   ESCAPE: '目标逃逸', PURSUIT: '协同追击', ENCIRCLEMENT: '动态围捕',
   GAP_REPAIR: '动态围捕', STABLE_CONTAINMENT: '稳定闭环',
   SAFE_GATE_TRANSIT: '通过安全门', COMPLETED: '完成',
@@ -233,15 +249,18 @@ const captureGroups = computed(() => Array.isArray(missionMetrics.value.captureG
   ? missionMetrics.value.captureGroups as CaptureGroupMetric[]
   : [])
 const intentLabels: Record<string, string> = {
+  UNCLASSIFIED: '意图研判', ATTACK_INTENT: '攻击意图', ESCAPE_INTENT: '逃逸意图',
   ATTACKING: '逼近攻击', FLANKING: '侧翼试探', FLANKING_BREAKTHROUGH: '侧翼突破',
   ESCAPING: '持续逃逸', BREAKOUT: '寻找缺口', EVADING_GUARD: '规避拦截',
-  CLEARING_CONVOY: '脱离护航队', CONTAINED: '受控减速', CAPTURED: '已被控制',
+  CLEARING_CONVOY: '脱离护航队', CLEARING_CONTAINMENT_SPACE: '腾挪闭环空间',
+  CONTAINED: '受控减速', CAPTURED: '已被控制',
   COAST_AVOID: '规避岸线', ESCAPE: '持续逃逸', CRUISE: '巡航观察',
 }
 const speedReasonLabels: Record<string, string> = {
   ESCAPE_CRUISE: '保持逃逸巡航', GAP_BREAKOUT: '缺口突破加速',
   COAST_AVOID: '岸线规避转向', EXECUTED_CONTAINMENT_DECEL: '实际闭环后受控减速',
   CONTAINMENT_PRESSURE: '围捕压力下减速', CONTAINMENT_DECEL: '稳定闭环后减速',
+  ESCAPE_CORRIDOR_BLOCKED: '逃逸通道受阻 · 减速转向',
   NONE: '自主航行',
 }
 const assignmentReasonLabels: Record<string, string> = {
@@ -332,7 +351,7 @@ const selectedFrameItem = computed(() => {
     ?? null
 })
 const phaseSteps = computed(() => state.algorithm === 'ESCORT_GUARD'
-  ? ['警戒护航', '威胁侦测', '加速拦截', '阻断攻击', '动态围捕', '稳定闭环', '通过安全门', '完成']
+  ? ['编队护航', '意图识别', '分向守卫', '协同拦截', '追逃压制', '动态围捕', '稳定闭环', '完成']
   : ['目标逃逸', '协同追击', '截击部署', '动态围捕', '稳定闭环', '完成'])
 const activePhaseIndex = computed(() => {
   const phase = missionPhase.value.toUpperCase()
@@ -350,11 +369,12 @@ const activePhaseIndex = computed(() => {
   }
   if (state.algorithm === 'ESCORT_GUARD') {
     if (phase === 'COMPLETED') return 7
-    if (phase === 'SAFE_GATE_TRANSIT') return 6
-    if (phase === 'STABLE_CONTAINMENT') return 5
-    if (phase === 'GAP_REPAIR' || phase === 'ENCIRCLEMENT') return 4
+    if (phase === 'SAFE_GATE_TRANSIT' || phase === 'STABLE_CONTAINMENT') return 6
+    if (phase === 'GAP_REPAIR' || phase === 'ENCIRCLEMENT') return 5
+    if (phase === 'PURSUIT' || phase === 'ESCAPE') return 4
     if (phase === 'BLOCKING') return 3
-    if (phase === 'INTERCEPT') return 2
+    if (phase === 'INTERCEPT') return 3
+    if (phase === 'GUARD_RECONFIGURATION') return 2
     if (phase === 'THREAT_DETECTION') return 1
     if (phase === 'GUARDING' || phase === 'ESCORTING') return 0
     return 0
@@ -410,8 +430,7 @@ const fleetOriginEnu: EnuOrigin = {
 }
 
 const state = reactive({
-  algorithm: 'GB_SFLA_CS',
-  seed: 20260814,
+  algorithm: 'ESCORT_GUARD',
   uavCount: 3,
   usvCount: 3,
   uavSpeed: 5,
@@ -423,7 +442,7 @@ const state = reactive({
 
 const algorithmDescription = computed(() => state.algorithm === 'GB_SFLA_CS'
   ? '算法负责目标分配、围捕航点、设备速度方向和捕获状态。'
-  : '算法负责威胁方向、阻断点、护航弧和混合 UAV/USV 守卫轨迹。')
+  : '算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。')
 
 const speedValid = computed(() =>
   state.uavSpeed >= 0
@@ -436,7 +455,47 @@ function addLog(message: string) {
   logEntries.value = [`${time}  ${message}`, ...logEntries.value].slice(0, 80)
 }
 
+function clearTacticalNotices() {
+  resetTacticalNotices()
+  consumedTacticalEventIds.clear()
+}
+
+function consumeTacticalEvents(frame: AlgorithmRuntimeFrame) {
+  const fresh: TacticalEvent[] = []
+  const events = Array.isArray(frame.metrics.tacticalEvents)
+    ? frame.metrics.tacticalEvents as Array<Record<string, unknown>>
+    : []
+  for (const raw of events) {
+    const eventId = String(raw.eventId ?? '').trim()
+    if (!eventId || consumedTacticalEventIds.has(eventId)) continue
+    consumedTacticalEventIds.add(eventId)
+    const notice: TacticalEvent = {
+      eventId,
+      type: String(raw.type ?? 'TACTICAL_UPDATE'),
+      threatCode: String(raw.threatCode ?? '') || undefined,
+      title: String(raw.title ?? '态势决策更新'),
+      message: String(raw.message ?? ''),
+      confidence: Number(raw.confidence ?? 0),
+      sequence: Number(raw.sequence ?? frame.sequence),
+    }
+    fresh.push(notice)
+    tacticalHistory.value = [notice, ...tacticalHistory.value].slice(0, 40)
+    addLog(`${notice.title}${notice.threatCode ? ` / ${notice.threatCode}` : ''}: ${notice.message}`)
+  }
+  enqueueTacticalNotices(fresh)
+}
+
 function send(type: string, payload: Record<string, unknown> = {}) {
+  if (type === 'loadScenario') {
+    savedScenario = JSON.parse(JSON.stringify(payload))
+    latestPoseBatch = null
+  }
+  if (type === 'applyPoseBatch') {
+    latestPoseBatch = JSON.parse(JSON.stringify(payload))
+    // An in-flight HTTP frame can arrive during an iframe reload. Cache it,
+    // but don't send it into an unacknowledged scene or advance Unity blindly.
+    if (recoveringScene.value || scenarioReadyRunId.value !== state.runId) return
+  }
   const requestId = unityPanel.value?.postToUnity(type, payload)
   addLog(`${type}${requestId ? ` / ${requestId}` : ''}`)
   return requestId
@@ -460,6 +519,53 @@ function finalizeTerminalMission(status: string, sequence: number) {
   })
 }
 
+function onUnityLoading() {
+  unityReady.value = false
+  scenarioReadyRunId.value = null
+  clearTimeout(recoveryTimer)
+  recoveryPoseSequence = null
+  if (!recoveringScene.value) {
+    restoredCamera = { mode: cameraMode.value, deviceCode: selectedDevice.value }
+  }
+  recoveringScene.value = savedScenario !== null
+  scenarioLoading.value = recoveringScene.value
+  simulationRuntime.recoveryError.value = ''
+  if (recoveringScene.value) {
+    recoveryTimer = window.setTimeout(() => failSceneRecovery('WebGL 加载超时，请重试恢复。原任务未重置。'), 120000)
+  }
+}
+
+function failSceneRecovery(message: string) {
+  clearTimeout(recoveryTimer)
+  scenarioReadyRunId.value = null
+  simulationRuntime.recoveryError.value = message
+  missionActionMessage.value = message
+  addLog(message)
+}
+
+function finishSceneRecovery() {
+  clearTimeout(recoveryTimer)
+  recoveryPoseSequence = null
+  recoveringScene.value = false
+  scenarioLoading.value = false
+  scenarioReadyRunId.value = state.runId
+  simulationRuntime.recoveryError.value = ''
+  if (restoredCamera.deviceCode) send('selectDevice', { deviceCode: restoredCamera.deviceCode })
+  send('setCameraMode', restoredCamera)
+  missionActionMessage.value = ''
+  unityPanel.value?.syncViewport()
+  addLog(`场景恢复完成：原 runId=${state.runId}，序列=${state.sequence}`)
+}
+
+function restoreLatestPose() {
+  if (latestPoseBatch) {
+    recoveryPoseSequence = Number(latestPoseBatch.sequence)
+    unityPanel.value?.postToUnity('applyPoseBatch', latestPoseBatch)
+  } else {
+    finishSceneRecovery()
+  }
+}
+
 function onUnityReady() {
   unityReady.value = true
   addLog('platformBridgeReady: Unity WebGL 已连接')
@@ -468,6 +574,13 @@ function onUnityReady() {
     protocolVersion: '2.0',
     buildId: 'vue-virtual-fleet-v2-compatible',
   })
+  if (recoveringScene.value && savedScenario) {
+    clearTimeout(recoveryTimer)
+    recoveryTimer = window.setTimeout(() => failSceneRecovery('场景或设备位置未确认，不能将连接在线视为恢复成功。请重试。'), 45000)
+    // Restore only the renderer, never prepare/start a second algorithm run.
+    unityPanel.value?.postToUnity('loadScenario', savedScenario)
+    return
+  }
   // The page should open with a real, validated default preview instead of
   // exposing Unity's bootstrap placeholders or leaving an empty ocean.  Use
   // the same loadScenario path as the Generate button so the default 3+3
@@ -486,7 +599,8 @@ function onUnityReady() {
 
 function onUnityError(message: string) {
   unityReady.value = false
-  scenarioLoading.value = false
+  if (recoveringScene.value) failSceneRecovery(message)
+  else scenarioLoading.value = false
   addLog(`Unity 错误: ${message}`)
 }
 
@@ -520,6 +634,14 @@ function onUnityMessage(message: UnityMessage) {
     // missing id for the currently loading scenario, but never accept a
     // positive id belonging to an older scenario.
     const runIdMatches = readyRunId === state.runId || readyRunId === 0
+    if (!runIdMatches) return
+    if (recoveringScene.value) {
+      if (!success) failSceneRecovery('Unity 场景恢复失败，请重试；原任务未重置。')
+      else if (recoveryPoseSequence === null) restoreLatestPose()
+      return
+    }
+    // Both scenarioLoaded and scenarioReady may acknowledge the same scene.
+    if (success && scenarioReadyRunId.value === state.runId && !scenarioLoading.value) return
     scenarioReadyRunId.value = success && runIdMatches
       ? (readyRunId || state.runId)
       : null
@@ -569,6 +691,29 @@ function onUnityMessage(message: UnityMessage) {
   if (message.type === 'poseFrameApplied') {
     const success = message.payload?.success === true
     const appliedSequence = Number(message.payload?.sequence ?? -1)
+    const appliedRunId = Number(message.payload?.runId ?? state.runId)
+    if (appliedRunId !== state.runId) return
+    if (success) acknowledgeTacticalFrame(appliedSequence)
+    if (recoveringScene.value && recoveryPoseSequence !== null) {
+      if (appliedSequence !== recoveryPoseSequence) return
+      if (!success) {
+        failSceneRecovery('恢复位置帧被 Unity 拒绝，请重试。')
+        return
+      }
+      const expectedCount = [latestPoseBatch?.vehicles, latestPoseBatch?.targets]
+        .reduce<number>((count, poses) => count + (Array.isArray(poses) ? poses.length : 0), 0)
+      if (Number(message.payload?.appliedCount ?? expectedCount) < expectedCount
+        || (Array.isArray(message.payload?.missingDeviceCodes) && message.payload.missingDeviceCodes.length > 0)
+        || (Array.isArray(message.payload?.unknownDeviceCodes) && message.payload.unknownDeviceCodes.length > 0)) {
+        failSceneRecovery('恢复帧中有设备缺失，不能视为恢复成功，请重试。')
+        return
+      }
+      if (latestPoseBatch && Number(latestPoseBatch.sequence) > appliedSequence) {
+        restoreLatestPose()
+        return
+      }
+      finishSceneRecovery()
+    }
     if (
       success
       && pendingTerminalSequence.value !== null
@@ -599,6 +744,7 @@ function onUnityMessage(message: UnityMessage) {
     )
   }
   if (message.type === 'cameraChanged') {
+    if (recoveringScene.value) return
     const mode = String(message.payload?.mode ?? '').trim().toLowerCase()
     const deviceCode = String(message.payload?.deviceCode ?? '').trim()
     if (mode) cameraMode.value = mode
@@ -616,7 +762,7 @@ function validateFleetCount(value: number) {
   return Math.max(1, Math.min(128, Math.trunc(Number.isFinite(value) ? value : 1)))
 }
 
-function generateScenario() {
+async function generateScenario() {
   if (sceneLocked.value || scenarioLoading.value) return
   state.uavSpeed = validateSpeed(state.uavSpeed, 15)
   state.usvSpeed = validateSpeed(state.usvSpeed, 4)
@@ -639,6 +785,7 @@ function generateScenario() {
   algorithmPrepared.value = false
   algorithmPreparePromise = null
   stopAlgorithmPolling()
+  clearTacticalNotices()
   previousAlgorithmPoses = new Map()
   currentAlgorithmFrame.value = null
   plannedScenarioPoses.value = buildVirtualFleetGridLayout({
@@ -648,11 +795,56 @@ function generateScenario() {
     uavSpeedMps: state.uavSpeed,
     usvSpeedMps: state.usvSpeed,
     captureMode: state.algorithm === 'GB_SFLA_CS',
-    seed: state.seed,
+    scenarioId: state.runId,
   })
   initialScenarioPoses.value = plannedScenarioPoses.value
   scenarioReadyRunId.value = null
   scenarioLoading.value = true
+  const generationRunId = state.runId
+
+  if (state.algorithm === 'ESCORT_GUARD') {
+    addLog(`authoritative escort preview pending: runId=${state.runId}`)
+    const prepared = await prepareExternalAlgorithm(true, [])
+    if (state.runId !== generationRunId) return
+    if (!prepared) {
+      scenarioLoading.value = false
+      missionActionMessage.value = algorithmPrepareError.value
+        ? `护航权威首帧准备失败：${algorithmPrepareError.value}`
+        : '护航权威首帧未就绪，本次场景未加载。'
+      return
+    }
+    try {
+      const frames = await fetchAlgorithmFrames(state.runId, 0)
+      const firstFrame = [...frames]
+        .filter(frame => frame.sequence > 0)
+        .sort((left, right) => left.sequence - right.sequence)[0]
+      if (!firstFrame) throw new Error('算法未返回初始帧')
+      const adapted = adaptVirtualAlgorithmFrame(
+        firstFrame,
+        new Map(),
+        { fleetOrigin: fleetOriginEnu },
+      )
+      plannedScenarioPoses.value = [
+        ...adapted.payload.vehicles.map(pose => ({ ...pose, deviceType: pose.deviceType ?? 'UAV' })),
+        ...adapted.payload.targets.map(pose => ({ ...pose, deviceType: 'TARGET' as const })),
+      ] as GridScenarioPose[]
+      initialScenarioPoses.value = plannedScenarioPoses.value
+      previousAlgorithmPoses = adapted.nextState
+      currentAlgorithmFrame.value = firstFrame
+      // Keep polling anchored at zero until mission start. The exact same
+      // sequence-one coordinates are loaded into Unity now and re-applied as
+      // an idempotent synchronization check before execution.
+      state.sequence = 0
+      consumeTacticalEvents(firstFrame)
+      addLog(`authoritative escort preview ready: sequence=${firstFrame.sequence}`)
+    } catch (error) {
+      scenarioLoading.value = false
+      algorithmPrepared.value = false
+      algorithmPrepareError.value = error instanceof Error ? error.message : String(error)
+      missionActionMessage.value = `护航权威首帧获取失败：${algorithmPrepareError.value}`
+      return
+    }
+  }
   addLog(`loadScenario pending: runId=${state.runId}`)
   send('loadScenario', {
     runtimeMode: 'VIRTUAL_SIMULATION',
@@ -665,13 +857,39 @@ function generateScenario() {
     initialPosesCoordinateFrame: 'GLOBAL_ENU',
     initialPoses: plannedScenarioPoses.value,
     initialSpeedMps: state.algorithm === 'GB_SFLA_CS' ? state.uavSpeed : state.usvSpeed,
-    seed: state.seed,
   })
 }
 
-function prepareExternalAlgorithm(): Promise<boolean> {
+function buildAlgorithmPrepareConfig(initialPoses: ScenarioInitialPose[]) {
+  return {
+    uavCount: state.uavCount,
+    usvCount: state.usvCount,
+    targetCount: configuredTargetCount.value,
+    protectedCount: state.algorithm === 'ESCORT_GUARD' ? scenarioPlan.value.protectedCount : 0,
+    threatCount: scenarioPlan.value.threatCount,
+    simultaneousThreats: scenarioPlan.value.simultaneousThreats,
+    worldWidth: scenarioPlan.value.worldWidth,
+    worldHeight: scenarioPlan.value.worldHeight,
+    adaptiveMultiTarget: state.algorithm === 'ESCORT_GUARD',
+    uavSpeedMps: state.uavSpeed,
+    usvSpeedMps: state.usvSpeed,
+    coordinateFrame: 'FLEET_LOCAL_ENU',
+    initialPosesCoordinateFrame: 'GLOBAL_ENU',
+    fleetOrigin: fleetOriginEnu,
+    initialPoses,
+    targetBehavior: 'MOVING',
+    previewEnabled: state.algorithm === 'GB_SFLA_CS',
+    threatMinDistanceM: state.algorithm === 'GB_SFLA_CS' ? 90 : 170,
+    standaloneVirtualSimulation: true,
+  }
+}
+
+function prepareExternalAlgorithm(
+  allowWhileScenarioLoading = false,
+  initialPoses: ScenarioInitialPose[] = initialScenarioPoses.value,
+): Promise<boolean> {
   if (algorithmPrepared.value) return Promise.resolve(true)
-  if (scenarioLoading.value) return Promise.resolve(false)
+  if (scenarioLoading.value && !allowWhileScenarioLoading) return Promise.resolve(false)
   if (algorithmPreparePromise) return algorithmPreparePromise
 
   const prepareRunId = state.runId
@@ -679,28 +897,11 @@ function prepareExternalAlgorithm(): Promise<boolean> {
   algorithmPrepareError.value = ''
   algorithmPreparePromise = (async () => {
     try {
-      const status = await prepareAlgorithmRun(prepareRunId, state.algorithm, {
-      uavCount: state.uavCount,
-      usvCount: state.usvCount,
-      targetCount: configuredTargetCount.value,
-      protectedCount: state.algorithm === 'ESCORT_GUARD' ? scenarioPlan.value.protectedCount : 0,
-      threatCount: scenarioPlan.value.threatCount,
-      simultaneousThreats: scenarioPlan.value.simultaneousThreats,
-      worldWidth: scenarioPlan.value.worldWidth,
-      worldHeight: scenarioPlan.value.worldHeight,
-      adaptiveMultiTarget: state.algorithm === 'ESCORT_GUARD',
-      seed: state.seed,
-      uavSpeedMps: state.uavSpeed,
-      usvSpeedMps: state.usvSpeed,
-      coordinateFrame: 'FLEET_LOCAL_ENU',
-      initialPosesCoordinateFrame: 'GLOBAL_ENU',
-      fleetOrigin: fleetOriginEnu,
-      initialPoses: initialScenarioPoses.value,
-      targetBehavior: 'MOVING',
-      previewEnabled: state.algorithm === 'GB_SFLA_CS',
-      threatMinDistanceM: state.algorithm === 'GB_SFLA_CS' ? 90 : 120,
-      standaloneVirtualSimulation: true,
-      })
+      await prepareAlgorithmRun(
+        prepareRunId,
+        state.algorithm,
+        buildAlgorithmPrepareConfig(initialPoses),
+      )
       if (state.runId !== prepareRunId) return false
       algorithmPrepared.value = true
       // PREVIEW keeps producing frames after prepare. Start at zero so the
@@ -836,6 +1037,12 @@ async function stopMission() {
 }
 
 async function resetMission() {
+  clearTimeout(recoveryTimer)
+  clearTacticalNotices()
+  savedScenario = null
+  latestPoseBatch = null
+  recoveringScene.value = false
+  simulationRuntime.recoveryError.value = ''
   stopAlgorithmPolling()
   if (algorithmPrepared.value) {
     try {
@@ -874,6 +1081,7 @@ async function applyAlgorithmFrame(
   )
   previousAlgorithmPoses = adapted.nextState
   currentAlgorithmFrame.value = frame
+  consumeTacticalEvents(frame)
   state.sequence = frame.sequence
   const trackedPose = adapted.payload.vehicles.find((pose) => pose.deviceCode === 'UAV-001')
   const targetPose = adapted.payload.targets[0]
@@ -948,6 +1156,8 @@ async function pollAlgorithmFrame() {
     )
     || !algorithmPrepared.value
     || !unityReady.value
+    || scenarioLoading.value
+    || recoveringScene.value
   ) return
   algorithmPollInFlight = true
   try {
@@ -992,7 +1202,16 @@ function followSelectedDevice() {
   })
 }
 
+// Registration lasts as long as the cached business view, not its activation.
+simulationRuntime.events = { ready: onUnityReady, loading: onUnityLoading, message: onUnityMessage, error: onUnityError }
+simulationRuntime.requested.value = true
+watch(webglExpanded, () => window.dispatchEvent(new CustomEvent('unity-runtime-track')))
 onBeforeUnmount(() => {
+  clearTimeout(recoveryTimer)
+  clearTacticalNotices()
+  simulationRuntime.events = null
+  simulationRuntime.requested.value = false
+  recoveringScene.value = false
   stopAlgorithmPolling()
   pauseMissionClock()
 })
@@ -1052,8 +1271,8 @@ onBeforeUnmount(() => {
             </div>
             <label>算法
               <select v-model="state.algorithm" :disabled="sceneLocked">
+                <option value="ESCORT_GUARD" title="智能粒球仿真护航算法">智能粒球仿真护航</option>
                 <option value="GB_SFLA_CS">GB-SFLA-CS 协同围捕（模拟）</option>
-                <option value="ESCORT_GUARD">混合 UAV/USV 护航守卫（模拟）</option>
               </select>
             </label>
             <p class="vf-description">{{ algorithmDescription }}</p>
@@ -1080,9 +1299,6 @@ onBeforeUnmount(() => {
                 <small>上限 4 m/s</small>
               </label>
             </div>
-            <label>随机种子
-              <input v-model.number="state.seed" type="number" step="1" :disabled="sceneLocked">
-            </label>
             <div class="vf-actions">
               <button class="vf-button primary" type="button" :disabled="sceneLocked || !unityReady || scenarioLoading" @click="generateScenario">
                 <RefreshCw :size="15" /> 生成场景
@@ -1099,8 +1315,7 @@ onBeforeUnmount(() => {
         <section class="vf-stage-panel" :class="{ expanded: webglExpanded }">
           <div class="vf-stage-head">
             <div>
-              <h3>仿真 WebGL</h3>
-              <span>独立运行实例 · virtual-fleet-v3-01</span>
+              <h3>算法仿真</h3>
             </div>
             <div class="vf-stage-actions">
               <strong>{{ stageCompositionLabel }}</strong>
@@ -1114,14 +1329,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
-          <div class="vf-unity-stage">
-            <SimulationUnityWebglPanel
-              ref="unityPanel"
-              @unity-ready="onUnityReady"
-              @unity-error="onUnityError"
-              @unity-message="onUnityMessage"
-            />
-          </div>
+          <div class="vf-unity-stage" data-simulation-viewport></div>
           <div class="vf-live-strip">
             <span><i></i>阶段 <strong>{{ missionPhaseLabel }}</strong></span>
             <span>综合进度 <strong>{{ displayMissionProgress }}%</strong></span>
@@ -1197,7 +1405,7 @@ onBeforeUnmount(() => {
                 <div v-if="visibleTargets.length" class="vf-target-list">
                   <article v-for="target in visibleTargets.slice(0, 6)" :key="target.code">
                     <div><strong>{{ target.code }}</strong><small>{{ target.type }}</small></div>
-                    <span>{{ target.state || 'VISIBLE' }}</span>
+                    <span>{{ target.state === 'CENTER_DEFENSE' ? '居中防御' : target.state === 'COVERED_WITHDRAWAL' ? '掩护撤离中' : target.state || 'VISIBLE' }}</span>
                   </article>
                   <p v-if="visibleTargets.length > 6" class="vf-list-overflow">另有 {{ visibleTargets.length - 6 }} 个目标，任务指标仍按全部目标统计</p>
                 </div>
@@ -1236,6 +1444,20 @@ onBeforeUnmount(() => {
                   <div><dt>避障修正</dt><dd>{{ Number(missionMetrics.avoidanceCount ?? 0) }}</dd></div>
                   <div><dt>实际耗时</dt><dd>{{ missionElapsedLabel }}</dd></div>
                 </dl>
+              </section>
+
+              <section v-if="tacticalHistory.length" class="vf-inspector-section">
+                <h4>意图事件链 <span>{{ tacticalHistory.length }}</span></h4>
+                <ol class="vf-tactical-history">
+                  <li v-for="event in tacticalHistory.slice(0, 8)" :key="event.eventId">
+                    <i></i>
+                    <div>
+                      <strong>{{ event.title }}</strong>
+                      <span>{{ event.threatCode ? `${event.threatCode} · ` : '' }}{{ event.message }}</span>
+                    </div>
+                    <b v-if="event.type.endsWith('INTENT_CONFIRMED') && event.confidence">{{ Math.round(event.confidence * 100) }}%</b>
+                  </li>
+                </ol>
               </section>
 
               <section v-if="captureGroups.length" class="vf-inspector-section">
@@ -1363,7 +1585,7 @@ onBeforeUnmount(() => {
 .vf-button:disabled { cursor: not-allowed; opacity: .4; }
 .vf-error { margin-top: 10px; color: #ff8179; font-size: 11px; }
 .vf-action-message { margin: 10px 0 0; color: #9fe8df; font-size: 11px; line-height: 1.5; }
-.vf-stage-panel { display: flex; height: 100%; min-height: 0; padding: 0; overflow: hidden; flex-direction: column; }
+.vf-stage-panel { position: relative; display: flex; height: 100%; min-height: 0; padding: 0; overflow: hidden; flex-direction: column; }
 .vf-stage-head { padding: 14px 15px; border-bottom: 1px solid rgba(108, 228, 213, .15); }
 .vf-stage-head > div:first-child { display: grid; gap: 3px; }
 .vf-stage-head strong { color: #ffcf72; font-size: 12px; }
@@ -1378,6 +1600,14 @@ onBeforeUnmount(() => {
 .vf-stage-panel.expanded .vf-unity-stage :deep(.unity-webgl-panel) { height: 100%; }
 .vf-unity-stage { height: 100%; min-height: 0; flex: 1; overflow: hidden; background: #031015; }
 .vf-unity-stage :deep(.unity-webgl-panel) { width: 100%; height: 100%; min-height: 0; }
+.vf-tactical-history { display: grid; margin: 0; padding: 0; gap: 7px; list-style: none; }
+.vf-tactical-history li { display: grid; padding: 7px 0; align-items: start; gap: 7px; border-bottom: 1px solid rgba(108,228,213,.1); grid-template-columns: auto minmax(0,1fr) auto; }
+.vf-tactical-history li:last-child { border-bottom: 0; }
+.vf-tactical-history i { width: 7px; height: 7px; margin-top: 4px; background: #6ce4d5; border-radius: 50%; box-shadow: 0 0 8px rgba(108,228,213,.75); }
+.vf-tactical-history div { display: grid; min-width: 0; gap: 2px; }
+.vf-tactical-history strong { color: #eafffb; font-size: 10px; }
+.vf-tactical-history span { color: #7fa7a5; font-size: 9px; line-height: 1.45; }
+.vf-tactical-history b { color: #ffcf72; font-size: 10px; }
 .vf-live-strip { display: flex; min-height: 34px; padding: 0 13px; align-items: center; flex-wrap: wrap; gap: 8px 18px; color: #7ea7a5; background: #06191f; border-top: 1px solid rgba(108,228,213,.16); border-bottom: 1px solid rgba(108,228,213,.1); font-size: 10px; }
 .vf-live-strip span { display: inline-flex; align-items: center; gap: 5px; }
 .vf-live-strip strong { color: #eafffb; font-size: 11px; }
@@ -1521,11 +1751,43 @@ onBeforeUnmount(() => {
   .vf-metric-list div { padding: 5px 0; }
 }
 @media (min-width: 2200px) {
-  .vf-workbench { grid-template-columns: 310px minmax(900px, 1fr) 320px; gap: 16px; }
+  .vf-workbench { --vf-left-width: 310px; --vf-right-width: 320px; gap: 16px; }
   .vf-app-header { min-height: 64px; padding-right: 22px; padding-left: 22px; }
   .vf-config-panel { padding: 18px; }
   .vf-stage-head { padding: 16px 18px; }
   .vf-command-bar { min-height: 72px; padding-right: 16px; padding-left: 16px; }
   .vf-camera-actions button { min-height: 36px; padding: 0 12px; font-size: 11px; }
+}
+@container workspace (max-width: 1050px) {
+  .virtual-fleet-page { height: auto; min-height: calc(100dvh - 40px); overflow: visible; }
+  .vf-app-header { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding-block: 10px; }
+  .vf-workspace-switch { display: flex; }
+  .vf-instance-status { grid-column: 1 / -1; justify-self: start; }
+  .vf-workbench, .vf-workbench.left-collapsed, .vf-workbench.right-collapsed, .vf-workbench.left-collapsed.right-collapsed {
+    overflow: visible; grid-template-columns: var(--vf-current-left) minmax(0, 1fr); grid-template-rows: auto;
+  }
+  .vf-inspector-drawer { grid-column: 1 / -1; min-height: 0; }
+  .vf-inspector-panel { position: relative; height: auto; max-height: 420px; }
+  .vf-inspector-drawer.collapsed .vf-inspector-panel { position: absolute; }
+  .vf-inspector-drawer.collapsed .vf-drawer-reopen { position: relative; height: 42px; }
+  .vf-unity-stage, .vf-unity-stage :deep(.unity-webgl-panel) { min-height: 340px; }
+  .vf-inspector-drawer.collapsed .vf-drawer-reopen { min-height: 42px; flex-direction: row; justify-content: center; }
+  .vf-inspector-drawer.collapsed .vf-drawer-reopen span { writing-mode: horizontal-tb; }
+  .vf-stage-actions { flex-wrap: wrap; }
+}
+@container workspace (max-width: 700px) {
+  .vf-app-header { grid-template-columns: minmax(0, 1fr); }
+  .vf-workbench, .vf-workbench.left-collapsed, .vf-workbench.right-collapsed, .vf-workbench.left-collapsed.right-collapsed { grid-template-columns: minmax(0, 1fr); }
+  .vf-config-drawer, .vf-inspector-drawer { grid-column: 1; }
+  .vf-config-panel { position: relative; height: auto; max-height: 560px; }
+  .vf-config-drawer.collapsed .vf-config-panel { position: absolute; }
+  .vf-config-drawer.collapsed .vf-drawer-reopen { position: relative; height: 42px; }
+  .vf-drawer-reopen { min-height: 42px; flex-direction: row; justify-content: center; }
+  .vf-drawer-reopen span { writing-mode: horizontal-tb; }
+  .vf-command-bar { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'commands' 'cameras' 'steps'; }
+  .vf-camera-actions, .vf-command-actions { justify-self: stretch; flex-wrap: wrap; justify-content: center; }
+  .vf-phase-stepper { justify-content: flex-start; }
+  .vf-phase-stepper li { flex-shrink: 0; min-width: 76px; }
+  .vf-stage-head { flex-wrap: wrap; gap: 8px; }
 }
 </style>

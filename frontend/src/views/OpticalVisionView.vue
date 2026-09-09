@@ -237,4 +237,19 @@ onBeforeUnmount(() => {
 @media(max-width:1280px){.feed-field{inset:84px 16px 78px;gap:8px}.feed.focus{grid-column:1/7}.stream-metrics{right:16px;left:16px}.stage-title{left:16px}.quality{right:16px}}
 @media(max-width:900px){.optical-stage{height:auto;min-height:900px}.feed-field{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(8,100px)}.feed.focus{grid-column:1/3;grid-row:1/4}.feed.slot-1{grid-column:1;grid-row:4/6}.feed.slot-2{grid-column:2;grid-row:4/6}.feed.slot-3{grid-column:1;grid-row:6/8}.feed.slot-4{grid-column:2;grid-row:6/8}.feed.slot-5{grid-column:1/3;grid-row:8/9}.stream-metrics{grid-template-columns:1fr 1fr}}
 @media(prefers-reduced-motion:reduce){.feed{will-change:auto}}
+/* Keep all six feeds in document flow on narrow workspaces. */
+.optical-stage { height: max(480px, calc(100dvh - 156px)); min-height: 480px; }
+@container workspace (max-width: 900px) {
+  .optical-stage { display: flex; flex-direction: column; gap: 12px; height: auto; min-height: 0; padding: 14px; }
+  .stage-title, .quality, .feed-field, .stream-metrics { position: relative; inset: auto; }
+  .quality { align-self: flex-start; }
+  .feed-field { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: 180px; gap: 8px; }
+  .feed.focus { grid-column: 1 / -1; grid-row: auto; }
+  .feed.slot-1, .feed.slot-2, .feed.slot-3, .feed.slot-4, .feed.slot-5 { grid-column: auto; grid-row: auto; }
+  .stream-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container workspace (max-width: 460px) {
+  .feed-field, .stream-metrics { grid-template-columns: minmax(0, 1fr); }
+  .quality { flex-wrap: wrap; }
+}
 </style>

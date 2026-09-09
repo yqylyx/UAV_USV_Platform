@@ -41,6 +41,7 @@ declare module 'vue' {
     RadarPpiCanvas: typeof import('./components/sensor/RadarPpiCanvas.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SimulationRuntimeHost: typeof import('./components/unity/SimulationRuntimeHost.vue')['default']
     SimulationUnityWebglPanel: typeof import('./components/unity/SimulationUnityWebglPanel.vue')['default']
     UnifiedVehicleControl: typeof import('./components/control/UnifiedVehicleControl.vue')['default']
     UnityRuntimeHost: typeof import('./components/unity/UnityRuntimeHost.vue')['default']

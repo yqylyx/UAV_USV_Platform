@@ -67,14 +67,14 @@ const overviewAlgorithmFallbacks: AlgorithmDefinition[] = [
   {
     id: -2,
     code: 'ESCORT_GUARD',
-    name: 'Escort Guard 协同护航',
+    name: 'SeaShield-ACG 海空异构集群智能护航围控',
     version: 'v1.1.0',
     missionType: 'COOPERATIVE_ESCORT',
     adapterType: 'PYTHON_PROCESS',
     deviceScale: '3 UAV + 3 USV + 1 Escort Target',
     enabled: true,
     defaultForType: true,
-    description: '三机三艇协同护航算法',
+    description: '海空异构集群意图识别、协同拦截与智能围控算法',
   },
 ]
 const overviewAlgorithms = ref<AlgorithmDefinition[]>([...overviewAlgorithmFallbacks])
@@ -444,7 +444,6 @@ function sendVirtualScenario(algorithmCode = selectedOverviewAlgorithm.value) {
     targetCount: 1,
     initialSpeedMps: 2,
     initialHeadingDeg: 0,
-    seed: virtualScenarioRunId.value % 2147483647,
   })
 }
 
@@ -456,22 +455,9 @@ async function selectOverviewAlgorithm(code: string) {
   if (overviewRuntimeMode.value === 'VIRTUAL_SIMULATION') sendVirtualScenario(code)
 }
 
-async function selectOverviewRuntimeMode(mode: OverviewRuntimeMode) {
-  if (overviewMissionRunning.value || commandBusy.value) return
-  overviewRuntimeMode.value = mode
-  overviewDeploymentAcknowledged.value = false
-  overviewMissionStatus.value = 'READY'
-  if (mode === 'REAL') {
-    try {
-      await loadOverviewMission()
-      overviewDeploymentAcknowledged.value = overviewMissionId.value !== null
-    } catch (error) {
-      ElMessage.error(error instanceof Error ? error.message : '真实任务加载失败')
-    }
-    return
-  }
-  sendVirtualScenario()
-}
+const overviewSelectedAlgorithm = computed(() =>
+  enabledOverviewAlgorithms.value.find(algorithm => algorithm.code === selectedOverviewAlgorithm.value),
+)
 const selectedOverviewActions = computed<OverviewQuickAction[]>(() => {
   if (selectedOverviewDevice.value?.type === 'USV') {
     return [
@@ -1593,28 +1579,18 @@ watch(
       </header>
 
       <section class="overview-stage-panel">
-        <div class="overview-stage-header">
-          <div class="overview-stage-title">
-            <h3>Unity 海空协同态势</h3>
-            <span>当前任务：{{ overviewMissionName }}</span>
+        <div class="overview-taskbar">
+          <div class="overview-taskbar-title">
+            <h3>海空协同任务</h3>
+            <span :title="overviewMissionName">{{ overviewMissionName }}</span>
           </div>
-          <label class="overview-algorithm-select">
-            <span>算法</span>
-            <select :value="selectedOverviewAlgorithm" :disabled="overviewMissionRunning || commandBusy" @change="selectOverviewAlgorithm(($event.target as HTMLSelectElement).value)">
-              <option v-for="algorithm in enabledOverviewAlgorithms" :key="algorithm.code" :value="algorithm.code">{{ algorithm.name }} v{{ algorithm.version }}</option>
+          <label class="overview-taskbar-algorithm">
+            <select aria-label="执行算法" :value="selectedOverviewAlgorithm" :disabled="overviewMissionRunning || commandBusy" @change="selectOverviewAlgorithm(($event.target as HTMLSelectElement).value)">
+              <option v-for="algorithm in enabledOverviewAlgorithms" :key="algorithm.code" :value="algorithm.code">{{ algorithm.name }}</option>
             </select>
+            <small v-if="overviewSelectedAlgorithm" :title="`完整版本：${overviewSelectedAlgorithm.version}`">v{{ overviewSelectedAlgorithm.version.replace(/^v/i, '').split('-')[0] }}</small>
           </label>
-          <label class="overview-algorithm-select">
-            <span>验证层面</span>
-            <select
-              :value="overviewRuntimeMode"
-              :disabled="overviewMissionRunning || commandBusy"
-              @change="selectOverviewRuntimeMode(($event.target as HTMLSelectElement).value as OverviewRuntimeMode)"
-            >
-              <option value="REAL">真实设备验证</option>
-            </select>
-          </label>
-          <div class="overview-camera-tabs" aria-label="Unity 视角切换">
+          <div class="overview-taskbar-views" aria-label="Unity 视角切换">
             <button
               v-for="mode in cameraModes"
               :key="mode.value"
@@ -1635,8 +1611,8 @@ watch(
               {{ unityBridgeStore.trajectoryVisible ? '隐藏轨迹' : '显示轨迹' }}
             </button>
           </div>
-          <div class="overview-mission-toggle">
-            <span>{{ overviewMissionStateText }}</span>
+          <div class="overview-taskbar-action">
+            <span class="overview-taskbar-state" :data-state="overviewRuntimeState" role="status"><i aria-hidden="true"></i>{{ overviewMissionStateText }}</span>
             <button
               type="button"
               :class="{ danger: overviewMissionRunning }"

@@ -36,7 +36,7 @@ const typeLabels = {
 
 const algorithmLabels: Record<string,string> = {
   GB_SFLA_CS: 'GB-SFLA-CS 协同围捕',
-  ESCORT_GUARD: '混合 UAV/USV 护航守卫',
+  ESCORT_GUARD: 'SeaShield-ACG 海空异构集群智能护航围控',
   UNITY_SIMPLE_ENCIRCLEMENT: 'Unity 默认简单围捕',
 }
 

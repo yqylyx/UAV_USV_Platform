@@ -24,7 +24,7 @@ export interface GridLayoutOptions {
   uavSpeedMps: number
   usvSpeedMps: number
   captureMode?: boolean
-  seed?: number
+  scenarioId?: number
 }
 
 function gridAxis(index: number, count: number, min: number, max: number) {
@@ -82,8 +82,8 @@ function appendGrid(
   }
 }
 
-function createSeededRandom(seed: number | undefined) {
-  let state = (Number.isFinite(seed) ? Math.trunc(seed as number) : 20260814) >>> 0
+function createScenarioRandom(scenarioId: number | undefined) {
+  let state = (Number.isFinite(scenarioId) ? Math.trunc(scenarioId as number) : Date.now()) >>> 0
   return () => {
     state = (state * 1664525 + 1013904223) >>> 0
     return state / 0x100000000
@@ -115,8 +115,8 @@ function appendRandomStaging(
   for (let index = 0; index < count; index += 1) {
     const row = Math.floor(index / columns)
     const column = index % columns
-    // Seeded cell jitter preserves the requested random-looking idle layout
-    // while the cell pitch guarantees visible clearance.
+    // Scenario-local jitter preserves a natural idle layout while remaining
+    // stable for one generated scene; cell pitch guarantees visible clearance.
     const jitterEast = (random() - .5) * spacing * .18
     const jitterNorth = (random() - .5) * spacing * .18
     // Capture missions start as a pursuit, not as an almost-complete ring.
@@ -203,9 +203,12 @@ export function buildVirtualFleetGridLayout(
   const escortUsableWidth = plan.worldWidth - 56
   const escortCenterEast = escortSafeLeft
     + Math.min(90, Math.max(58, escortUsableWidth * .32))
-  const multiEscort = !captureMode && plan.protectedCount > 1
+  // Escort always uses one protected vessel, so "protectedCount > 1" made
+  // the intended convoy preview branch unreachable. Keep the protected hull
+  // inside the friendly envelope for every fleet size, including 3+3.
+  const multiEscort = !captureMode
   if (captureMode) {
-    const random = createSeededRandom(options.seed)
+    const random = createScenarioRandom(options.scenarioId)
     const occupied: PlanarPoint[] = []
     // Stage the friendly fleet east of the hostile target. The target's
     // initial escape therefore points west into the long open-water corridor,

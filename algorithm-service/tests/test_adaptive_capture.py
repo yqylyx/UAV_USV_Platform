@@ -8,6 +8,31 @@ from app.navigation import TASK_CENTER_SCENE_MAP, SceneSafetyFilter
 
 
 class AdaptiveCaptureAdapterTest(unittest.TestCase):
+    def test_enemy_motion_is_bow_first_and_continuous_including_preview_start(self):
+        for count in (3, 10):
+            with self.subTest(count=count), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                a = AdaptiveCaptureAdapter(9911, {"uavCount":count, "usvCount":count, "targetCount":1 if count==3 else 2, "seed":20260814})
+                a.set_mission_active(False)
+                previous = {}
+                for index in range(2000):
+                    if index == 20:
+                        a.set_mission_active(True)
+                    f = a.step()
+                    for t in f.targets:
+                        if t.code in previous:
+                            x,y,h = previous[t.code]
+                            dx,dy = t.x-x,t.y-y
+                            angle = math.radians(t.heading)
+                            why = (count,index,t.code)
+                            self.assertLessEqual(math.hypot(dx,dy), .282, why)
+                            self.assertGreaterEqual(dx*math.cos(angle)+dy*math.sin(angle), -.002, why)
+                            self.assertLessEqual(abs(-dx*math.sin(angle)+dy*math.cos(angle)), .003, why)
+                            self.assertLessEqual(abs((t.heading-h+180)%360-180), 7.1, why)
+                        previous[t.code] = (t.x,t.y,t.heading)
+                    if f.terminalStatus:
+                        break
+                self.assertEqual(f.terminalStatus, "COMPLETED")
+
     def test_predictive_reassignment_changes_members_but_preserves_balanced_quotas(self):
         adapter = AdaptiveCaptureAdapter(91, {
             "uavCount": 6,

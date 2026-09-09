@@ -22,7 +22,7 @@ const form = reactive({
 
 const fallbackAlgorithms: AlgorithmDefinition[] = [
   { id: -1, code: 'GB_SFLA_CS', name: 'GB-SFLA-CS 协同围捕', version: '1.0.0', missionType: 'COOPERATIVE_ENCIRCLEMENT', adapterType: 'PYTHON_PROCESS', deviceScale: '3 UAV + 3 USV + 1 目标', enabled: true, defaultForType: true, description: '粒球、SFLA 与 CS 混合围捕算法。' },
-  { id: -2, code: 'ESCORT_GUARD', name: '混合 UAV/USV 护航守卫', version: '1.0.0', missionType: 'COOPERATIVE_ESCORT', adapterType: 'PYTHON_PROCESS', deviceScale: '3 UAV + 3 USV + 护航目标 + 威胁目标', enabled: true, defaultForType: true, description: '移动护航目标与动态威胁阻断算法。' },
+  { id: -2, code: 'ESCORT_GUARD', name: 'SeaShield-ACG 海空异构集群智能护航围控', version: '1.0.0', missionType: 'COOPERATIVE_ESCORT', adapterType: 'PYTHON_PROCESS', deviceScale: '3 UAV + 3 USV + 护航目标 + 威胁目标', enabled: true, defaultForType: true, description: '海空异构集群意图识别、协同拦截与智能围控算法。' },
 ]
 const enabledAlgorithms = computed(() => (props.algorithms.length ? props.algorithms : fallbackAlgorithms).filter(item => item.enabled))
 const selectedAlgorithm = computed(() => enabledAlgorithms.value.find(item => item.code === form.algorithmCode) ?? enabledAlgorithms.value[0])

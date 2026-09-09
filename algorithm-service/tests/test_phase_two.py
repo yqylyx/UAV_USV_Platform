@@ -52,7 +52,7 @@ class PhaseTwoScenarioTests(unittest.TestCase):
         assigned = [agent for agent in frame.agents if agent.assignedTargetCode == selected]
         self.assertGreaterEqual(len(assigned), 3)
 
-    def test_twenty_plus_twenty_starts_all_three_threats_and_lists_all_groups(self):
+    def test_twenty_plus_twenty_starts_with_convoy_and_unclassified_threats(self):
         adapter = AdaptiveEscortAdapter(420, {
             "uavCount": 20, "usvCount": 20, "seed": 20260814,
         })
@@ -67,18 +67,18 @@ class PhaseTwoScenarioTests(unittest.TestCase):
             ["THREAT-001", "THREAT-002", "THREAT-003"],
             [item["threatCode"] for item in frame.metrics["captureGroups"]],
         )
-        self.assertTrue(frame.metrics["parallelResponseStarted"])
+        self.assertFalse(frame.metrics["parallelResponseStarted"])
         self.assertEqual("GUARDING", frame.metrics["missionStage"])
         self.assertTrue(all(
-            not item.forced and item.intent == "ATTACKING"
+            not item.forced and item.intent == "UNCLASSIFIED"
             for item in adapter.threats
         ))
         self.assertTrue(all(
-            item["uavCount"] == 4 and item["usvCount"] == 4
+            item["uavCount"] == 0 and item["usvCount"] == 0
             for item in frame.metrics["captureGroups"]
         ))
 
-    def test_fifteen_through_nineteen_start_all_three_parallel_groups(self):
+    def test_fifteen_through_nineteen_start_in_convoy_before_response(self):
         for count in (15, 18, 19):
             with self.subTest(count=count):
                 adapter = AdaptiveEscortAdapter(390 + count, {
@@ -89,18 +89,18 @@ class PhaseTwoScenarioTests(unittest.TestCase):
                 self.assertEqual(3, len(threats))
                 self.assertTrue(all(item.visible for item in threats))
                 self.assertEqual(3, frame.metrics["simultaneousThreatLimit"])
-                self.assertTrue(frame.metrics["parallelResponseStarted"])
+                self.assertFalse(frame.metrics["parallelResponseStarted"])
                 self.assertEqual("GUARDING", frame.metrics["missionStage"])
                 self.assertTrue(all(
-                    not item.forced and item.intent == "ATTACKING"
+                    not item.forced and item.intent == "UNCLASSIFIED"
                     for item in adapter.threats
                 ))
                 self.assertTrue(all(
-                    item["uavCount"] == 4 and item["usvCount"] == 4
+                    item["uavCount"] == 0 and item["usvCount"] == 0
                     for item in frame.metrics["captureGroups"]
                 ))
 
-    def test_global_stage_tracks_the_earliest_unresolved_threat(self):
+    def test_global_stage_does_not_regress_for_a_later_incident(self):
         adapter = AdaptiveEscortAdapter(418, {
             "uavCount": 18, "usvCount": 18, "seed": 20260814,
         })
@@ -113,9 +113,9 @@ class PhaseTwoScenarioTests(unittest.TestCase):
             threat.forced = True
             threat.mission_stage = stage
         adapter._reported_mission_stage = "ENCIRCLEMENT"
-        self.assertEqual("THREAT_DETECTION", adapter._reported_stage())
+        self.assertEqual("ENCIRCLEMENT", adapter._reported_stage())
 
-    def test_twenty_five_and_thirty_start_all_four_parallel_groups(self):
+    def test_twenty_five_and_thirty_start_before_parallel_response(self):
         for count in (25, 30):
             with self.subTest(count=count):
                 adapter = AdaptiveEscortAdapter(420 + count, {
@@ -127,10 +127,10 @@ class PhaseTwoScenarioTests(unittest.TestCase):
                 self.assertTrue(all(item.visible for item in threats))
                 self.assertEqual(4, frame.metrics["visibleThreatCount"])
                 self.assertEqual(4, frame.metrics["simultaneousThreatLimit"])
-                self.assertTrue(frame.metrics["parallelResponseStarted"])
+                self.assertFalse(frame.metrics["parallelResponseStarted"])
                 self.assertEqual("GUARDING", frame.metrics["missionStage"])
                 self.assertTrue(all(
-                    not item.forced and item.intent == "ATTACKING"
+                    not item.forced and item.intent == "UNCLASSIFIED"
                     for item in adapter.threats
                 ))
                 self.assertEqual(
@@ -138,12 +138,15 @@ class PhaseTwoScenarioTests(unittest.TestCase):
                     [item["threatCode"] for item in frame.metrics["captureGroups"]],
                 )
                 self.assertTrue(all(
-                    item["uavCount"] == 4 and item["usvCount"] == 4
+                    item["uavCount"] == 0 and item["usvCount"] == 0
                     for item in frame.metrics["captureGroups"]
                 ))
 
     def test_every_large_fleet_vehicle_has_an_explicit_active_job(self):
-        active_roles = {"CLOSE_GUARD", "INTERCEPTOR", "CAPTURE_RESERVE"}
+        active_roles = {
+            "CLOSE_GUARD", "FORMATION_GUARD", "INTERCEPTOR",
+            "CAPTURE_RESERVE", "RECON",
+        }
         for count in (15, 20, 25, 30):
             with self.subTest(count=count):
                 adapter = AdaptiveEscortAdapter(460 + count, {
@@ -173,6 +176,14 @@ class PhaseTwoScenarioTests(unittest.TestCase):
         fast = AdaptiveEscortAdapter(423, {
             "uavCount": 3, "usvCount": 3, "usvSpeedMps": 1.6, "seed": 2,
         })
+        # Stable formation followers must match the protected hull even when a
+        # configured cruise speed is lower, so isolate free-response motion
+        # when verifying that the speed control remains effective.
+        for adapter in (slow, fast):
+            for item in adapter.vehicles:
+                if item.kind == "USV":
+                    item.role = "RECON"
+                    item.group_id = "RECON-001"
         slow_initial = slow.step()
         fast_initial = fast.step()
         slow_next = slow.step()

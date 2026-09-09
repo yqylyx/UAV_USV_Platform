@@ -346,6 +346,7 @@ async function logout() {
 
 .console-workspace {
   color: #e9fffb;
+  padding: 16px clamp(12px, 1.4vw, 32px) 20px;
 }
 
 .console-topbar {
@@ -412,5 +413,29 @@ async function logout() {
   .console-topbar-actions {
     justify-content: flex-start;
   }
+}
+
+/* Compact navigation is driven by available width, not the device brand/DPR. */
+@media (max-width: 1100px) {
+  .console-shell { --console-sidebar-width: 64px; }
+  .console-shell.sidebar-collapsed { --console-sidebar-width: 64px; }
+  .console-sidebar { padding: 16px 8px; }
+  .console-brand { justify-content: center; padding-inline: 0; }
+  .console-brand-copy, .console-nav-label, .console-sidebar-user span { display: none; }
+  .console-navigation :deep(.nav-item) { justify-content: center; padding-inline: 0; }
+  .console-sidebar-footer { flex-direction: column; padding-inline: 0; }
+  .console-sidebar-toggle { display: none; }
+}
+@media (max-width: 600px) {
+  .console-shell, .console-shell.sidebar-collapsed { --console-sidebar-width: 52px; }
+  .console-workspace { padding: 12px 8px; }
+  .console-title h1 { font-size: 24px; }
+  .console-topbar { gap: 12px; margin-bottom: 16px; }
+  .console-sidebar { padding-inline: 5px; }
+  .console-brand-mark { width: 34px; height: 34px; }
+  .console-topbar-actions { gap: 8px; }
+}
+@media (max-height: 650px) {
+  .console-sidebar { height: 100dvh; overflow-y: auto; }
 }
 </style>

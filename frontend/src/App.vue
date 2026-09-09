@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { RouterView } from 'vue-router'
 import { useRoute } from 'vue-router'
 import UnityRuntimeHost from '@/components/unity/UnityRuntimeHost.vue'
+import SimulationRuntimeHost from '@/components/unity/SimulationRuntimeHost.vue'
+import { simulationRuntime } from '@/composables/simulationRuntime'
 import { useUnityViewportStore } from '@/stores/unityViewport'
 
 const route = useRoute()
@@ -25,6 +27,10 @@ const showMissionCenterUnity = computed(
 </script>
 
 <template>
+  <SimulationRuntimeHost
+    v-if="simulationRuntime.requested.value && route.meta.requiresAuth"
+    :active="route.name === 'dashboard' && route.query.workspace === 'simulation'"
+  />
   <UnityRuntimeHost
     v-if="showSystemOverviewUnity"
     :viewport="route.name === 'optical-vision' ? 'visual-sensors-live' : 'dashboard'"
