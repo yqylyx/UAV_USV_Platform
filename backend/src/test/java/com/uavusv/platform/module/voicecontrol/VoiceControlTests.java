@@ -656,4 +656,62 @@ class VoiceControlTests {
         assertEquals(0, sent.size());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"START", "RESUME"})
+    void presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String action) {
+        heartbeat(action.equals("START") ? "PREPARED" : "PAUSED", 4, 2);
+        var e = execution(confirm(proposal(action)));
+        String id = e.path("executionId").asText();
+        worker.tick();
+        t.advance(31000);
+        worker.tick();
+        assertEquals("TIMED_OUT", app.execution(id).path("state").asText());
+        assertEquals("PENDING", app.execution(id).path("presentationStatus").asText());
+        var success = event("COMMAND_RESULT");
+        success.set("commandId", e.path("commandId"));
+        success.put("eventSequence", 2).put("status", "SUCCEEDED")
+                .put("runtimeState", "RUNNING").put("stateVersion", 5)
+                .put("lastFrameSequence", 1).putNull("errorCode");
+        success.putArray("affectedDeviceCodes").add("UAV-001").add("USV-001");
+        worker.receive(ref(), gen(), success);
+        String deadline = s.locked(() -> s.get("voice_execution", id)).path("_presentationDeadlineAt").asText();
+        assertEquals(t.now().plusSeconds(30).toString(), deadline);
+        t.advance(29999);
+        assertEquals("PENDING", app.execution(id).path("presentationStatus").asText());
+        worker.receive(ref(), gen(), success);
+        assertEquals(deadline, s.locked(() -> s.get("voice_execution", id)).path("_presentationDeadlineAt").asText());
+        t.advance(1);
+        app = new VoiceCommandApplicationService(s, j, t, a, r, settings);
+        var expired = app.execution(id);
+        assertEquals("STALE", expired.path("presentationStatus").asText());
+        assertEquals("SUCCEEDED", expired.path("state").asText());
+        assertEquals("SUCCESS", expired.path("outcome").asText());
+        assertFalse(expired.path("timedOutAt").isNull());
+        assertFalse(expired.has("_presentationDeadlineAt"));
+        var bound = presentation.bind(ref(), VoiceJson.uuid(), j.object()
+                .put("runtimeGeneration", gen()).putNull("expectedBindingId"));
+        var body = j.object().put("runtimeGeneration", gen())
+                .put("bindingId", bound.path("bindingId").asText())
+                .put("kind", "FRAME_APPLIED").put("executionId", id);
+        var report = presentation.challenge(ref(), VoiceJson.uuid(), body);
+        report.remove("expiresAt");
+        report.put("frameSequence", 1).put("applied", true);
+        presentation.report(ref(), VoiceJson.uuid(), report);
+        assertEquals("REPORTED_APPLIED", app.execution(id).path("presentationStatus").asText());
+        t.advance(10001);
+        assertEquals("STALE", app.execution(id).path("presentationStatus").asText());
+        assertEquals("SUCCEEDED", app.execution(id).path("state").asText());
+    }
+
+    @Test
+    void pauseDoesNotAcquirePresentationDeadline() {
+        var e = execution(confirm(proposal("PAUSE")));
+        worker.tick();
+        result(e, "SUCCEEDED", 2);
+        t.advance(60000);
+        var stored = s.locked(() -> s.get("voice_execution", e.path("executionId").asText()));
+        assertFalse(stored.has("_presentationDeadlineAt"));
+        assertEquals("NOT_REQUIRED", app.execution(e.path("executionId").asText()).path("presentationStatus").asText());
+    }
+
 }

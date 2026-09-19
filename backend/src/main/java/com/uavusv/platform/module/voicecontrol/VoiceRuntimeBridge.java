@@ -85,6 +85,17 @@ public class VoiceRuntimeBridge {
         commands.manual(c.path("runtimeRef").asText(), action);
     }
 
+    /** Read one authorized persisted snapshot, not the pre-handshake registration object. */
+    public ObjectNode statusSnapshot(ObjectNode c) {
+        if (c == null) return null;
+        return registry.store.locked(() -> {
+            var current = registry.require(c.path("runtimeRef").asText(), registry.access.user(false));
+            if (!c.path("runtimeGeneration").equals(current.path("runtimeGeneration")))
+                throw VoiceFailure.conflict("GENERATION_MISMATCH");
+            return current.deepCopy();
+        });
+    }
+
     public String state(ObjectNode c) {
         return registry.store.locked(
                 () ->

@@ -237,3 +237,11 @@ python docs/voice-control-p0/validate_contracts.py
 K04 的本版字段和单挑战行为应在联调前由前端/Unity/测试同学确认；不同实现建议需通过更新 Schema、fixtures 和本文统一，不能各自修改字段。
 
 实际测试结果见 [backend-validation.md](backend-validation.md)。
+
+## E01 增量：prepare 响应
+
+prepare/status/动作共用响应已补充 runtimeRef、runtimeGeneration、protocolVersion、capabilities；从授权后的持久化握手快照读取，legacy 返回 null/null/null/[]。详见 [prepare-response.md](prepare-response.md)。本增量的实际测试记录单列，不能沿用此前 203/70 的计数。
+
+## E02 增量：画面等待期限
+
+START/RESUME 成功后持久化 30 秒展示期限，读取时将到期 PENDING 结算为 STALE；合法迟到画面证据可恢复已报告。详见 [presentation-deadline.md](presentation-deadline.md)。

@@ -62,6 +62,12 @@ def main():
     business_ids = re.findall(r'^\| ([ARIPFC]\d{2}) \|', tests, re.M)
     assert len(business_ids) == 76, 'Missing business-test cases'
     assert len(business_ids) == len(set(business_ids)), 'Duplicate business-test ID'
+    prepare_schema = json.loads((ROOT / 'prepare-response.schema.json').read_text(encoding='utf-8'))
+    prepare_cases = json.loads((ROOT / 'prepare-response.fixtures.json').read_text(encoding='utf-8'))['cases']
+    Draft7Validator.check_schema(prepare_schema)
+    for case in prepare_cases:
+        assert Draft7Validator(prepare_schema).is_valid(case['data']) == case['valid'], case['id']
+    print(f'PASS: {len(prepare_cases)} prepare response fixtures')
     print(f'PASS: schema + {len(seen)} positive/negative fixtures + golden plan hash + local links/fences')
     print(f'Design inventory: {len(business_ids)} business cases; NOT EXECUTED (design only).')
     print('No application, database, provider, Unity or ROS connection was made.')

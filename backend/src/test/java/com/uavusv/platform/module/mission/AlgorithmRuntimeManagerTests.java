@@ -45,6 +45,10 @@ class AlgorithmRuntimeManagerTests {
                     Map.of("seed", 42, "targetBehavior", "STATIC")
             );
             assertEquals("PREPARED", prepared.state());
+            assertEquals(null, prepared.runtimeRef());
+            assertEquals(null, prepared.runtimeGeneration());
+            assertEquals(null, prepared.protocolVersion());
+            assertTrue(prepared.capabilities().isEmpty());
             manager.action(runId, "START");
 
             JsonNode frame = null;
@@ -159,6 +163,22 @@ class AlgorithmRuntimeManagerTests {
         } finally {
             manager.close();
         }
+    }
+
+    @Test
+    void unityNativeResponseKeepsLegacyFieldsAndEmptyVoiceMetadata() {
+        var manager = manager(mock(MissionRunRepository.class), mock(AlgorithmCatalogService.class));
+        var response = manager.prepare(93001L, "UNITY_SIMPLE_ENCIRCLEMENT",
+                Map.of("standaloneVirtualSimulation", true));
+        assertEquals("UNITY_NATIVE", response.state());
+        var json = new ObjectMapper().valueToTree(response);
+        assertEquals(10, json.size());
+        assertTrue(json.get("runtimeRef").isNull());
+        assertTrue(json.get("runtimeGeneration").isNull());
+        assertTrue(json.get("protocolVersion").isNull());
+        assertTrue(json.get("capabilities").isArray());
+        assertTrue(json.get("capabilities").isEmpty());
+        manager.close();
     }
 
     private AlgorithmRuntimeManager manager(

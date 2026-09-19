@@ -255,6 +255,16 @@ public class VoiceCommandApplicationService {
     }
 
     private ObjectNode executionView(ObjectNode e) {
+        if ("SUCCEEDED".equals(e.path("state").asText())
+                && java.util.Set.of("START", "RESUME").contains(e.path("action").asText())
+                && "PENDING".equals(e.path("presentationStatus").asText())) {
+            String deadline = e.path("_presentationDeadlineAt").asText("");
+            // Historical successes have no trustworthy start time: never invent a new window.
+            if (deadline.isEmpty() || !t.now().isBefore(java.time.Instant.parse(deadline))) {
+                e.put("presentationStatus", "STALE").put("updatedAt", t.stamp());
+                s.save("voice_execution", e);
+            }
+        }
         var v = RuntimeContextRegistry.publicView(e);
         var c = s.get("voice_runtime_context", e.path("runtimeRef").asText());
         if ("REPORTED_APPLIED".equals(v.path("presentationStatus").asText())

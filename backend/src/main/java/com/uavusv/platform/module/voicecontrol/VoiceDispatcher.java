@@ -457,6 +457,14 @@ public class VoiceDispatcher {
                             });
             e.set("errorCode", event.path("errorCode"));
         }
+        // Start the display window only when authoritative success is persisted.
+        // Duplicate terminal receipts return above and cannot extend this deadline.
+        if ("SUCCEEDED".equals(status)
+                && Set.of("START", "RESUME").contains(e.path("action").asText())) {
+            var succeededAt = t.now();
+            e.put("_presentationStartedAt", succeededAt.toString());
+            e.put("_presentationDeadlineAt", succeededAt.plusSeconds(30).toString());
+        }
         e.put("_resultFrame", event.path("lastFrameSequence").asLong()).put("updatedAt", t.stamp());
         s.save("voice_execution", e);
         var ch = r.channel(c.path("_id").asText());

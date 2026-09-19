@@ -13,6 +13,10 @@ p.add_argument('--command-protocol')
 p.add_argument('--runtime-ref')
 p.add_argument('--runtime-generation')
 a = p.parse_args()
+with open(a.config_file, encoding='utf-8') as config_file:
+    config = json.load(config_file)
+if config.get('testFailBeforeReady'):
+    sys.exit(2)
 lock = threading.RLock()
 state, version, heartbeat_sequence = 'PREPARED', 0, 0
 identity = dict(protocolVersion='algorithm.command.v1', runtimeRef=a.runtime_ref,
@@ -31,7 +35,7 @@ def heartbeat():
                   runtimeState=state, stateVersion=version, lastFrameSequence=1))
 
 emit(dict(identity, kind='RUNTIME_READY', adapterId='backend-test-only',
-          capabilities=['START', 'PAUSE', 'RESUME', 'STOP'], state=state, stateVersion=version))
+          capabilities=config.get('testCapabilities', ['START', 'PAUSE', 'RESUME', 'STOP']), state=state, stateVersion=version))
 emit({'event': 'frame', 'payload': {'sequence': 1, 'agents': [
     {'deviceCode': 'UAV-001'}, {'deviceCode': 'USV-001'}]}})
 heartbeat()

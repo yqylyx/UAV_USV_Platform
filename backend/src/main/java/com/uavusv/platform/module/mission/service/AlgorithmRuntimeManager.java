@@ -229,10 +229,18 @@ public class AlgorithmRuntimeManager {
 
     public AlgorithmRuntimeStatusResponse status(Long runId) {
         RuntimeHandle handle = requireHandle(runId);
-        if (voiceBridge != null) voiceBridge.read(handle.voiceContext);
+        ObjectNode snapshot = voiceBridge == null ? null : voiceBridge.statusSnapshot(handle.voiceContext);
+        boolean v1 = voiceBridge != null && voiceBridge.v1(snapshot);
+        boolean negotiated = v1 && snapshot.path("_ready").asBoolean();
+        List<String> capabilities = new ArrayList<>();
+        if (negotiated) snapshot.path("capabilities").forEach(value -> capabilities.add(value.asText()));
         return new AlgorithmRuntimeStatusResponse(runId, handle.algorithmCode,
-                voiceBridge != null && voiceBridge.v1(handle.voiceContext) ? voiceBridge.state(handle.voiceContext) : handle.state.get(),
-                handle.latestSequence.get(), handle.error.get(), handle.latestFrame.get());
+                v1 ? snapshot.path("state").asText() : handle.state.get(),
+                handle.latestSequence.get(), handle.error.get(), handle.latestFrame.get(),
+                negotiated ? snapshot.path("runtimeRef").asText() : null,
+                negotiated ? snapshot.path("runtimeGeneration").asText() : null,
+                negotiated ? snapshot.path("protocolVersion").asText() : null,
+                capabilities);
     }
 
     public JsonNode latestFrame(Long runId, long afterSequence) {

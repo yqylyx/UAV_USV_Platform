@@ -1,0 +1,121 @@
+{
+  "cases": [
+    {
+      "id": "PR01",
+      "valid": true,
+      "data": {
+        "runId": 9001,
+        "algorithmCode": "GB_SFLA_CS",
+        "state": "PREPARED",
+        "latestSequence": 1,
+        "error": null,
+        "latestFrame": {
+          "sequence": 1
+        },
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "protocolVersion": "algorithm.command.v1",
+        "capabilities": [
+          "START",
+          "STOP"
+        ]
+      }
+    },
+    {
+      "id": "PR02",
+      "valid": true,
+      "data": {
+        "runId": 9001,
+        "algorithmCode": "GB_SFLA_CS",
+        "state": "PREPARED",
+        "latestSequence": 1,
+        "error": null,
+        "latestFrame": {
+          "sequence": 1
+        },
+        "runtimeRef": null,
+        "runtimeGeneration": null,
+        "protocolVersion": null,
+        "capabilities": []
+      }
+    },
+    {
+      "id": "PR03",
+      "valid": true,
+      "data": {
+        "runId": 9001,
+        "algorithmCode": "GB_SFLA_CS",
+        "state": "UNITY_NATIVE",
+        "latestSequence": 0,
+        "error": null,
+        "latestFrame": null,
+        "runtimeRef": null,
+        "runtimeGeneration": null,
+        "protocolVersion": null,
+        "capabilities": []
+      }
+    },
+    {
+      "id": "PR04",
+      "valid": false,
+      "data": {
+        "runId": 9001,
+        "algorithmCode": "GB_SFLA_CS",
+        "state": "PREPARED",
+        "latestSequence": 1,
+        "error": null,
+        "latestFrame": {
+          "sequence": 1
+        },
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": null,
+        "protocolVersion": "algorithm.command.v1",
+        "capabilities": [
+          "START",
+          "STOP"
+        ]
+      }
+    },
+    {
+      "id": "PR05",
+      "valid": false,
+      "data": {
+        "runId": 9001,
+        "algorithmCode": "GB_SFLA_CS",
+        "state": "PREPARED",
+        "latestSequence": 1,
+        "error": null,
+        "latestFrame": {
+          "sequence": 1
+        },
+        "runtimeRef": null,
+        "runtimeGeneration": null,
+        "protocolVersion": null,
+        "capabilities": [
+          "START"
+        ]
+      }
+    },
+    {
+      "id": "PR06",
+      "valid": false,
+      "data": {
+        "runId": 9001,
+        "algorithmCode": "GB_SFLA_CS",
+        "state": "PREPARED",
+        "latestSequence": 1,
+        "error": null,
+        "latestFrame": {
+          "sequence": 1
+        },
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "protocolVersion": "algorithm.command.v1",
+        "capabilities": [
+          "START",
+          "START"
+        ]
+      }
+    }
+  ]
+}
