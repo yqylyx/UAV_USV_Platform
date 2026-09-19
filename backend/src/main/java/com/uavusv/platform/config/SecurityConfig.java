@@ -69,12 +69,17 @@ public class SecurityConfig {
                 )
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) ->
-                                writeError(response, objectMapper, ErrorCode.UNAUTHORIZED))
+                                writeError(request, response, objectMapper, ErrorCode.UNAUTHORIZED))
                         .accessDeniedHandler((request, response, exception) ->
                                 writeError(
+                                        request,
                                         response,
                                         objectMapper,
-                                        exception instanceof CsrfException
+                                        request.getRequestURI().substring(request.getContextPath().length()).startsWith("/api/voice/") &&
+                                                (org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() == null
+                                                || org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)
+                                                ? ErrorCode.UNAUTHORIZED
+                                                : exception instanceof CsrfException
                                                 ? ErrorCode.CSRF_INVALID
                                                 : ErrorCode.FORBIDDEN
                                 ))
@@ -104,16 +109,19 @@ public class SecurityConfig {
     }
 
     private void writeError(
+            jakarta.servlet.http.HttpServletRequest request,
             HttpServletResponse response,
             ObjectMapper objectMapper,
             ErrorCode errorCode
     ) throws IOException {
+        response.setHeader("Cache-Control", "no-store");
         response.setStatus(errorCode.getHttpStatus().value());
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         objectMapper.writeValue(
                 response.getWriter(),
-                ApiResponse.failure(errorCode.getCode(), errorCode.getMessage())
+                ApiResponse.failure(request.getRequestURI().substring(request.getContextPath().length()).startsWith("/api/voice/")
+                        ? errorCode.name() : errorCode.getCode(), errorCode.getMessage())
         );
     }
 }

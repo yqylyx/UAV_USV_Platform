@@ -33,6 +33,9 @@ management:
       show-details: never
 
 app:
+  voicecontrol:
+    enabled: ${VOICE_CONTROL_ENABLED:false}
+    poll-ms: 200
   ros:
     transport: ${ROS_TRANSPORT:v1}
     state-authority: ${ROS_STATE_AUTHORITY:v1}

@@ -1,0 +1,1423 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Voice P0 design contracts (not implemented APIs)",
+  "description": "Validate a named definition using fixtures; root intentionally rejects unspecified message types. Semantic equality and state transitions are tested separately.",
+  "not": {},
+  "definitions": {
+    "ProposalRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "expectedContextVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "MISSION_START",
+            "MISSION_PAUSE",
+            "MISSION_RESUME",
+            "MISSION_STOP"
+          ]
+        }
+      },
+      "required": [
+        "runtimeRef",
+        "runtimeGeneration",
+        "expectedContextVersion",
+        "intent"
+      ]
+    },
+    "ConfirmRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expectedPlanVersion": {
+          "const": 1
+        },
+        "expectedPlanHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "expectedPlanVersion",
+        "expectedPlanHash"
+      ]
+    },
+    "CancelRequest": {
+      "$ref": "#/definitions/ConfirmRequest"
+    },
+    "Plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "contextVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stateVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "explicitDeviceCodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "uniqueItems": true,
+          "maxItems": 200,
+          "minItems": 1
+        },
+        "policyVersion": {
+          "const": "voice-p0.v1"
+        }
+      },
+      "required": [
+        "runtimeRef",
+        "runtimeGeneration",
+        "contextVersion",
+        "stateVersion",
+        "action",
+        "explicitDeviceCodes",
+        "policyVersion"
+      ]
+    },
+    "RuntimeContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "contextVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stateVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "runtimeScope": {
+          "const": "MISSION_CENTER"
+        },
+        "runtimeKind": {
+          "const": "STANDALONE_ALGORITHM"
+        },
+        "executionBackend": {
+          "const": "PYTHON_SIMULATION"
+        },
+        "algorithmRunId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "missionId": {
+          "type": "null"
+        },
+        "missionRunId": {
+          "type": "null"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "PREPARED",
+            "PREVIEW",
+            "RUNNING",
+            "PAUSED",
+            "STOPPED",
+            "CANCELLED",
+            "COMPLETED",
+            "FAILED",
+            "LOST"
+          ]
+        },
+        "protocolVersion": {
+          "type": "string",
+          "enum": [
+            "algorithm.command.v1",
+            "legacy"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          }
+        },
+        "lastHeartbeatReceivedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latestFrameSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sceneReady": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "runtimeRef",
+        "runtimeGeneration",
+        "contextVersion",
+        "stateVersion",
+        "runtimeScope",
+        "runtimeKind",
+        "executionBackend",
+        "algorithmRunId",
+        "missionId",
+        "missionRunId",
+        "state",
+        "protocolVersion",
+        "capabilities",
+        "lastHeartbeatReceivedAt",
+        "latestFrameSequence",
+        "sceneReady"
+      ]
+    },
+    "Proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "AWAITING_CONFIRMATION",
+            "CONFIRMED",
+            "CANCELLED",
+            "EXPIRED",
+            "INVALIDATED"
+          ]
+        },
+        "planVersion": {
+          "const": 1
+        },
+        "planHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "plan": {
+          "$ref": "#/definitions/Plan"
+        },
+        "requiresConfirmation": {
+          "const": true
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        },
+        "executionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "proposalId",
+        "status",
+        "planVersion",
+        "planHash",
+        "plan",
+        "requiresConfirmation",
+        "createdAt",
+        "expiresAt",
+        "executionId"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "CONFIRMED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "executionId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "executionId": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "executionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "QUEUED",
+            "DISPATCHED",
+            "ACCEPTED",
+            "EXECUTING",
+            "SUCCEEDED",
+            "REJECTED",
+            "FAILED",
+            "INVALIDATED",
+            "TIMED_OUT"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "SUCCESS",
+            "REJECTED",
+            "FAILED",
+            "UNKNOWN"
+          ]
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timedOutAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "presentationStatus": {
+          "type": "string",
+          "enum": [
+            "NOT_REQUIRED",
+            "PENDING",
+            "REPORTED_APPLIED",
+            "STALE"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "required": [
+        "executionId",
+        "proposalId",
+        "commandId",
+        "runtimeRef",
+        "runtimeGeneration",
+        "action",
+        "state",
+        "outcome",
+        "errorCode",
+        "timedOutAt",
+        "presentationStatus",
+        "createdAt",
+        "updatedAt"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "SUCCEEDED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "SUCCESS"
+              },
+              "errorCode": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "REJECTED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "REJECTED"
+              },
+              "errorCode": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "FAILED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "FAILED"
+              },
+              "errorCode": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "INVALIDATED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "REJECTED"
+              },
+              "errorCode": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "TIMED_OUT"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "UNKNOWN"
+              },
+              "timedOutAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+              },
+              "errorCode": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "QUEUED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "UNKNOWN"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "DISPATCHED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "UNKNOWN"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "ACCEPTED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "UNKNOWN"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "EXECUTING"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "UNKNOWN"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ConfirmResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "proposal": {
+          "$ref": "#/definitions/Proposal"
+        },
+        "execution": {
+          "$ref": "#/definitions/Execution"
+        }
+      },
+      "required": [
+        "proposal",
+        "execution"
+      ]
+    },
+    "Command": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "algorithm.command.v1"
+        },
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "const": "COMMAND"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "commandSequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "expectedStateVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {},
+          "required": []
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "runtimeRef",
+        "runtimeGeneration",
+        "kind",
+        "commandId",
+        "commandSequence",
+        "expectedStateVersion",
+        "action",
+        "parameters"
+      ]
+    },
+    "CommandResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "algorithm.command.v1"
+        },
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "const": "COMMAND_RESULT"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "eventSequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACCEPTED",
+            "EXECUTING",
+            "SUCCEEDED",
+            "REJECTED",
+            "FAILED"
+          ]
+        },
+        "runtimeState": {
+          "type": "string",
+          "enum": [
+            "PREPARED",
+            "PREVIEW",
+            "RUNNING",
+            "PAUSED",
+            "STOPPED",
+            "CANCELLED",
+            "COMPLETED",
+            "FAILED"
+          ]
+        },
+        "stateVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "lastFrameSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "affectedDeviceCodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "uniqueItems": true,
+          "maxItems": 200
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "runtimeRef",
+        "runtimeGeneration",
+        "kind",
+        "commandId",
+        "eventSequence",
+        "status",
+        "runtimeState",
+        "stateVersion",
+        "lastFrameSequence",
+        "errorCode",
+        "affectedDeviceCodes"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "REJECTED",
+                  "FAILED"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "errorCode": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "errorCode": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RuntimeReady": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "algorithm.command.v1"
+        },
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "const": "RUNTIME_READY"
+        },
+        "adapterId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 96,
+          "pattern": "^[A-Za-z0-9_.:-]+$"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+          },
+          "uniqueItems": true,
+          "maxItems": 64
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "PREPARED",
+            "PREVIEW"
+          ]
+        },
+        "stateVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "runtimeRef",
+        "runtimeGeneration",
+        "kind",
+        "adapterId",
+        "capabilities",
+        "state",
+        "stateVersion"
+      ]
+    },
+    "Heartbeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "algorithm.command.v1"
+        },
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "const": "HEARTBEAT"
+        },
+        "heartbeatSequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "runtimeState": {
+          "type": "string",
+          "enum": [
+            "PREPARED",
+            "PREVIEW",
+            "RUNNING",
+            "PAUSED",
+            "STOPPED",
+            "CANCELLED",
+            "COMPLETED",
+            "FAILED"
+          ]
+        },
+        "stateVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "lastFrameSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "runtimeRef",
+        "runtimeGeneration",
+        "kind",
+        "heartbeatSequence",
+        "runtimeState",
+        "stateVersion",
+        "lastFrameSequence"
+      ]
+    },
+    "StatusQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "algorithm.command.v1"
+        },
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "const": "STATUS_QUERY"
+        },
+        "queryId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "runtimeRef",
+        "runtimeGeneration",
+        "kind",
+        "queryId",
+        "commandId"
+      ]
+    },
+    "StatusReply": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "algorithm.command.v1"
+        },
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "const": "STATUS_REPLY"
+        },
+        "queryId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "known": {
+          "type": "boolean"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CommandResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "runtimeRef",
+        "runtimeGeneration",
+        "kind",
+        "queryId",
+        "commandId",
+        "known",
+        "result"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "known": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "$ref": "#/definitions/CommandResult"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "result": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RuntimeContextResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "const": "SUCCESS"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/RuntimeContext"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "timestamp"
+      ]
+    },
+    "ProposalResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "const": "SUCCESS"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/Proposal"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "timestamp"
+      ]
+    },
+    "ExecutionResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "const": "SUCCESS"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/Execution"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "timestamp"
+      ]
+    },
+    "ConfirmResultResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "const": "SUCCESS"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/ConfirmResult"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "timestamp"
+      ]
+    },
+    "ContextListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "const": "SUCCESS"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RuntimeContext"
+          }
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "timestamp"
+      ]
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "data": {
+          "type": "null"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "timestamp"
+      ]
+    },
+    "ProtocolError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": "algorithm.command.v1"
+        },
+        "runtimeRef": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "const": "PROTOCOL_ERROR"
+        },
+        "relatedCommandId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "errorCode": {
+          "type": "string",
+          "enum": [
+            "MALFORMED_MESSAGE",
+            "IDENTITY_MISMATCH",
+            "COMMAND_ID_CONFLICT",
+            "SEQUENCE_MISMATCH",
+            "CAPACITY_EXCEEDED"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "runtimeRef",
+        "runtimeGeneration",
+        "kind",
+        "relatedCommandId",
+        "errorCode",
+        "detail"
+      ]
+    },
+    "PresentationBindingRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "expectedBindingId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "runtimeGeneration",
+        "expectedBindingId"
+      ]
+    },
+    "PresentationChallengeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "bindingId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "enum": [
+            "SCENE_READY",
+            "FRAME_APPLIED"
+          ]
+        },
+        "executionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "runtimeGeneration",
+        "bindingId",
+        "kind",
+        "executionId"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "FRAME_APPLIED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "executionId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "executionId": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "PresentationReportRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtimeGeneration": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "bindingId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "kind": {
+          "enum": [
+            "SCENE_READY",
+            "FRAME_APPLIED"
+          ]
+        },
+        "executionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "frameSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "applied": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "runtimeGeneration",
+        "bindingId",
+        "kind",
+        "executionId",
+        "requestId",
+        "sequence",
+        "frameSequence",
+        "applied"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "FRAME_APPLIED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "executionId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "executionId": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

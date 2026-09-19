@@ -2,6 +2,11 @@ package com.uavusv.platform.module.mission.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uavusv.platform.module.voicecontrol.VoiceRuntimeBridge;
+import com.uavusv.platform.module.voicecontrol.VoiceLines;
+import com.uavusv.platform.module.voicecontrol.VoiceFailure;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.uavusv.platform.common.exception.BusinessException;
 import com.uavusv.platform.common.exception.ErrorCode;
 import com.uavusv.platform.module.mission.dto.response.AlgorithmRuntimeStatusResponse;
@@ -43,6 +48,8 @@ public class AlgorithmRuntimeManager {
     private final String pythonCommand;
     private final Path runnerPath;
     private final Map<Long, RuntimeHandle> handles = new ConcurrentHashMap<>();
+    @Autowired(required = false)
+    private VoiceRuntimeBridge voiceBridge;
 
     public AlgorithmRuntimeManager(
             ObjectMapper objectMapper,
@@ -80,10 +87,20 @@ public class AlgorithmRuntimeManager {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的外部算法：" + algorithmCode);
         }
         RuntimeHandle existing = handles.get(runId);
+        if (voiceBridge != null) {
+            if (existing != null && existing.standaloneVirtualSimulation) voiceBridge.guard(existing.voiceContext);
+            if (standaloneVirtualSimulation) {
+                for (RuntimeHandle active : handles.values()) {
+                    if (active.standaloneVirtualSimulation && active.process.isAlive()) voiceBridge.guard(active.voiceContext);
+                }
+            }
+        }
         if (existing != null
                 && existing.process.isAlive()
                 && algorithmCode.equals(existing.algorithmCode)
-                && existing.error.get() == null) {
+                && existing.error.get() == null
+                && (voiceBridge == null || !voiceBridge.v1(existing.voiceContext)
+                    || existing.voiceContext.path("_configHash").asText().equals(voiceBridge.configHash(objectMapper.valueToTree(runtimeConfig))))) {
             return status(runId);
         }
         stopExisting(runId, "prepare replacing existing runtime");
@@ -94,6 +111,8 @@ public class AlgorithmRuntimeManager {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "算法运行器不存在：" + runnerPath);
         }
         Path configFile = null;
+        ObjectNode voiceContext = standaloneVirtualSimulation && voiceBridge != null
+                ? voiceBridge.register(runId, objectMapper.valueToTree(runtimeConfig)) : null;
         try {
             configFile = Files.createTempFile("uav-usv-algorithm-", ".json");
             Files.write(configFile, objectMapper.writeValueAsBytes(runtimeConfig));
@@ -108,6 +127,11 @@ public class AlgorithmRuntimeManager {
             command.add(configFile.toString());
             command.add("--fps");
             command.add("10");
+            if (voiceBridge != null && voiceBridge.v1(voiceContext)) {
+                command.add("--command-protocol"); command.add("v1");
+                command.add("--runtime-ref"); command.add(voiceContext.path("runtimeRef").asText());
+                command.add("--runtime-generation"); command.add(voiceContext.path("runtimeGeneration").asText());
+            }
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.directory(runnerPath.getParent().toFile());
             builder.environment().put("PYTHONUTF8", "1");
@@ -118,6 +142,10 @@ public class AlgorithmRuntimeManager {
             log.info("Algorithm process started: runId={} algorithmCode={} pid={}", runId, algorithmCode, process.pid());
             RuntimeHandle handle = new RuntimeHandle(runId, algorithmCode, standaloneVirtualSimulation, process,
                     new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8)));
+            handle.voiceContext = voiceContext;
+            if (voiceContext != null) voiceBridge.attach(voiceContext,
+                    event -> send(handle, objectMapper.convertValue(event, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {})),
+                    process::isAlive);
             handles.put(runId, handle);
             log.info("Algorithm handle stored: runId={} pid={} handlesSize={}", runId, process.pid(), handles.size());
             startReaders(handle);
@@ -139,6 +167,7 @@ public class AlgorithmRuntimeManager {
             }
             return status(runId);
         } catch (IOException exception) {
+            if (voiceContext != null) voiceBridge.ended(voiceContext);
             throw new BusinessException(ErrorCode.BAD_REQUEST, "无法启动算法运行器：" + exception.getMessage());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -160,6 +189,11 @@ public class AlgorithmRuntimeManager {
         if (!List.of("START", "PAUSE", "RESUME", "CANCEL", "STOP").contains(normalized)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的算法运行指令：" + action);
         }
+        if (voiceBridge != null && voiceBridge.v1(handle.voiceContext)) {
+            voiceBridge.manual(handle.voiceContext, normalized);
+            return status(runId);
+        }
+        if (voiceBridge != null && handle.voiceContext != null) voiceBridge.guard(handle.voiceContext);
         send(handle, Map.of("action", normalized));
         if ("CANCEL".equals(normalized)) handle.state.set("CANCELLED");
         if ("STOP".equals(normalized)) handle.state.set("STOPPED");
@@ -168,6 +202,8 @@ public class AlgorithmRuntimeManager {
 
     public AlgorithmRuntimeStatusResponse placeThreat(Long runId, double x, double y) {
         RuntimeHandle handle = requireHandle(runId);
+        if (voiceBridge != null && voiceBridge.v1(handle.voiceContext)) throw new VoiceFailure(422, "UNSUPPORTED_CAPABILITY");
+        if (voiceBridge != null && handle.voiceContext != null) voiceBridge.guard(handle.voiceContext);
         if (!"ESCORT_GUARD".equals(handle.algorithmCode)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "只有护航守卫算法支持动态放置威胁目标");
         }
@@ -177,6 +213,8 @@ public class AlgorithmRuntimeManager {
 
     public AlgorithmRuntimeStatusResponse activateCapture(Long runId, String threatCode) {
         RuntimeHandle handle = requireHandle(runId);
+        if (voiceBridge != null && voiceBridge.v1(handle.voiceContext)) throw new VoiceFailure(422, "UNSUPPORTED_CAPABILITY");
+        if (voiceBridge != null && handle.voiceContext != null) voiceBridge.guard(handle.voiceContext);
         if (!"ESCORT_GUARD".equals(handle.algorithmCode)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "只有护航守卫算法支持主动围捕");
         }
@@ -191,17 +229,21 @@ public class AlgorithmRuntimeManager {
 
     public AlgorithmRuntimeStatusResponse status(Long runId) {
         RuntimeHandle handle = requireHandle(runId);
-        return new AlgorithmRuntimeStatusResponse(runId, handle.algorithmCode, handle.state.get(),
+        if (voiceBridge != null) voiceBridge.read(handle.voiceContext);
+        return new AlgorithmRuntimeStatusResponse(runId, handle.algorithmCode,
+                voiceBridge != null && voiceBridge.v1(handle.voiceContext) ? voiceBridge.state(handle.voiceContext) : handle.state.get(),
                 handle.latestSequence.get(), handle.error.get(), handle.latestFrame.get());
     }
 
     public JsonNode latestFrame(Long runId, long afterSequence) {
         RuntimeHandle handle = requireHandle(runId);
+        if (voiceBridge != null) voiceBridge.read(handle.voiceContext);
         return handle.latestSequence.get() > afterSequence ? handle.latestFrame.get() : null;
     }
 
     public List<JsonNode> framesAfter(Long runId, long afterSequence) {
         RuntimeHandle handle = requireHandle(runId);
+        if (voiceBridge != null) voiceBridge.read(handle.voiceContext);
         List<JsonNode> frames = new ArrayList<>();
         synchronized (handle.frameBuffer) {
             for (JsonNode frame : handle.frameBuffer) {
@@ -249,27 +291,43 @@ public class AlgorithmRuntimeManager {
                 log.info("Algorithm process exited: runId={} pid={} exitCode={}",
                         handle.runId, process.pid(), process.exitValue()));
         Thread outputThread = new Thread(() -> {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(handle.process.getInputStream(), StandardCharsets.UTF_8))) {
+            try (var reader = new java.io.BufferedInputStream(handle.process.getInputStream())) {
                 String line;
-                while ((line = reader.readLine()) != null) {
+                while ((line = VoiceLines.read(reader)) != null) {
                     JsonNode event;
                     try {
-                        event = objectMapper.readTree(line);
+                        event = voiceBridge != null && voiceBridge.v1(handle.voiceContext)
+                                ? voiceBridge.parse(line) : objectMapper.readTree(line);
+                        if (event == null) continue;
                     } catch (Exception ignored) {
+                        if (voiceBridge != null && voiceBridge.v1(handle.voiceContext)) {
+                            voiceBridge.malformed(handle.voiceContext);
+                            continue;
+                        }
                         // Vendor algorithms may print diagnostics. Only NDJSON
                         // events belong to the runtime protocol.
                         log.debug("Algorithm stdout non-JSON: runId={} pid={} line={}",
                                 handle.runId, handle.process.pid(), line);
                         continue;
                     }
+                    if (voiceBridge != null && voiceBridge.v1(handle.voiceContext) && event.has("kind")) {
+                        voiceBridge.event(handle.voiceContext, event);
+                        if ("RUNTIME_READY".equals(event.path("kind").asText()) && voiceBridge.ready(handle.voiceContext, event)) {
+                            handle.state.set(event.path("state").asText());
+                            handle.ready.countDown();
+                        }
+                        continue;
+                    }
                     String eventType = event.path("event").asText();
                     if ("runtimeReady".equals(eventType)) {
+                        if (voiceBridge != null && voiceBridge.v1(handle.voiceContext)) continue;
                         handle.state.set(event.path("state").asText("PREPARED"));
                         log.info("Algorithm runtimeReady received: runId={} pid={} state={}",
                                 handle.runId, handle.process.pid(), handle.state.get());
                         handle.ready.countDown();
                     } else if ("frame".equals(eventType)) {
                         JsonNode frame = event.path("payload");
+                        if (voiceBridge != null && handle.voiceContext != null) voiceBridge.frame(handle.voiceContext, frame);
                         handle.latestFrame.set(frame);
                         long sequence = frame.path("sequence").asLong();
                         handle.latestSequence.set(sequence);
@@ -285,6 +343,7 @@ public class AlgorithmRuntimeManager {
                             }
                         }
                     } else if ("stateChanged".equals(eventType) || "runtimeStopped".equals(eventType)) {
+                        if (voiceBridge != null && voiceBridge.v1(handle.voiceContext)) continue;
                         handle.state.set(event.path("state").asText(handle.state.get()));
                     }
                 }
@@ -301,6 +360,8 @@ public class AlgorithmRuntimeManager {
                 }
             } catch (Exception exception) {
                 signalProcessFailure(handle, "algorithm stdout reader failed: " + exception.getMessage());
+            } finally {
+                if (voiceBridge != null) voiceBridge.ended(handle.voiceContext);
             }
         }, "algorithm-out-" + handle.runId);
         outputThread.setDaemon(true);
@@ -363,6 +424,7 @@ public class AlgorithmRuntimeManager {
             Thread.currentThread().interrupt();
             previous.process.destroyForcibly();
         }
+        if (voiceBridge != null) voiceBridge.ended(previous.voiceContext);
     }
 
     private String stderrTail(RuntimeHandle handle) {
@@ -421,6 +483,7 @@ public class AlgorithmRuntimeManager {
     }
 
     private static final class RuntimeHandle {
+        ObjectNode voiceContext;
         final Long runId;
         final String algorithmCode;
         final boolean standaloneVirtualSimulation;

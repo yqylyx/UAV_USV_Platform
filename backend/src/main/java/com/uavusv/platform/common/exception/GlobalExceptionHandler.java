@@ -24,6 +24,11 @@ public class GlobalExceptionHandler {
         return buildResponse(errorCode, exception.getMessage());
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied() {
+        return buildResponse(ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.getMessage());
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuthenticationException() {
         return buildResponse(ErrorCode.UNAUTHORIZED, ErrorCode.UNAUTHORIZED.getMessage());
