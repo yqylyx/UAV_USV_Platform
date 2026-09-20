@@ -247,6 +247,11 @@ export interface AlgorithmRuntimeStatus {
   latestSequence: number
   error: string | null
   latestFrame: AlgorithmRuntimeFrame | null
+  /** Available only after a standalone Python v1 handshake; legacy servers may omit these. */
+  runtimeRef?: string | null
+  runtimeGeneration?: string | null
+  protocolVersion?: string | null
+  capabilities?: string[]
 }
 
 export interface MissionPreflightIssue {

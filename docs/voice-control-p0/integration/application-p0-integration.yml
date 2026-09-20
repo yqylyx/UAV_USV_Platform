@@ -1,0 +1,77 @@
+# Standalone configuration: loaded instead of application.yml/application-local.yml.
+server:
+  address: 127.0.0.1
+  port: 18081
+  servlet:
+    session:
+      timeout: 2h
+      cookie:
+        name: P0_INTEGRATION_SESSION
+        http-only: true
+        same-site: lax
+spring:
+  application:
+    name: uav-usv-p0-integration
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/uav_usv_p0_integration?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
+    username: p0_integration
+    password: ${P0_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 0
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    clean-disabled: true
+    locations: classpath:db/migration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+app:
+  voicecontrol:
+    enabled: false
+    poll-ms: 200
+  algorithm:
+    python-command: ${P0_PYTHON}
+    runner-path: ${P0_RUNNER}
+  security:
+    bootstrap-admin:
+      username: p0_admin
+      password: ${P0_ADMIN_PASSWORD}
+  integration:
+    token: ${P0_INTEGRATION_TOKEN}
+  ros:
+    transport: v1
+    state-authority: v1
+  gateway:
+    v1:
+      enabled: false
+      websocket-url: ws://127.0.0.1:18765/disabled
+  runtime:
+    ros-enabled: false
+    ros-websocket-url: ws://127.0.0.1:18765/disabled
+    heartbeat-timeout-seconds: 5
+    telemetry-stale-seconds: 10
+    telemetry-retention-days: 7
+  visual-sensor:
+    websocket-enabled: false
+    websocket-url: ws://127.0.0.1:18766/disabled
+  control:
+    command-dispatch-mode: browser-unity
+    mission-dispatch-mode: browser-unity
+    vehicle-dispatch-mode: browser-unity
+    command-ack-timeout-seconds: 15
+    command-result-timeout-seconds: 75
+    wsl-distribution: P0_DISABLED
+    ros-script: __P0_DISABLED__/no-ros-script
+    unity-editor: __P0_DISABLED__/no-unity-editor
+    unity-project: __P0_DISABLED__/no-unity-project

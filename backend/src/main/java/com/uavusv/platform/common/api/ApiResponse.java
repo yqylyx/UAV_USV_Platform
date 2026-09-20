@@ -12,10 +12,10 @@ public record ApiResponse<T>(
     private static final String SUCCESS_MESSAGE = "操作成功";
 
     public static <T> ApiResponse<T> success(T data) {
-        return new ApiResponse<>(SUCCESS_CODE, SUCCESS_MESSAGE, data, Instant.now());
+        return new ApiResponse<>(SUCCESS_CODE, SUCCESS_MESSAGE, data, Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
     }
 
     public static ApiResponse<Void> failure(String code, String message) {
-        return new ApiResponse<>(code, message, null, Instant.now());
+        return new ApiResponse<>(code, message, null, Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
     }
 }

@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AlgorithmRuntimeStatusResponse data (prepare, status and action)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "runId": {
+      "type": "integer"
+    },
+    "algorithmCode": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "latestSequence": {
+      "type": "integer"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latestFrame": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "runtimeRef": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "runtimeGeneration": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "protocolVersion": {
+      "enum": [
+        null,
+        "algorithm.command.v1"
+      ]
+    },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "START",
+          "PAUSE",
+          "RESUME",
+          "STOP"
+        ]
+      }
+    }
+  },
+  "required": [
+    "runId",
+    "algorithmCode",
+    "state",
+    "latestSequence",
+    "error",
+    "latestFrame",
+    "runtimeRef",
+    "runtimeGeneration",
+    "protocolVersion",
+    "capabilities"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "protocolVersion": {
+            "const": null
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "runtimeRef": {
+            "type": "null"
+          },
+          "runtimeGeneration": {
+            "type": "null"
+          },
+          "capabilities": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "runtimeRef": {
+            "type": "string"
+          },
+          "runtimeGeneration": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}

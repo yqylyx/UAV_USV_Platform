@@ -1,0 +1,888 @@
+{
+  "contractVersion": "voice-p0.v1",
+  "note": "Synthetic schema fixtures only; no live commands",
+  "goldenPlan": {
+    "data": {
+      "runtimeRef": "11111111-1111-4111-8111-111111111111",
+      "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+      "contextVersion": 7,
+      "stateVersion": 3,
+      "action": "PAUSE",
+      "explicitDeviceCodes": [
+        "UAV-001",
+        "USV-001"
+      ],
+      "policyVersion": "voice-p0.v1"
+    },
+    "canonicalJson": "{\"action\":\"PAUSE\",\"contextVersion\":7,\"explicitDeviceCodes\":[\"UAV-001\",\"USV-001\"],\"policyVersion\":\"voice-p0.v1\",\"runtimeGeneration\":\"22222222-2222-4222-8222-222222222222\",\"runtimeRef\":\"11111111-1111-4111-8111-111111111111\",\"stateVersion\":3}",
+    "sha256": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656"
+  },
+  "cases": [
+    {
+      "id": "SC01",
+      "definition": "ProposalRequest",
+      "valid": true,
+      "reason": "正常暂停提案输入",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "expectedContextVersion": 7,
+        "intent": "MISSION_PAUSE"
+      }
+    },
+    {
+      "id": "SC02",
+      "definition": "ProposalRequest",
+      "valid": false,
+      "reason": "不能指定操作者",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "expectedContextVersion": 7,
+        "intent": "MISSION_PAUSE",
+        "ownerUserId": "admin"
+      }
+    },
+    {
+      "id": "SC03",
+      "definition": "ProposalRequest",
+      "valid": false,
+      "reason": "不能跳过确认",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "expectedContextVersion": 7,
+        "intent": "MISSION_PAUSE",
+        "requiresConfirmation": false
+      }
+    },
+    {
+      "id": "SC04",
+      "definition": "ProposalRequest",
+      "valid": false,
+      "reason": "P0 暂不开放围捕写入",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "expectedContextVersion": 7,
+        "intent": "ACTIVE_CAPTURE"
+      }
+    },
+    {
+      "id": "SC05",
+      "definition": "ProposalRequest",
+      "valid": false,
+      "reason": "非负版本",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "expectedContextVersion": -1,
+        "intent": "MISSION_PAUSE"
+      }
+    },
+    {
+      "id": "SC06",
+      "definition": "ConfirmRequest",
+      "valid": true,
+      "reason": "冻结计划确认",
+      "data": {
+        "expectedPlanVersion": 1,
+        "expectedPlanHash": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656"
+      }
+    },
+    {
+      "id": "SC07",
+      "definition": "ConfirmRequest",
+      "valid": false,
+      "reason": "确认不能篡改动作",
+      "data": {
+        "expectedPlanVersion": 1,
+        "expectedPlanHash": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656",
+        "action": "STOP"
+      }
+    },
+    {
+      "id": "SC08",
+      "definition": "Plan",
+      "valid": true,
+      "reason": "黄金计划",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "contextVersion": 7,
+        "stateVersion": 3,
+        "action": "PAUSE",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "USV-001"
+        ],
+        "policyVersion": "voice-p0.v1"
+      }
+    },
+    {
+      "id": "SC09",
+      "definition": "Plan",
+      "valid": false,
+      "reason": "重复成员",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "contextVersion": 7,
+        "stateVersion": 3,
+        "action": "PAUSE",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-001"
+        ],
+        "policyVersion": "voice-p0.v1"
+      }
+    },
+    {
+      "id": "SC10",
+      "definition": "RuntimeContext",
+      "valid": true,
+      "reason": "服务端上下文",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "contextVersion": 7,
+        "stateVersion": 3,
+        "runtimeScope": "MISSION_CENTER",
+        "runtimeKind": "STANDALONE_ALGORITHM",
+        "executionBackend": "PYTHON_SIMULATION",
+        "algorithmRunId": "7001",
+        "missionId": null,
+        "missionRunId": null,
+        "state": "RUNNING",
+        "protocolVersion": "algorithm.command.v1",
+        "capabilities": [
+          "START",
+          "PAUSE",
+          "RESUME",
+          "STOP"
+        ],
+        "lastHeartbeatReceivedAt": "2026-09-19T08:00:00Z",
+        "latestFrameSequence": 25,
+        "sceneReady": true
+      }
+    },
+    {
+      "id": "SC11",
+      "definition": "RuntimeContext",
+      "valid": false,
+      "reason": "P0 不开放 ROS",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "contextVersion": 7,
+        "stateVersion": 3,
+        "runtimeScope": "MISSION_CENTER",
+        "runtimeKind": "STANDALONE_ALGORITHM",
+        "executionBackend": "ROS_GATEWAY",
+        "algorithmRunId": "7001",
+        "missionId": null,
+        "missionRunId": null,
+        "state": "RUNNING",
+        "protocolVersion": "algorithm.command.v1",
+        "capabilities": [
+          "START",
+          "PAUSE",
+          "RESUME",
+          "STOP"
+        ],
+        "lastHeartbeatReceivedAt": "2026-09-19T08:00:00Z",
+        "latestFrameSequence": 25,
+        "sceneReady": true
+      }
+    },
+    {
+      "id": "SC12",
+      "definition": "Proposal",
+      "valid": true,
+      "reason": "等待确认",
+      "data": {
+        "proposalId": "33333333-3333-4333-8333-333333333333",
+        "status": "AWAITING_CONFIRMATION",
+        "planVersion": 1,
+        "planHash": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656",
+        "plan": {
+          "runtimeRef": "11111111-1111-4111-8111-111111111111",
+          "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+          "contextVersion": 7,
+          "stateVersion": 3,
+          "action": "PAUSE",
+          "explicitDeviceCodes": [
+            "UAV-001",
+            "USV-001"
+          ],
+          "policyVersion": "voice-p0.v1"
+        },
+        "requiresConfirmation": true,
+        "createdAt": "2026-09-19T08:00:00Z",
+        "expiresAt": "2026-09-19T08:00:30Z",
+        "executionId": null
+      }
+    },
+    {
+      "id": "SC13",
+      "definition": "Proposal",
+      "valid": false,
+      "reason": "已确认必须有执行关联",
+      "data": {
+        "proposalId": "33333333-3333-4333-8333-333333333333",
+        "status": "CONFIRMED",
+        "planVersion": 1,
+        "planHash": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656",
+        "plan": {
+          "runtimeRef": "11111111-1111-4111-8111-111111111111",
+          "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+          "contextVersion": 7,
+          "stateVersion": 3,
+          "action": "PAUSE",
+          "explicitDeviceCodes": [
+            "UAV-001",
+            "USV-001"
+          ],
+          "policyVersion": "voice-p0.v1"
+        },
+        "requiresConfirmation": true,
+        "createdAt": "2026-09-19T08:00:00Z",
+        "expiresAt": "2026-09-19T08:00:30Z",
+        "executionId": null
+      }
+    },
+    {
+      "id": "SC14",
+      "definition": "Execution",
+      "valid": true,
+      "reason": "入队不等于成功",
+      "data": {
+        "executionId": "44444444-4444-4444-8444-444444444444",
+        "proposalId": "33333333-3333-4333-8333-333333333333",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "action": "PAUSE",
+        "state": "QUEUED",
+        "outcome": "UNKNOWN",
+        "errorCode": null,
+        "timedOutAt": null,
+        "presentationStatus": "NOT_REQUIRED",
+        "createdAt": "2026-09-19T08:00:00Z",
+        "updatedAt": "2026-09-19T08:00:00Z"
+      }
+    },
+    {
+      "id": "SC15",
+      "definition": "Execution",
+      "valid": false,
+      "reason": "成功状态必须对应成功结果",
+      "data": {
+        "executionId": "44444444-4444-4444-8444-444444444444",
+        "proposalId": "33333333-3333-4333-8333-333333333333",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "action": "PAUSE",
+        "state": "SUCCEEDED",
+        "outcome": "UNKNOWN",
+        "errorCode": null,
+        "timedOutAt": null,
+        "presentationStatus": "NOT_REQUIRED",
+        "createdAt": "2026-09-19T08:00:00Z",
+        "updatedAt": "2026-09-19T08:00:00Z"
+      }
+    },
+    {
+      "id": "SC16",
+      "definition": "Execution",
+      "valid": true,
+      "reason": "超时保留未知结果",
+      "data": {
+        "executionId": "44444444-4444-4444-8444-444444444444",
+        "proposalId": "33333333-3333-4333-8333-333333333333",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "action": "PAUSE",
+        "state": "TIMED_OUT",
+        "outcome": "UNKNOWN",
+        "errorCode": "ACK_TIMEOUT",
+        "timedOutAt": "2026-09-19T08:00:05Z",
+        "presentationStatus": "NOT_REQUIRED",
+        "createdAt": "2026-09-19T08:00:00Z",
+        "updatedAt": "2026-09-19T08:00:00Z"
+      }
+    },
+    {
+      "id": "SC17",
+      "definition": "Command",
+      "valid": true,
+      "reason": "可关联命令",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "COMMAND",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "commandSequence": 12,
+        "expectedStateVersion": 3,
+        "action": "PAUSE",
+        "parameters": {}
+      }
+    },
+    {
+      "id": "SC18",
+      "definition": "Command",
+      "valid": false,
+      "reason": "拒绝任意工具参数",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "COMMAND",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "commandSequence": 12,
+        "expectedStateVersion": 3,
+        "action": "PAUSE",
+        "parameters": {
+          "url": "http://example.invalid"
+        }
+      }
+    },
+    {
+      "id": "SC19",
+      "definition": "Command",
+      "valid": false,
+      "reason": "命令序号从 1 开始",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "COMMAND",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "commandSequence": 0,
+        "expectedStateVersion": 3,
+        "action": "PAUSE",
+        "parameters": {}
+      }
+    },
+    {
+      "id": "SC20",
+      "definition": "CommandResult",
+      "valid": true,
+      "reason": "算法生效回执",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "COMMAND_RESULT",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "eventSequence": 2,
+        "status": "SUCCEEDED",
+        "runtimeState": "PAUSED",
+        "stateVersion": 4,
+        "lastFrameSequence": 25,
+        "errorCode": null,
+        "affectedDeviceCodes": [
+          "UAV-001",
+          "USV-001"
+        ]
+      }
+    },
+    {
+      "id": "SC21",
+      "definition": "CommandResult",
+      "valid": false,
+      "reason": "拒绝必须带错误码",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "COMMAND_RESULT",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "eventSequence": 2,
+        "status": "REJECTED",
+        "runtimeState": "PAUSED",
+        "stateVersion": 4,
+        "lastFrameSequence": 25,
+        "errorCode": null,
+        "affectedDeviceCodes": [
+          "UAV-001",
+          "USV-001"
+        ]
+      }
+    },
+    {
+      "id": "SC22",
+      "definition": "CommandResult",
+      "valid": true,
+      "reason": "带原因的拒绝",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "COMMAND_RESULT",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "eventSequence": 1,
+        "status": "REJECTED",
+        "runtimeState": "PAUSED",
+        "stateVersion": 4,
+        "lastFrameSequence": 25,
+        "errorCode": "INVALID_STATE",
+        "affectedDeviceCodes": []
+      }
+    },
+    {
+      "id": "SC23",
+      "definition": "RuntimeReady",
+      "valid": true,
+      "reason": "声明能力与协议",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "RUNTIME_READY",
+        "adapterId": "CaptureAdapter",
+        "capabilities": [
+          "START",
+          "PAUSE",
+          "RESUME",
+          "STOP"
+        ],
+        "state": "PREPARED",
+        "stateVersion": 0
+      }
+    },
+    {
+      "id": "SC24",
+      "definition": "Heartbeat",
+      "valid": true,
+      "reason": "暂停也有心跳",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "HEARTBEAT",
+        "heartbeatSequence": 1,
+        "runtimeState": "PAUSED",
+        "stateVersion": 4,
+        "lastFrameSequence": 25
+      }
+    },
+    {
+      "id": "SC25",
+      "definition": "StatusQuery",
+      "valid": true,
+      "reason": "只读对账",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "STATUS_QUERY",
+        "queryId": "66666666-6666-4666-8666-666666666666",
+        "commandId": "55555555-5555-4555-8555-555555555555"
+      }
+    },
+    {
+      "id": "SC26",
+      "definition": "StatusReply",
+      "valid": true,
+      "reason": "未知不代表未执行",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "STATUS_REPLY",
+        "queryId": "66666666-6666-4666-8666-666666666666",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "known": false,
+        "result": null
+      }
+    },
+    {
+      "id": "SC27",
+      "definition": "StatusReply",
+      "valid": false,
+      "reason": "已知必须给回执",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "STATUS_REPLY",
+        "queryId": "66666666-6666-4666-8666-666666666666",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "known": true,
+        "result": null
+      }
+    },
+    {
+      "id": "SC28",
+      "definition": "StatusReply",
+      "valid": true,
+      "reason": "查询已执行结果",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "STATUS_REPLY",
+        "queryId": "66666666-6666-4666-8666-666666666666",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "known": true,
+        "result": {
+          "protocolVersion": "algorithm.command.v1",
+          "runtimeRef": "11111111-1111-4111-8111-111111111111",
+          "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+          "kind": "COMMAND_RESULT",
+          "commandId": "55555555-5555-4555-8555-555555555555",
+          "eventSequence": 2,
+          "status": "SUCCEEDED",
+          "runtimeState": "PAUSED",
+          "stateVersion": 4,
+          "lastFrameSequence": 25,
+          "errorCode": null,
+          "affectedDeviceCodes": [
+            "UAV-001",
+            "USV-001"
+          ]
+        }
+      }
+    },
+    {
+      "id": "SC29",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "reason": "兼容 ApiResponse 错误结构",
+      "data": {
+        "code": "CONTEXT_CHANGED",
+        "message": "运行上下文已变化",
+        "data": null,
+        "timestamp": "2026-09-19T08:00:00Z"
+      }
+    },
+    {
+      "id": "SC30",
+      "definition": "ProposalResponse",
+      "valid": true,
+      "reason": "兼容 ApiResponse 成功结构",
+      "data": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "33333333-3333-4333-8333-333333333333",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656",
+          "plan": {
+            "runtimeRef": "11111111-1111-4111-8111-111111111111",
+            "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+            "contextVersion": 7,
+            "stateVersion": 3,
+            "action": "PAUSE",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "USV-001"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-19T08:00:00Z",
+          "expiresAt": "2026-09-19T08:00:30Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-19T08:00:00Z"
+      }
+    },
+    {
+      "id": "SC31",
+      "definition": "ConfirmResult",
+      "valid": true,
+      "reason": "确认只产生入队结果",
+      "data": {
+        "proposal": {
+          "proposalId": "33333333-3333-4333-8333-333333333333",
+          "status": "CONFIRMED",
+          "planVersion": 1,
+          "planHash": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656",
+          "plan": {
+            "runtimeRef": "11111111-1111-4111-8111-111111111111",
+            "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+            "contextVersion": 7,
+            "stateVersion": 3,
+            "action": "PAUSE",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "USV-001"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-19T08:00:00Z",
+          "expiresAt": "2026-09-19T08:00:30Z",
+          "executionId": "44444444-4444-4444-8444-444444444444"
+        },
+        "execution": {
+          "executionId": "44444444-4444-4444-8444-444444444444",
+          "proposalId": "33333333-3333-4333-8333-333333333333",
+          "commandId": "55555555-5555-4555-8555-555555555555",
+          "runtimeRef": "11111111-1111-4111-8111-111111111111",
+          "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+          "action": "PAUSE",
+          "state": "QUEUED",
+          "outcome": "UNKNOWN",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "NOT_REQUIRED",
+          "createdAt": "2026-09-19T08:00:00Z",
+          "updatedAt": "2026-09-19T08:00:00Z"
+        }
+      }
+    },
+    {
+      "id": "SC32",
+      "definition": "ContextListResponse",
+      "valid": true,
+      "reason": "无活动实例返回空列表",
+      "data": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [],
+        "timestamp": "2026-09-19T08:00:00Z"
+      }
+    },
+    {
+      "id": "SC33",
+      "definition": "CommandResult",
+      "valid": false,
+      "reason": "事件版本不能为小数",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "COMMAND_RESULT",
+        "commandId": "55555555-5555-4555-8555-555555555555",
+        "eventSequence": 1.5,
+        "status": "SUCCEEDED",
+        "runtimeState": "PAUSED",
+        "stateVersion": 4,
+        "lastFrameSequence": 25,
+        "errorCode": null,
+        "affectedDeviceCodes": [
+          "UAV-001",
+          "USV-001"
+        ]
+      }
+    },
+    {
+      "id": "SC34",
+      "definition": "ProposalRequest",
+      "valid": false,
+      "reason": "代次是后端 UUID",
+      "data": {
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "other",
+        "expectedContextVersion": 7,
+        "intent": "MISSION_PAUSE"
+      }
+    },
+    {
+      "id": "SC35",
+      "definition": "Proposal",
+      "valid": false,
+      "reason": "合法 RFC3339 时间",
+      "data": {
+        "proposalId": "33333333-3333-4333-8333-333333333333",
+        "status": "AWAITING_CONFIRMATION",
+        "planVersion": 1,
+        "planHash": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656",
+        "plan": {
+          "runtimeRef": "11111111-1111-4111-8111-111111111111",
+          "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+          "contextVersion": 7,
+          "stateVersion": 3,
+          "action": "PAUSE",
+          "explicitDeviceCodes": [
+            "UAV-001",
+            "USV-001"
+          ],
+          "policyVersion": "voice-p0.v1"
+        },
+        "requiresConfirmation": true,
+        "createdAt": "2026-09-19T08:00:00Z",
+        "expiresAt": "not-a-date",
+        "executionId": null
+      }
+    },
+    {
+      "id": "SC36",
+      "definition": "CancelRequest",
+      "valid": true,
+      "reason": "取消不包含 STOP 动作",
+      "data": {
+        "expectedPlanVersion": 1,
+        "expectedPlanHash": "e15c6ce6c4a0de1555daabcaaa77e64ca653e4d400a98e615af265c02f29e656"
+      }
+    },
+    {
+      "id": "SC37",
+      "definition": "ProtocolError",
+      "valid": true,
+      "reason": "协议冲突不能当作原业务命令失败",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "PROTOCOL_ERROR",
+        "relatedCommandId": "55555555-5555-4555-8555-555555555555",
+        "errorCode": "COMMAND_ID_CONFLICT",
+        "detail": "Duplicate ID with different command body"
+      }
+    },
+    {
+      "id": "SC38",
+      "definition": "ProtocolError",
+      "valid": true,
+      "reason": "不可解析消息没有可靠命令ID",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "PROTOCOL_ERROR",
+        "relatedCommandId": null,
+        "errorCode": "MALFORMED_MESSAGE",
+        "detail": "Duplicate ID with different command body"
+      }
+    },
+    {
+      "id": "SC39",
+      "definition": "ProtocolError",
+      "valid": false,
+      "reason": "协议错误不能伪装成业务最终回执",
+      "data": {
+        "protocolVersion": "algorithm.command.v1",
+        "runtimeRef": "11111111-1111-4111-8111-111111111111",
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "kind": "PROTOCOL_ERROR",
+        "relatedCommandId": "55555555-5555-4555-8555-555555555555",
+        "errorCode": "COMMAND_ID_CONFLICT",
+        "detail": "Duplicate ID with different command body",
+        "status": "FAILED"
+      }
+    },
+    {
+      "id": "SC40",
+      "definition": "PresentationBindingRequest",
+      "valid": true,
+      "reason": "首次页面绑定",
+      "data": {
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "expectedBindingId": null
+      }
+    },
+    {
+      "id": "SC41",
+      "definition": "PresentationBindingRequest",
+      "valid": false,
+      "reason": "绑定拒绝额外 owner 字段",
+      "data": {
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "expectedBindingId": null,
+        "ownerUserId": 1
+      }
+    },
+    {
+      "id": "SC42",
+      "definition": "PresentationBindingRequest",
+      "valid": false,
+      "reason": "运行代次必须为 UUID",
+      "data": {
+        "runtimeGeneration": "old",
+        "expectedBindingId": null
+      }
+    },
+    {
+      "id": "SC43",
+      "definition": "PresentationChallengeRequest",
+      "valid": true,
+      "reason": "新鲜场景探测挑战",
+      "data": {
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "bindingId": "33333333-3333-4333-8333-333333333333",
+        "kind": "SCENE_READY",
+        "executionId": null
+      }
+    },
+    {
+      "id": "SC44",
+      "definition": "PresentationChallengeRequest",
+      "valid": false,
+      "reason": "帧应用挑战必须关联执行",
+      "data": {
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "bindingId": "33333333-3333-4333-8333-333333333333",
+        "kind": "FRAME_APPLIED",
+        "executionId": null
+      }
+    },
+    {
+      "id": "SC45",
+      "definition": "PresentationChallengeRequest",
+      "valid": false,
+      "reason": "不接受算法执行成功证据种类",
+      "data": {
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "bindingId": "33333333-3333-4333-8333-333333333333",
+        "kind": "EXECUTION_SUCCESS",
+        "executionId": null
+      }
+    },
+    {
+      "id": "SC46",
+      "definition": "PresentationReportRequest",
+      "valid": true,
+      "reason": "合法页面显示报告",
+      "data": {
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "bindingId": "33333333-3333-4333-8333-333333333333",
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "requestId": "44444444-4444-4444-8444-444444444444",
+        "sequence": 1,
+        "frameSequence": 1,
+        "applied": true
+      }
+    },
+    {
+      "id": "SC47",
+      "definition": "PresentationReportRequest",
+      "valid": false,
+      "reason": "序号必须为正整数",
+      "data": {
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "bindingId": "33333333-3333-4333-8333-333333333333",
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "requestId": "44444444-4444-4444-8444-444444444444",
+        "sequence": 0,
+        "frameSequence": 1,
+        "applied": true
+      }
+    },
+    {
+      "id": "SC48",
+      "definition": "PresentationReportRequest",
+      "valid": false,
+      "reason": "applied 不能使用字符串代替布尔",
+      "data": {
+        "runtimeGeneration": "22222222-2222-4222-8222-222222222222",
+        "bindingId": "33333333-3333-4333-8333-333333333333",
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "requestId": "44444444-4444-4444-8444-444444444444",
+        "sequence": 1,
+        "frameSequence": 1,
+        "applied": "true"
+      }
+    }
+  ]
+}
