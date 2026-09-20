@@ -9,6 +9,7 @@ import {
   parseUnityWindowMessage,
 } from '@/utils/unityWebglProtocol'
 import type { UnityWindowMessage } from '@/utils/unityWebglProtocol'
+import type { UnityPresentationOutgoing } from '@/types/voiceControl'
 
 const RUNTIME_SCOPE = 'VIRTUAL_FLEET' as const
 const RUNTIME_INSTANCE_ID = 'virtual-fleet-unity-01'
@@ -115,6 +116,7 @@ function normalizeScenarioReady(message: UnityWindowMessage) {
 
 function handleWindowMessage(event: MessageEvent) {
   if (event.source !== iframeRef.value?.contentWindow) return
+  if (event.origin !== window.location.origin) return
   let message = parseUnityWindowMessage(event.data)
   if (!message) return
 
@@ -208,6 +210,12 @@ function postToUnity(type: string, payload: Record<string, unknown> = {}) {
   return requestId
 }
 
+function postPresentationEnvelope(message: UnityPresentationOutgoing) {
+  if (!ready.value || !iframeRef.value?.contentWindow) return false
+  iframeRef.value.contentWindow.postMessage(message, window.location.origin)
+  return true
+}
+
 function scheduleResize(delay = 80) {
   if (resizeTimer !== null) window.clearTimeout(resizeTimer)
   resizeTimer = window.setTimeout(() => {
@@ -275,6 +283,7 @@ function reload() {
 
 defineExpose({
   postToUnity,
+  postPresentationEnvelope,
   reload,
   selectDevice: (deviceCode: string) => postToUnity('selectDevice', { deviceCode }),
   focusDevice: (deviceCode: string) => postToUnity('focusDevice', { deviceCode }),

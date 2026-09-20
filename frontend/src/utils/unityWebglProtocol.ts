@@ -3,13 +3,14 @@ export type UnityWindowMessage = {
   requestId?: string
   timestamp?: number
   payload?: Record<string, unknown>
+  raw?: Record<string, unknown>
 }
 
 export function parseUnityWindowMessage(data: unknown): UnityWindowMessage | null {
   if (!data) return null
   if (typeof data === 'string') {
     try {
-      return JSON.parse(data) as UnityWindowMessage
+      return parseUnityWindowMessage(JSON.parse(data))
     } catch {
       return { type: 'raw', payload: { value: data } }
     }
@@ -23,13 +24,15 @@ export function parseUnityWindowMessage(data: unknown): UnityWindowMessage | nul
     timestamp?: number
     payload?: Record<string, unknown>
   }
-  if (candidate.source === 'unity-webgl' && candidate.message) return candidate.message
+  if (candidate.source === 'unity-webgl' && candidate.message) return parseUnityWindowMessage(candidate.message)
   if (!candidate.type) return null
+  const raw = data as Record<string, unknown>
   return {
     type: candidate.type,
     requestId: candidate.requestId,
     timestamp: candidate.timestamp,
     payload: candidate.payload,
+    raw,
   }
 }
 

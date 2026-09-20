@@ -4,11 +4,13 @@ import {
   cancelVoiceProposal,
   confirmVoiceProposal,
   createVoiceProposal,
+  createVoicePresentationChallenge,
   fetchVoiceContexts,
   fetchVoiceExecution,
   fetchVoicePresentationBinding,
   fetchVoiceProposal,
   replaceVoicePresentationBinding,
+  reportVoicePresentation,
 } from '@/api/voiceControl'
 import { ApiClientError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
@@ -18,6 +20,9 @@ import type {
   VoicePlanGuardRequest,
   VoicePresentationBinding,
   VoicePresentationBindingRequest,
+  VoicePresentationChallenge,
+  VoicePresentationChallengeRequest,
+  VoicePresentationReportRequest,
   VoiceProposal,
   VoiceProposalRequest,
   VoiceRuntimeContext,
@@ -28,8 +33,8 @@ const journalKeyPrefix = 'voice-p0.operation-journal.v1:'
 const terminalStates = new Set(['SUCCEEDED', 'REJECTED', 'FAILED', 'INVALIDATED'])
 
 interface RecoveryState { proposalId?: string; executionId?: string }
-type JournalKind = 'CREATE_PROPOSAL' | 'CONFIRM' | 'CANCEL' | 'REPLACE_BINDING'
-type JournalBody = VoiceProposalRequest | VoicePlanGuardRequest | VoicePresentationBindingRequest
+type JournalKind = 'CREATE_PROPOSAL' | 'CONFIRM' | 'CANCEL' | 'REPLACE_BINDING' | 'PRESENTATION_CHALLENGE' | 'PRESENTATION_REPORT'
+type JournalBody = VoiceProposalRequest | VoicePlanGuardRequest | VoicePresentationBindingRequest | VoicePresentationChallengeRequest | VoicePresentationReportRequest
 interface OperationJournal {
   userScope: string
   runtimeRef: string
@@ -58,6 +63,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
     proposal: null as VoiceProposal | null,
     execution: null as VoiceExecution | null,
     presentationBinding: null as VoicePresentationBinding | null,
+    presentationChallenge: null as VoicePresentationChallenge | null,
     loading: false,
     error: '',
     errorCode: '',
@@ -207,6 +213,21 @@ export const useVoiceControlStore = defineStore('voiceControl', {
           this.presentationBinding = await replaceVoicePresentationBinding(journal.runtimeRef, journal.body as VoicePresentationBindingRequest, journal.idempotencyKey)
         }
         this.updateJournal({ resourceId: this.presentationBinding.bindingId, phase: 'RESOURCE_RECEIVED' })
+      } else if (journal.kind === 'PRESENTATION_CHALLENGE') {
+        this.presentationChallenge = await createVoicePresentationChallenge(
+          journal.runtimeRef,
+          journal.body as VoicePresentationChallengeRequest,
+          journal.idempotencyKey,
+        )
+        this.updateJournal({ resourceId: this.presentationChallenge.requestId, phase: 'RESOURCE_RECEIVED' })
+      } else if (journal.kind === 'PRESENTATION_REPORT') {
+        const updated = await reportVoicePresentation(
+          journal.runtimeRef,
+          journal.body as VoicePresentationReportRequest,
+          journal.idempotencyKey,
+        )
+        this.contexts = this.contexts.map(item => item.runtimeRef === updated.runtimeRef ? updated : item)
+        this.updateJournal({ resourceId: (journal.body as VoicePresentationReportRequest).requestId, phase: 'RESOURCE_RECEIVED' })
       }
       this.persist()
     },
@@ -302,6 +323,57 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         this.updateJournal({ phase: this.responseUnknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' })
         this.captureError(error, '建立 Unity 展示绑定失败')
       } finally { this.loading = false }
+    },
+    async requestPresentationChallenge(kind: 'SCENE_READY' | 'FRAME_APPLIED', executionId: string | null) {
+      if (!this.context || !this.presentationBinding?.bindingId) return null
+      const body: VoicePresentationChallengeRequest = {
+        runtimeGeneration: this.context.runtimeGeneration,
+        bindingId: this.presentationBinding.bindingId,
+        kind,
+        executionId,
+      }
+      const journal = this.beginJournal(
+        'PRESENTATION_CHALLENGE',
+        `/api/voice/contexts/${this.context.runtimeRef}/presentation/challenges`,
+        body,
+      )
+      if (!journal) return null
+      try {
+        this.presentationChallenge = await createVoicePresentationChallenge(this.context.runtimeRef, body, journal.idempotencyKey)
+        this.updateJournal({ resourceId: this.presentationChallenge.requestId, phase: 'RESOURCE_RECEIVED' })
+        return this.presentationChallenge
+      } catch (error) {
+        this.responseUnknown = isUnknownResult(error)
+        this.updateJournal({ phase: this.responseUnknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' })
+        this.captureError(error, '申请 Unity 展示挑战失败')
+        return null
+      }
+    },
+    async submitPresentationReport(body: VoicePresentationReportRequest) {
+      if (!this.context) return false
+      const journal = this.beginJournal(
+        'PRESENTATION_REPORT',
+        `/api/voice/contexts/${this.context.runtimeRef}/presentation/reports`,
+        body,
+        body.requestId,
+      )
+      if (!journal) return false
+      try {
+        const updated = await reportVoicePresentation(this.context.runtimeRef, body, journal.idempotencyKey)
+        this.contexts = this.contexts.map(item => item.runtimeRef === updated.runtimeRef ? updated : item)
+        this.presentationChallenge = null
+        this.updateJournal({ phase: 'RESOURCE_RECEIVED' })
+        if (body.kind === 'FRAME_APPLIED' && this.execution) {
+          this.execution = await fetchVoiceExecution(this.execution.executionId)
+          this.persist()
+        }
+        return true
+      } catch (error) {
+        this.responseUnknown = isUnknownResult(error)
+        this.updateJournal({ phase: this.responseUnknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' })
+        this.captureError(error, '提交 Unity 展示报告失败')
+        return false
+      }
     },
     async poll() {
       try {

@@ -57,7 +57,9 @@ Vue 3 + TypeScript + Vite 前端工程，用于 UAV-USV 海空协同仿真与任
 
 每次 POST 在发出前会按当前登录用户名隔离保存最小恢复日志，包括运行身份、路径、原始最小 body 和幂等键。发生网络中断或 5xx 时，不生成新键重发；刷新或点击“核对上次请求”会先读取权威资源，必要时以原 body 和原键重放。退出登录会清理该用户的本地恢复数据。
 
-展示 binding 接口已经接入。`SCENE_READY/FRAME_APPLIED` 的 challenge/report API 类型与请求函数也已按 v3.0 实现；实际周期探测仍需等待 E03 `unity.presentation.v1` Web—Unity 消息协议由 Unity 侧冻结和实现，前端不会把旧 `scenarioReady/poseFrameApplied` 回调伪装成本轮挑战证据。
+展示 binding、`SCENE_READY/FRAME_APPLIED` challenge/report 以及 Web 侧 `unity.presentation.v1` 适配器已经接入。适配器会严格检查 iframe `source`、精确 origin、运行身份、binding、`unityInstanceId`、`sceneRevision` 和一次性挑战字段，再把闭合的报告 body 提交后端。旧 `scenarioReady/poseFrameApplied` 回调不会被伪装成本轮挑战证据。
+
+Unity 侧完成并冻结 E03 协议前保持 `VITE_VOICE_UNITY_PRESENTATION_V1=false`。完成后在隔离联调环境显式设置为 `true`，前端才会建立/替换展示绑定、进行最长 30 秒 HELLO/READY 握手，并串行执行约 3 秒一次的场景新鲜度探测；START/RESUME 成功且展示为 PENDING 时优先执行 FRAME_APPLIED 探测。
 
 后端接口尚未就绪时，可复制 `.env.example` 为 `.env.local`，显式设置 `VITE_VOICE_P0_MOCK=true` 后重启 Vite。页面会显示“本地 MOCK”标记，并可演示成功、拒绝、失败和“超时后迟到成功”；这些结果不会控制 Python 算法或 Unity。
 

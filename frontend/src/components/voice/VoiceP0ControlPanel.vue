@@ -10,23 +10,40 @@ import {
 } from '@/api/voiceControl'
 import { useVoiceControlStore } from '@/stores/voiceControl'
 import type {
+  UnityPresentationIncoming,
+  UnityPresentationOutgoing,
   VoiceAction,
   VoiceIntent,
   VoiceMockOutcome,
   VoiceMockRuntimeHint,
 } from '@/types/voiceControl'
+import type { UnityWindowMessage } from '@/utils/unityWebglProtocol'
 
-const props = defineProps<{ runtimeHint: VoiceMockRuntimeHint }>()
+interface UnityPresentationSession {
+  connected: boolean
+  unityInstanceId: string
+  sceneRevision: number
+}
+
+const props = defineProps<{ runtimeHint: VoiceMockRuntimeHint; unitySession: UnityPresentationSession }>()
+const emit = defineEmits<{ presentationMessage: [message: UnityPresentationOutgoing] }>()
 const store = useVoiceControlStore()
 const {
   context, proposal, execution, presentationBinding, loading, error, errorCode,
   recoveryPending, recoveryAvailable,
   responseUnknown,
+  presentationChallenge,
 } = storeToRefs(store)
 const now = ref(Date.now())
 const dialogOpen = ref(false)
 const chosenMockOutcome = ref<VoiceMockOutcome>('SUCCESS')
 const presentationPendingSince = ref<number | null>(null)
+const presentationBridgeEnabled = import.meta.env.VITE_VOICE_UNITY_PRESENTATION_V1 === 'true'
+const presentationBridgeReady = ref(false)
+const presentationBridgeStatus = ref(presentationBridgeEnabled ? '等待展示绑定' : 'E03 未启用')
+const helloAttempts = ref(0)
+const lastSceneProbeAt = ref(0)
+let presentationRequestInFlight = false
 let timer: number | undefined
 let pollTick = 0
 
@@ -119,6 +136,95 @@ async function cancel() {
   if (proposal.value?.status === 'CANCELLED') dialogOpen.value = false
 }
 
+function presentationIdentityMatches(message: UnityPresentationIncoming) {
+  return !!context.value
+    && !!presentationBinding.value?.bindingId
+    && message.protocolVersion === 'unity.presentation.v1'
+    && message.runtimeRef === context.value.runtimeRef
+    && message.runtimeGeneration === context.value.runtimeGeneration
+    && message.bindingId === presentationBinding.value.bindingId
+    && message.unityInstanceId === props.unitySession.unityInstanceId
+    && message.sceneRevision === props.unitySession.sceneRevision
+}
+
+function emitHello() {
+  if (!presentationBridgeEnabled || !context.value || !presentationBinding.value?.bindingId
+    || !props.unitySession.connected || props.unitySession.sceneRevision < 1) return
+  emit('presentationMessage', {
+    type: 'PRESENTATION_HELLO', protocolVersion: 'unity.presentation.v1',
+    runtimeRef: context.value.runtimeRef, runtimeGeneration: context.value.runtimeGeneration,
+    bindingId: presentationBinding.value.bindingId,
+    unityInstanceId: props.unitySession.unityInstanceId,
+    sceneRevision: props.unitySession.sceneRevision,
+  })
+  helloAttempts.value += 1
+  presentationBridgeStatus.value = `等待 Unity READY（${helloAttempts.value}/30）`
+}
+
+async function requestPresentationProbe() {
+  if (!presentationBridgeEnabled || !presentationBridgeReady.value || presentationRequestInFlight
+    || presentationChallenge.value || !context.value || !presentationBinding.value?.bindingId) return
+  const frameRequired = execution.value?.state === 'SUCCEEDED'
+    && ['START', 'RESUME'].includes(execution.value.action)
+    && execution.value.presentationStatus === 'PENDING'
+  if (!frameRequired && Date.now() - lastSceneProbeAt.value < 3000) return
+  presentationRequestInFlight = true
+  try {
+    const kind = frameRequired ? 'FRAME_APPLIED' : 'SCENE_READY'
+    const challenge = await store.requestPresentationChallenge(kind, frameRequired ? execution.value!.executionId : null)
+    if (!challenge) return
+    emit('presentationMessage', {
+      type: 'PRESENTATION_PROBE', protocolVersion: 'unity.presentation.v1',
+      runtimeRef: context.value.runtimeRef, runtimeGeneration: context.value.runtimeGeneration,
+      bindingId: presentationBinding.value.bindingId,
+      unityInstanceId: props.unitySession.unityInstanceId,
+      sceneRevision: props.unitySession.sceneRevision,
+      requestId: challenge.requestId, sequence: challenge.sequence,
+      kind: challenge.kind, executionId: challenge.executionId,
+    })
+    presentationBridgeStatus.value = `等待 Unity ${kind} 回执`
+    if (!frameRequired) lastSceneProbeAt.value = Date.now()
+  } finally { presentationRequestInFlight = false }
+}
+
+async function handleUnityPresentationMessage(message: UnityWindowMessage) {
+  if (!presentationBridgeEnabled || !message.raw) return
+  if (!['PRESENTATION_READY', 'PRESENTATION_HEARTBEAT', 'PRESENTATION_REPORT'].includes(message.type)) return
+  const incoming = message.raw as unknown as UnityPresentationIncoming
+  if (!presentationIdentityMatches(incoming)) return
+  if (incoming.type === 'PRESENTATION_READY' || incoming.type === 'PRESENTATION_HEARTBEAT') {
+    presentationBridgeReady.value = true
+    presentationBridgeStatus.value = incoming.scenarioReady ? 'Unity 展示会话已就绪' : 'Unity 会话在线，场景未就绪'
+    return
+  }
+  if (incoming.type !== 'PRESENTATION_REPORT') return
+  const report = incoming
+  const challenge = presentationChallenge.value
+  if (!challenge || report.requestId !== challenge.requestId
+    || report.sequence !== challenge.sequence || report.kind !== challenge.kind
+    || report.executionId !== challenge.executionId || Date.parse(challenge.expiresAt) <= Date.now()) return
+  const accepted = await store.submitPresentationReport({
+    runtimeGeneration: report.runtimeGeneration,
+    bindingId: report.bindingId,
+    kind: report.kind,
+    executionId: report.executionId,
+    requestId: report.requestId,
+    sequence: report.sequence,
+    frameSequence: report.frameSequence,
+    applied: report.applied,
+  })
+  presentationBridgeStatus.value = accepted
+    ? (report.applied ? '展示证据已提交' : 'Unity 报告未应用')
+    : '展示报告提交失败'
+}
+
+async function takePresentationBinding() {
+  await store.takePresentationBinding()
+  presentationBridgeReady.value = false
+  helloAttempts.value = 0
+  if (presentationBinding.value?.bindingId) emitHello()
+}
+
 function setMockOutcome(event: Event) {
   chosenMockOutcome.value = (event.target as HTMLSelectElement).value as VoiceMockOutcome
   setVoiceP0MockOutcome(chosenMockOutcome.value)
@@ -131,6 +237,21 @@ watch(() => props.runtimeHint, (hint) => {
 watch(() => props.runtimeHint.algorithmRunId, algorithmRunId => {
   void store.selectAlgorithmRun(algorithmRunId)
 }, { immediate: true })
+
+watch(() => [
+  context.value?.runtimeRef,
+  context.value?.runtimeGeneration,
+  props.unitySession.connected,
+  props.unitySession.unityInstanceId,
+  props.unitySession.sceneRevision,
+], async () => {
+  presentationBridgeReady.value = false
+  helloAttempts.value = 0
+  store.presentationChallenge = null
+  if (presentationBridgeEnabled && context.value && props.unitySession.connected && props.unitySession.sceneRevision > 0) {
+    await takePresentationBinding()
+  }
+})
 
 watch(() => [execution.value?.state, execution.value?.presentationStatus], ([state, presentation]) => {
   if (state === 'SUCCEEDED' && presentation === 'PENDING') presentationPendingSince.value ??= Date.now()
@@ -157,9 +278,21 @@ onMounted(async () => {
       ? pollTick % (timedOutSeconds < 30 ? 2 : 10) === 0
       : true
     if (executionDue) void store.poll()
+    if (presentationBridgeEnabled) {
+      if (!presentationBridgeReady.value && helloAttempts.value < 30) emitHello()
+      else if (!presentationBridgeReady.value && helloAttempts.value >= 30) presentationBridgeStatus.value = 'Unity 展示握手超时，请重新接管'
+      else {
+        if (presentationChallenge.value && Date.parse(presentationChallenge.value.expiresAt) <= Date.now()) {
+          store.presentationChallenge = null
+        }
+        void requestPresentationProbe()
+      }
+    }
   }, 1000)
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
+
+defineExpose({ handleUnityPresentationMessage })
 onBeforeUnmount(() => {
   window.clearInterval(timer)
   document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -180,7 +313,8 @@ onBeforeUnmount(() => {
     <p v-if="recoveryPending" class="recovery-note">正在使用原请求内容和原幂等键核对上次未确认的响应……</p>
     <p v-else-if="responseUnknown" class="recovery-note">上次写请求结果未知，不能换新幂等键重发。</p>
     <p v-else-if="!recoveryAvailable" class="error">本地恢复日志不可用，写操作已阻止。</p>
-    <p v-if="presentationBinding?.bindingId" class="scope-note" :title="presentationBinding.bindingId">展示绑定已建立；等待 E03 Unity 挑战回执接入。</p>
+    <p v-if="presentationBinding?.bindingId" class="scope-note" :title="presentationBinding.bindingId">展示绑定已建立。</p>
+    <p v-if="presentationBridgeEnabled" class="scope-note">展示桥：{{ presentationBridgeStatus }}</p>
 
     <div class="action-grid">
       <button
@@ -217,7 +351,7 @@ onBeforeUnmount(() => {
     <footer>
       <button type="button" @click="store.refreshContexts()"><RefreshCw :size="12" />刷新上下文</button>
       <button v-if="responseUnknown" type="button" @click="store.recover()">核对上次请求</button>
-      <button v-if="context" type="button" :title="presentationBinding?.bindingId ?? '尚未建立绑定'" @click="store.takePresentationBinding()">
+      <button v-if="context" type="button" :title="presentationBinding?.bindingId ?? '尚未建立绑定'" @click="takePresentationBinding">
         {{ presentationBinding?.bindingId ? '重新接管展示' : '建立展示绑定' }}
       </button>
       <button v-if="proposal || execution" type="button" @click="store.clearActive()">清除本地视图</button>

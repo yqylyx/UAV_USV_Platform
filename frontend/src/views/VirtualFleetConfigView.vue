@@ -28,7 +28,7 @@ import {
   prepareAlgorithmRun,
 } from '@/api/algorithm'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
-import type { VoiceMockRuntimeHint, VoiceRuntimeState } from '@/types/voiceControl'
+import type { UnityPresentationOutgoing, VoiceMockRuntimeHint, VoiceRuntimeState } from '@/types/voiceControl'
 import {
   adaptVirtualAlgorithmFrame,
   type EnuOrigin,
@@ -134,6 +134,9 @@ const panelTransitioning = ref(false)
 const inspectorTab = ref<InspectorTab>('status')
 const logEntries = ref<string[]>([])
 const lastUnityMessage = ref<UnityMessage | null>(null)
+const voiceControlPanel = ref<InstanceType<typeof VoiceP0ControlPanel> | null>(null)
+const presentationUnityInstanceId = ref(crypto.randomUUID().toLowerCase())
+const presentationSceneRevision = ref(0)
 const currentAlgorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
 const tacticalHistory = simulationRuntime.tacticalHistory
 const consumedTacticalEventIds = new Set<string>()
@@ -462,6 +465,11 @@ const voiceRuntimeHint = computed<VoiceMockRuntimeHint>(() => {
     latestFrameSequence: state.sequence,
   }
 })
+const voiceUnitySession = computed(() => ({
+  connected: unityReady.value,
+  unityInstanceId: presentationUnityInstanceId.value,
+  sceneRevision: presentationSceneRevision.value,
+}))
 
 const algorithmDescription = computed(() => state.algorithm === 'GB_SFLA_CS'
   ? '算法负责目标分配、围捕航点、设备速度方向和捕获状态。'
@@ -510,6 +518,7 @@ function consumeTacticalEvents(frame: AlgorithmRuntimeFrame) {
 
 function send(type: string, payload: Record<string, unknown> = {}) {
   if (type === 'loadScenario') {
+    presentationSceneRevision.value += 1
     savedScenario = JSON.parse(JSON.stringify(payload))
     latestPoseBatch = null
   }
@@ -522,6 +531,11 @@ function send(type: string, payload: Record<string, unknown> = {}) {
   const requestId = unityPanel.value?.postToUnity(type, payload)
   addLog(`${type}${requestId ? ` / ${requestId}` : ''}`)
   return requestId
+}
+
+function sendPresentationMessage(message: UnityPresentationOutgoing) {
+  const sent = unityPanel.value?.postPresentationEnvelope(message) === true
+  addLog(`${message.type}: ${sent ? 'sent' : 'Unity bridge unavailable'}`)
 }
 
 function finalizeTerminalMission(status: string, sequence: number) {
@@ -544,6 +558,8 @@ function finalizeTerminalMission(status: string, sequence: number) {
 
 function onUnityLoading() {
   unityReady.value = false
+  presentationUnityInstanceId.value = crypto.randomUUID().toLowerCase()
+  presentationSceneRevision.value = 0
   scenarioReadyRunId.value = null
   clearTimeout(recoveryTimer)
   recoveryPoseSequence = null
@@ -601,7 +617,7 @@ function onUnityReady() {
     clearTimeout(recoveryTimer)
     recoveryTimer = window.setTimeout(() => failSceneRecovery('场景或设备位置未确认，不能将连接在线视为恢复成功。请重试。'), 45000)
     // Restore only the renderer, never prepare/start a second algorithm run.
-    unityPanel.value?.postToUnity('loadScenario', savedScenario)
+    send('loadScenario', savedScenario)
     return
   }
   // The page should open with a real, validated default preview instead of
@@ -629,6 +645,9 @@ function onUnityError(message: string) {
 
 function onUnityMessage(message: UnityMessage) {
   lastUnityMessage.value = message
+  if (message.type.startsWith('PRESENTATION_')) {
+    void voiceControlPanel.value?.handleUnityPresentationMessage(message)
+  }
   if (message.type === 'vueCommandReceived' && message.payload?.type === 'loadScenario') {
     addLog(
       `bridge loadScenario: sent=${message.payload.bridgeSent === true}`
@@ -1417,7 +1436,12 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-if="inspectorTab === 'status'" class="vf-inspector-content">
-              <VoiceP0ControlPanel :runtime-hint="voiceRuntimeHint" />
+              <VoiceP0ControlPanel
+                ref="voiceControlPanel"
+                :runtime-hint="voiceRuntimeHint"
+                :unity-session="voiceUnitySession"
+                @presentation-message="sendPresentationMessage"
+              />
               <article class="vf-status-card">
                 <span>任务状态</span>
                 <strong :class="state.mission.toLowerCase()">{{ state.mission }}</strong>

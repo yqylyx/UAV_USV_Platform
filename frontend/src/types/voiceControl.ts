@@ -133,4 +133,44 @@ export interface VoicePresentationReportRequest {
   applied: boolean
 }
 
+export interface UnityPresentationIdentity {
+  protocolVersion: 'unity.presentation.v1'
+  runtimeRef: string
+  runtimeGeneration: string
+  bindingId: string
+  unityInstanceId: string
+  sceneRevision: number
+}
+
+export interface UnityPresentationHello extends UnityPresentationIdentity {
+  type: 'PRESENTATION_HELLO'
+}
+
+export interface UnityPresentationProbe extends UnityPresentationIdentity {
+  type: 'PRESENTATION_PROBE'
+  requestId: string
+  sequence: number
+  kind: VoicePresentationKind
+  executionId: string | null
+}
+
+export interface UnityPresentationReady extends UnityPresentationIdentity {
+  type: 'PRESENTATION_READY' | 'PRESENTATION_HEARTBEAT'
+  scenarioReady: boolean
+  lastAppliedFrameSequence: number
+}
+
+export interface UnityPresentationReport extends UnityPresentationIdentity {
+  type: 'PRESENTATION_REPORT'
+  requestId: string
+  sequence: number
+  kind: VoicePresentationKind
+  executionId: string | null
+  frameSequence: number
+  applied: boolean
+}
+
+export type UnityPresentationOutgoing = UnityPresentationHello | UnityPresentationProbe
+export type UnityPresentationIncoming = UnityPresentationReady | UnityPresentationReport
+
 export type VoiceMockOutcome = 'SUCCESS' | 'REJECTED' | 'FAILED' | 'TIMEOUT_LATE_SUCCESS'
