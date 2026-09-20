@@ -23,7 +23,7 @@
 在 `algorithm-service` 目录执行：
 
 ```text
-python -m pytest tests/test_fake_runner_p0.py
+..\\.venv-p0\\Scripts\\python.exe -m pytest tests/test_fake_runner_p0.py
 ```
 
 Fake Runner 是 NDJSON 子进程，stdout 只输出协议事件，诊断信息输出 stderr。测试使用固定的 `runtimeRef`、`runtimeGeneration` 和 `commandId`，不依赖网络、数据库或真实算法适配器。

@@ -18,3 +18,4 @@ __pycache__/
 *.py[cod]
 
 .local-tools/
+.venv-p0/
