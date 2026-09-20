@@ -99,6 +99,9 @@ const presentationWaitExpired = computed(() => execution.value?.state === 'SUCCE
   && execution.value.presentationStatus === 'PENDING'
   && presentationPendingSince.value !== null
   && now.value - presentationPendingSince.value >= 30_000)
+const presentationCanResync = computed(() => execution.value?.state === 'SUCCEEDED'
+  && ['START', 'RESUME'].includes(execution.value.action)
+  && execution.value.presentationStatus === 'STALE')
 const contextSummary = computed(() => context.value
   ? `运行 ${context.value.algorithmRunId} · ${context.value.state} · 帧 ${context.value.latestFrameSequence} · 心跳${heartbeatFresh.value ? '正常' : '失效'}`
   : '尚未发现可控制的独立算法实例')
@@ -161,12 +164,13 @@ function emitHello() {
   presentationBridgeStatus.value = `等待 Unity READY（${helloAttempts.value}/30）`
 }
 
-async function requestPresentationProbe() {
+async function requestPresentationProbe(forceFrameResync = false) {
   if (!presentationBridgeEnabled || !presentationBridgeReady.value || presentationRequestInFlight
     || presentationChallenge.value || !context.value || !presentationBinding.value?.bindingId) return
   const frameRequired = execution.value?.state === 'SUCCEEDED'
     && ['START', 'RESUME'].includes(execution.value.action)
-    && execution.value.presentationStatus === 'PENDING'
+    && (execution.value.presentationStatus === 'PENDING'
+      || (forceFrameResync && execution.value.presentationStatus === 'STALE'))
   if (!frameRequired && Date.now() - lastSceneProbeAt.value < 3000) return
   presentationRequestInFlight = true
   try {
@@ -185,6 +189,25 @@ async function requestPresentationProbe() {
     presentationBridgeStatus.value = `等待 Unity ${kind} 回执`
     if (!frameRequired) lastSceneProbeAt.value = Date.now()
   } finally { presentationRequestInFlight = false }
+}
+
+async function resyncPresentation() {
+  if (!presentationBridgeEnabled) {
+    presentationBridgeStatus.value = '展示桥未启用，无法重新同步画面'
+    return
+  }
+  if (!presentationBinding.value?.bindingId) {
+    await takePresentationBinding()
+  }
+  if (!presentationBridgeReady.value) {
+    emitHello()
+    presentationBridgeStatus.value = '正在重新连接 Unity，请就绪后再次同步'
+    return
+  }
+  // A stale or expired challenge cannot be reused. Explicit recovery always
+  // asks the backend for a fresh one-time FRAME_APPLIED challenge.
+  store.presentationChallenge = null
+  await requestPresentationProbe(true)
 }
 
 async function handleUnityPresentationMessage(message: UnityWindowMessage) {
@@ -355,6 +378,15 @@ onBeforeUnmount(() => {
       <p v-if="execution.errorCode">{{ errorLabels[execution.errorCode] ?? execution.errorCode }}</p>
       <small>算法结果：{{ execution.outcome }} · 展示状态：{{ presentationLabels[execution.presentationStatus] }}</small>
       <p v-if="presentationWaitExpired">算法动作已成功，但 30 秒内暂未收到画面确认；未修改服务端展示状态。</p>
+      <button
+        v-if="presentationCanResync"
+        class="presentation-resync"
+        type="button"
+        :disabled="loading || presentationRequestInFlight"
+        @click="resyncPresentation"
+      >
+        <RefreshCw :size="12" />重新同步画面
+      </button>
     </article>
     <article v-else-if="proposal && proposal.status !== 'AWAITING_CONFIRMATION'" class="result">
       提案状态：{{ proposal.status }}
@@ -418,6 +450,7 @@ onBeforeUnmount(() => {
 .action-grid button:hover:not(:disabled) small { color:#164c4c; }
 .mock-scenario { display:flex; align-items:center; justify-content:space-between; color:#8fb5b0; }.mock-scenario select { padding:4px 6px; }
 .result { padding:9px; border:1px solid #315158; border-radius:4px; background:#081e23; }.result strong { color:#f1fffd; }.result span,.result small { color:#739d98; }.result p,.error { padding-top:5px; color:#ff9d91; line-height:1.45; }
+.result .presentation-resync { display:inline-flex; align-items:center; gap:5px; margin-top:8px; padding:5px 8px; color:#78e4d6; cursor:pointer; background:#0a282e; border:1px solid #28645e; border-radius:4px; font-size:10px; }.result .presentation-resync:disabled { cursor:not-allowed; opacity:.4; }
 .result.success { border-color:#2a7052; }.voice-p0 footer button { padding:3px 0; background:transparent; border:0; color:#78aaa4; }
 .recovery-note { color:#ffd58a; line-height:1.45; }
 .voice-modal { position:fixed; inset:0; z-index:1200; display:grid; padding:20px; place-items:center; background:rgba(0,8,11,.78); backdrop-filter:blur(4px); }

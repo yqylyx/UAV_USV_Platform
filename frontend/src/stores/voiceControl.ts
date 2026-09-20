@@ -32,6 +32,11 @@ const activeKeyPrefix = 'voice-p0.active-command.v2:'
 const journalKeyPrefix = 'voice-p0.operation-journal.v1:'
 const terminalStates = new Set(['SUCCEEDED', 'REJECTED', 'FAILED', 'INVALIDATED'])
 
+function executionNeedsPolling(execution: VoiceExecution) {
+  if (!terminalStates.has(execution.state)) return true
+  return execution.state === 'SUCCEEDED' && execution.presentationStatus === 'PENDING'
+}
+
 interface RecoveryState { proposalId?: string; executionId?: string }
 type JournalKind = 'CREATE_PROPOSAL' | 'CONFIRM' | 'CANCEL' | 'REPLACE_BINDING' | 'PRESENTATION_CHALLENGE' | 'PRESENTATION_REPORT'
 type JournalBody = VoiceProposalRequest | VoicePlanGuardRequest | VoicePresentationBindingRequest | VoicePresentationChallengeRequest | VoicePresentationReportRequest
@@ -378,7 +383,10 @@ export const useVoiceControlStore = defineStore('voiceControl', {
     async poll() {
       try {
         if (this.execution) {
-          if (terminalStates.has(this.execution.state)) return
+          // Algorithm success and Unity presentation completion are separate.
+          // Keep reading while the backend is still resolving PENDING to
+          // REPORTED_APPLIED or STALE.
+          if (!executionNeedsPolling(this.execution)) return
           this.execution = await fetchVoiceExecution(this.execution.executionId)
           this.persist()
         } else if (this.proposal?.status === 'AWAITING_CONFIRMATION') {
