@@ -1,0 +1,11 @@
+-- Run manually as a MySQL administrator, after replacing the password placeholder.
+-- Do not use the application's root/development account for runtime connections.
+-- Intentionally no DROP, TRUNCATE, or global privileges.
+CREATE DATABASE IF NOT EXISTS uav_usv_p0_integration
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'p0_integration'@'127.0.0.1' IDENTIFIED BY '<SET_A_UNIQUE_LOCAL_PASSWORD>';
+GRANT ALL PRIVILEGES ON `uav\_usv\_p0\_integration`.* TO 'p0_integration'@'127.0.0.1';
+SHOW GRANTS FOR 'p0_integration'@'127.0.0.1';
+-- Existing user: inspect its grants; do not blindly reuse an account with broader permissions.
+-- If your server matches local TCP clients as localhost instead, create the same dedicated
+-- user for localhost and grant only the same database. Confirm CURRENT_USER() after login.
