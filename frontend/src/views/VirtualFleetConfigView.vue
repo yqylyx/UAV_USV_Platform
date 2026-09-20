@@ -107,7 +107,7 @@ type CaptureGroupMetric = {
   triggerReason?: string
 }
 
-type InspectorTab = 'status' | 'protocol' | 'logs'
+type InspectorTab = 'status' | 'voice' | 'protocol' | 'logs'
 
 type TacticalEvent = SimulationTacticalNotice
 
@@ -1430,18 +1430,21 @@ onBeforeUnmount(() => {
           <section class="vf-panel vf-inspector-panel">
             <div class="vf-inspector-tabs">
               <button :class="{ active: inspectorTab === 'status' }" type="button" @click="inspectorTab = 'status'">任务态势</button>
+              <button :class="{ active: inspectorTab === 'voice' }" type="button" @click="inspectorTab = 'voice'">语音控制</button>
               <button :class="{ active: inspectorTab === 'protocol' }" type="button" @click="inspectorTab = 'protocol'">协议状态</button>
               <button :class="{ active: inspectorTab === 'logs' }" type="button" @click="inspectorTab = 'logs'">运行日志</button>
               <button class="collapse" type="button" title="收起检查区" @click="setRightPanelCollapsed(true)"><ChevronRight :size="17" /></button>
             </div>
 
+            <VoiceP0ControlPanel
+              v-show="inspectorTab === 'voice'"
+              ref="voiceControlPanel"
+              :runtime-hint="voiceRuntimeHint"
+              :unity-session="voiceUnitySession"
+              @presentation-message="sendPresentationMessage"
+            />
+
             <div v-if="inspectorTab === 'status'" class="vf-inspector-content">
-              <VoiceP0ControlPanel
-                ref="voiceControlPanel"
-                :runtime-hint="voiceRuntimeHint"
-                :unity-session="voiceUnitySession"
-                @presentation-message="sendPresentationMessage"
-              />
               <article class="vf-status-card">
                 <span>任务状态</span>
                 <strong :class="state.mission.toLowerCase()">{{ state.mission }}</strong>

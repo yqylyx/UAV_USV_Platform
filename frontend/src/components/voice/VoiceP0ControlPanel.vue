@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Check, Mic2, RefreshCw, ShieldCheck, X } from '@lucide/vue'
+import { AudioLines, Check, RefreshCw, ShieldCheck, X } from '@lucide/vue'
 
 import {
   configureVoiceP0MockRuntime,
@@ -301,15 +301,25 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="voice-p0">
-    <header>
-      <div><Mic2 :size="15" /><strong>语音大模型控制 · P0</strong></div>
+    <header class="voice-head">
+      <div>
+        <span class="voice-icon"><AudioLines :size="17" /></span>
+        <span class="voice-title"><strong>语音任务控制</strong><small>VOICE / LLM · P0</small></span>
+      </div>
       <span :class="voiceP0MockEnabled ? 'mock' : 'real'">{{ voiceP0MockEnabled ? '本地 MOCK' : '真实 API' }}</span>
     </header>
 
-    <p class="context-line" :title="contextSummary">
-      <i :class="{ online: !!context }"></i>{{ contextSummary }}
-    </p>
-    <p class="scope-note">当前仅生成“整队任务控制”提案；麦克风、LLM 意图解析和单机控制不属于 P0。</p>
+    <article class="runtime-card">
+      <p class="context-line" :title="contextSummary">
+        <i :class="{ online: !!context && heartbeatFresh }"></i>{{ contextSummary }}
+      </p>
+      <dl>
+        <div><dt>任务状态</dt><dd>{{ context?.state ?? '未连接' }}</dd></div>
+        <div><dt>场景状态</dt><dd>{{ context?.sceneReady ? 'READY' : 'WAITING' }}</dd></div>
+        <div><dt>接入设备</dt><dd>{{ runtimeHint.deviceCodes.length }} 台</dd></div>
+      </dl>
+    </article>
+    <p class="scope-note">当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。</p>
     <p v-if="recoveryPending" class="recovery-note">正在使用原请求内容和原幂等键核对上次未确认的响应……</p>
     <p v-else-if="responseUnknown" class="recovery-note">上次写请求结果未知，不能换新幂等键重发。</p>
     <p v-else-if="!recoveryAvailable" class="error">本地恢复日志不可用，写操作已阻止。</p>
@@ -324,7 +334,10 @@ onBeforeUnmount(() => {
         :disabled="!!disabledReason(item.action) || loading"
         :title="disabledReason(item.action) || `创建${item.label}提案`"
         @click="propose(item.intent)"
-      >{{ item.label }}</button>
+      >
+        <strong>{{ item.label }}任务</strong>
+        <small>{{ disabledReason(item.action) || '创建并核对指令提案' }}</small>
+      </button>
     </div>
 
     <label v-if="voiceP0MockEnabled" class="mock-scenario">
@@ -386,16 +399,23 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.voice-p0 { display:grid; gap:10px; padding:14px; color:#bddad6; border-bottom:1px solid rgba(108,228,213,.15); background:linear-gradient(145deg,rgba(12,42,47,.95),rgba(5,22,27,.98)); font-size:11px; }
-.voice-p0 header,.voice-p0 header div,.voice-p0 footer,.result div { display:flex; align-items:center; justify-content:space-between; gap:7px; }
-.voice-p0 header strong { color:#f0fffd; font-size:12px; }
-.voice-p0 header span { padding:2px 6px; border:1px solid; border-radius:10px; font-size:9px; font-weight:800; }
-.voice-p0 header .mock { color:#ffd58a; border-color:#725b2e; }.voice-p0 header .real { color:#78eadb; border-color:#286c65; }
+.voice-p0 { display:grid; min-height:100%; align-content:start; gap:12px; padding:16px; color:#bddad6; background:linear-gradient(160deg,rgba(10,36,41,.98),rgba(4,19,24,.99)); font-size:11px; }
+.voice-p0 header,.voice-p0 header > div,.voice-p0 footer,.result div { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.voice-head .voice-icon { display:grid; width:30px; height:30px; padding:0; color:#70e5d6; place-items:center; background:rgba(108,228,213,.08); border:1px solid rgba(108,228,213,.2); border-radius:5px; }
+.voice-head .voice-title { display:grid; gap:2px; padding:0; border:0; border-radius:0; }
+.voice-head strong { color:#f0fffd; font-size:13px; }.voice-head small { color:#608d88; font-size:9px; letter-spacing:.08em; }
+.voice-head > span { padding:2px 6px; border:1px solid; border-radius:10px; font-size:9px; font-weight:800; }
+.voice-head .mock { color:#ffd58a; border-color:#725b2e; }.voice-head .real { color:#78eadb; border-color:#286c65; }
+.runtime-card { display:grid; gap:10px; margin:0; padding:11px; background:#082329; border:1px solid rgba(108,228,213,.16); border-radius:5px; }
+.runtime-card dl { display:grid; margin:0; grid-template-columns:repeat(3,1fr); }.runtime-card dl div { display:grid; gap:3px; padding-left:8px; border-left:1px solid #204148; }
+.runtime-card dt { color:#668f8a; font-size:9px; }.runtime-card dd { overflow:hidden; margin:0; color:#d9f1ed; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
 .context-line,.scope-note,.error,.recovery-note,.result p { margin:0; }.context-line { overflow:hidden; color:#9bc9c3; text-overflow:ellipsis; white-space:nowrap; }
 .context-line i { display:inline-block; width:6px; height:6px; margin-right:6px; background:#6a7d7b; border-radius:50%; }.context-line i.online { background:#45db8b; box-shadow:0 0 7px #45db8b; }
-.scope-note { color:#6f9691; line-height:1.5; }.action-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+.scope-note { color:#6f9691; line-height:1.5; }.action-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; }
 .action-grid button,.voice-p0 footer button,.voice-modal button,.mock-scenario select { padding:7px; color:#bce8e1; cursor:pointer; background:#0a282e; border:1px solid #285159; border-radius:4px; font-size:10px; }
+.action-grid button { display:grid; min-height:56px; gap:4px; text-align:left; }.action-grid button strong { color:inherit; font-size:12px; }.action-grid button small { overflow:hidden; color:#709792; font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
 .action-grid button:hover:not(:disabled) { color:#061a1e; background:#6ce4d5; }.action-grid button:disabled { cursor:not-allowed; opacity:.35; }
+.action-grid button:hover:not(:disabled) small { color:#164c4c; }
 .mock-scenario { display:flex; align-items:center; justify-content:space-between; color:#8fb5b0; }.mock-scenario select { padding:4px 6px; }
 .result { padding:9px; border:1px solid #315158; border-radius:4px; background:#081e23; }.result strong { color:#f1fffd; }.result span,.result small { color:#739d98; }.result p,.error { padding-top:5px; color:#ff9d91; line-height:1.45; }
 .result.success { border-color:#2a7052; }.voice-p0 footer button { padding:3px 0; background:transparent; border:0; color:#78aaa4; }
