@@ -250,7 +250,7 @@ export interface AlgorithmRuntimeStatus {
   /** Available only after a standalone Python v1 handshake; legacy servers may omit these. */
   runtimeRef?: string | null
   runtimeGeneration?: string | null
-  protocolVersion?: string | null
+  protocolVersion?: 'algorithm.command.v1' | 'legacy' | null
   capabilities?: string[]
 }
 

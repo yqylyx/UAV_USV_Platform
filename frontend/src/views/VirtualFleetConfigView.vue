@@ -14,6 +14,7 @@ import {
 } from '@lucide/vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import VoiceP0ControlPanel from '@/components/voice/VoiceP0ControlPanel.vue'
 import {
   simulationRuntime,
   enqueueTacticalNotices,
@@ -27,6 +28,7 @@ import {
   prepareAlgorithmRun,
 } from '@/api/algorithm'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
+import type { UnityPresentationOutgoing, VoiceMockRuntimeHint, VoiceRuntimeState } from '@/types/voiceControl'
 import {
   adaptVirtualAlgorithmFrame,
   type EnuOrigin,
@@ -105,7 +107,7 @@ type CaptureGroupMetric = {
   triggerReason?: string
 }
 
-type InspectorTab = 'status' | 'protocol' | 'logs'
+type InspectorTab = 'status' | 'voice' | 'protocol' | 'logs'
 
 type TacticalEvent = SimulationTacticalNotice
 
@@ -132,6 +134,9 @@ const panelTransitioning = ref(false)
 const inspectorTab = ref<InspectorTab>('status')
 const logEntries = ref<string[]>([])
 const lastUnityMessage = ref<UnityMessage | null>(null)
+const voiceControlPanel = ref<InstanceType<typeof VoiceP0ControlPanel> | null>(null)
+const presentationUnityInstanceId = ref(crypto.randomUUID().toLowerCase())
+const presentationSceneRevision = ref(0)
 const currentAlgorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
 const tacticalHistory = simulationRuntime.tacticalHistory
 const consumedTacticalEventIds = new Set<string>()
@@ -440,6 +445,32 @@ const state = reactive({
   sequence: 0,
 })
 
+const voiceRuntimeHint = computed<VoiceMockRuntimeHint>(() => {
+  const stateMap: Record<string, VoiceRuntimeState> = {
+    STOPPED: algorithmPrepared.value ? 'PREPARED' : 'PREVIEW',
+    RUNNING: 'RUNNING',
+    PAUSED: 'PAUSED',
+    COMPLETING: 'RUNNING',
+    COMPLETED: 'COMPLETED',
+    FAILED: 'FAILED',
+  }
+  const deviceCodes = plannedScenarioPoses.value
+    .map(pose => pose.deviceCode)
+    .filter((code): code is string => Boolean(code))
+  return {
+    algorithmRunId: String(state.runId),
+    state: stateMap[state.mission] ?? 'PREVIEW',
+    sceneReady: unityReady.value && scenarioReadyRunId.value === state.runId,
+    deviceCodes,
+    latestFrameSequence: state.sequence,
+  }
+})
+const voiceUnitySession = computed(() => ({
+  connected: unityReady.value,
+  unityInstanceId: presentationUnityInstanceId.value,
+  sceneRevision: presentationSceneRevision.value,
+}))
+
 const algorithmDescription = computed(() => state.algorithm === 'GB_SFLA_CS'
   ? '算法负责目标分配、围捕航点、设备速度方向和捕获状态。'
   : '算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。')
@@ -487,6 +518,7 @@ function consumeTacticalEvents(frame: AlgorithmRuntimeFrame) {
 
 function send(type: string, payload: Record<string, unknown> = {}) {
   if (type === 'loadScenario') {
+    presentationSceneRevision.value += 1
     savedScenario = JSON.parse(JSON.stringify(payload))
     latestPoseBatch = null
   }
@@ -499,6 +531,11 @@ function send(type: string, payload: Record<string, unknown> = {}) {
   const requestId = unityPanel.value?.postToUnity(type, payload)
   addLog(`${type}${requestId ? ` / ${requestId}` : ''}`)
   return requestId
+}
+
+function sendPresentationMessage(message: UnityPresentationOutgoing) {
+  const sent = unityPanel.value?.postPresentationEnvelope(message) === true
+  addLog(`${message.type}: ${sent ? 'sent' : 'Unity bridge unavailable'}`)
 }
 
 function finalizeTerminalMission(status: string, sequence: number) {
@@ -521,6 +558,8 @@ function finalizeTerminalMission(status: string, sequence: number) {
 
 function onUnityLoading() {
   unityReady.value = false
+  presentationUnityInstanceId.value = crypto.randomUUID().toLowerCase()
+  presentationSceneRevision.value = 0
   scenarioReadyRunId.value = null
   clearTimeout(recoveryTimer)
   recoveryPoseSequence = null
@@ -578,7 +617,7 @@ function onUnityReady() {
     clearTimeout(recoveryTimer)
     recoveryTimer = window.setTimeout(() => failSceneRecovery('场景或设备位置未确认，不能将连接在线视为恢复成功。请重试。'), 45000)
     // Restore only the renderer, never prepare/start a second algorithm run.
-    unityPanel.value?.postToUnity('loadScenario', savedScenario)
+    send('loadScenario', savedScenario)
     return
   }
   // The page should open with a real, validated default preview instead of
@@ -606,6 +645,9 @@ function onUnityError(message: string) {
 
 function onUnityMessage(message: UnityMessage) {
   lastUnityMessage.value = message
+  if (message.type.startsWith('PRESENTATION_')) {
+    void voiceControlPanel.value?.handleUnityPresentationMessage(message)
+  }
   if (message.type === 'vueCommandReceived' && message.payload?.type === 'loadScenario') {
     addLog(
       `bridge loadScenario: sent=${message.payload.bridgeSent === true}`
@@ -1387,6 +1429,7 @@ onBeforeUnmount(() => {
           </button>
           <section class="vf-panel vf-inspector-panel">
             <div class="vf-inspector-tabs">
+              <button :class="{ active: inspectorTab === 'voice' }" type="button" @click="inspectorTab = 'voice'">语音控制</button>
               <button :class="{ active: inspectorTab === 'status' }" type="button" @click="inspectorTab = 'status'">任务态势</button>
               <button :class="{ active: inspectorTab === 'protocol' }" type="button" @click="inspectorTab = 'protocol'">协议状态</button>
               <button :class="{ active: inspectorTab === 'logs' }" type="button" @click="inspectorTab = 'logs'">运行日志</button>
@@ -1516,11 +1559,20 @@ onBeforeUnmount(() => {
               <pre>{{ protocolSnapshot }}</pre>
             </div>
 
-            <div v-else class="vf-inspector-content vf-runtime-log">
+            <div v-else-if="inspectorTab === 'logs'" class="vf-inspector-content vf-runtime-log">
               <p v-if="!logEntries.length" class="vf-empty">暂无运行日志</p>
               <ol v-else>
                 <li v-for="entry in logEntries" :key="entry">{{ entry }}</li>
               </ol>
+            </div>
+
+            <div v-else class="vf-inspector-content">
+              <VoiceP0ControlPanel
+                ref="voiceControlPanel"
+                :runtime-hint="voiceRuntimeHint"
+                :unity-session="voiceUnitySession"
+                @presentation-message="sendPresentationMessage"
+              />
             </div>
           </section>
         </aside>
