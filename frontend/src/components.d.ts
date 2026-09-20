@@ -48,6 +48,7 @@ declare module 'vue' {
     UnityWebglPanel: typeof import('./components/unity/UnityWebglPanel.vue')['default']
     VehicleGlyph: typeof import('./components/control/VehicleGlyph.vue')['default']
     VehicleQuickControl: typeof import('./components/control/VehicleQuickControl.vue')['default']
+    VoiceP0ControlPanel: typeof import('./components/voice/VoiceP0ControlPanel.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

@@ -47,12 +47,22 @@ export const useAuthStore = defineStore('auth', {
     },
     async logout() {
       this.loading = true
+      const previousUsername = this.user?.username
       try {
         await requestLogout()
       } catch {
         // Local logout should still complete if the session already expired
         // or CSRF renewal fails during navigation.
       } finally {
+        if (previousUsername) {
+          try {
+            localStorage.removeItem(`voice-p0.active-command.v2:${previousUsername}`)
+            localStorage.removeItem(`voice-p0.operation-journal.v1:${previousUsername}`)
+            localStorage.removeItem('voice-p0.active-command.v1')
+          } catch {
+            // Logout still completes when browser storage is unavailable.
+          }
+        }
         this.user = null
         this.initialized = true
         this.loading = false

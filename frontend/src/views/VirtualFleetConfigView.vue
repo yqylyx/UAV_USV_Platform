@@ -14,6 +14,7 @@ import {
 } from '@lucide/vue'
 
 import ConsoleLayout from '@/components/layout/ConsoleLayout.vue'
+import VoiceP0ControlPanel from '@/components/voice/VoiceP0ControlPanel.vue'
 import {
   simulationRuntime,
   enqueueTacticalNotices,
@@ -27,6 +28,7 @@ import {
   prepareAlgorithmRun,
 } from '@/api/algorithm'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
+import type { VoiceMockRuntimeHint, VoiceRuntimeState } from '@/types/voiceControl'
 import {
   adaptVirtualAlgorithmFrame,
   type EnuOrigin,
@@ -438,6 +440,27 @@ const state = reactive({
   mission: 'STOPPED',
   runId: 7001,
   sequence: 0,
+})
+
+const voiceRuntimeHint = computed<VoiceMockRuntimeHint>(() => {
+  const stateMap: Record<string, VoiceRuntimeState> = {
+    STOPPED: algorithmPrepared.value ? 'PREPARED' : 'PREVIEW',
+    RUNNING: 'RUNNING',
+    PAUSED: 'PAUSED',
+    COMPLETING: 'RUNNING',
+    COMPLETED: 'COMPLETED',
+    FAILED: 'FAILED',
+  }
+  const deviceCodes = plannedScenarioPoses.value
+    .map(pose => pose.deviceCode)
+    .filter((code): code is string => Boolean(code))
+  return {
+    algorithmRunId: String(state.runId),
+    state: stateMap[state.mission] ?? 'PREVIEW',
+    sceneReady: unityReady.value && scenarioReadyRunId.value === state.runId,
+    deviceCodes,
+    latestFrameSequence: state.sequence,
+  }
 })
 
 const algorithmDescription = computed(() => state.algorithm === 'GB_SFLA_CS'
@@ -1394,6 +1417,7 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-if="inspectorTab === 'status'" class="vf-inspector-content">
+              <VoiceP0ControlPanel :runtime-hint="voiceRuntimeHint" />
               <article class="vf-status-card">
                 <span>任务状态</span>
                 <strong :class="state.mission.toLowerCase()">{{ state.mission }}</strong>
