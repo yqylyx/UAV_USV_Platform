@@ -1430,19 +1430,11 @@ onBeforeUnmount(() => {
           <section class="vf-panel vf-inspector-panel">
             <div class="vf-inspector-tabs">
               <button :class="{ active: inspectorTab === 'status' }" type="button" @click="inspectorTab = 'status'">任务态势</button>
-              <button :class="{ active: inspectorTab === 'voice' }" type="button" @click="inspectorTab = 'voice'">语音控制</button>
               <button :class="{ active: inspectorTab === 'protocol' }" type="button" @click="inspectorTab = 'protocol'">协议状态</button>
               <button :class="{ active: inspectorTab === 'logs' }" type="button" @click="inspectorTab = 'logs'">运行日志</button>
+              <button :class="{ active: inspectorTab === 'voice' }" type="button" @click="inspectorTab = 'voice'">语音控制</button>
               <button class="collapse" type="button" title="收起检查区" @click="setRightPanelCollapsed(true)"><ChevronRight :size="17" /></button>
             </div>
-
-            <VoiceP0ControlPanel
-              v-show="inspectorTab === 'voice'"
-              ref="voiceControlPanel"
-              :runtime-hint="voiceRuntimeHint"
-              :unity-session="voiceUnitySession"
-              @presentation-message="sendPresentationMessage"
-            />
 
             <div v-if="inspectorTab === 'status'" class="vf-inspector-content">
               <article class="vf-status-card">
@@ -1567,11 +1559,20 @@ onBeforeUnmount(() => {
               <pre>{{ protocolSnapshot }}</pre>
             </div>
 
-            <div v-else class="vf-inspector-content vf-runtime-log">
+            <div v-else-if="inspectorTab === 'logs'" class="vf-inspector-content vf-runtime-log">
               <p v-if="!logEntries.length" class="vf-empty">暂无运行日志</p>
               <ol v-else>
                 <li v-for="entry in logEntries" :key="entry">{{ entry }}</li>
               </ol>
+            </div>
+
+            <div v-else class="vf-inspector-content">
+              <VoiceP0ControlPanel
+                ref="voiceControlPanel"
+                :runtime-hint="voiceRuntimeHint"
+                :unity-session="voiceUnitySession"
+                @presentation-message="sendPresentationMessage"
+              />
             </div>
           </section>
         </aside>
