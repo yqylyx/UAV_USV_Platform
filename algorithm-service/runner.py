@@ -97,7 +97,8 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
         event_sequences[cid] = event_sequences.get(cid, 0) + 1
         if status == "SUCCEEDED":
             state_version += 1
-        payload = {"runtimeRef": runtime_ref, "runtimeGeneration": generation,
+        payload = {"protocolVersion": "algorithm.command.v1",
+                   "runtimeRef": runtime_ref, "runtimeGeneration": generation,
                    "kind": "COMMAND_RESULT", "commandId": cid,
                    "eventSequence": event_sequences[cid], "status": status,
                    "runtimeState": state, "stateVersion": state_version,
