@@ -38,6 +38,21 @@ def emit_v1(payload: dict) -> None:
     emit({"protocolVersion": "algorithm.command.v1", **payload})
 
 
+def _normalize_frame_device_codes(frame: dict) -> dict:
+    """Add the contract device identifier without removing the legacy code."""
+    agents = frame.get("agents", [])
+    if not isinstance(agents, list):
+        return frame
+    for agent in agents:
+        if not isinstance(agent, dict):
+            continue
+        code = str(agent.get("code", "")).strip()
+        device_code = str(agent.get("deviceCode", "")).strip()
+        if code and not device_code:
+            agent["deviceCode"] = code
+    return frame
+
+
 def _device_codes(frame: dict) -> list[str]:
     agents = frame.get("agents", [])
     if not isinstance(agents, list):
@@ -65,7 +80,7 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
     result_cache: dict[str, list[dict]] = {}
     command_bodies: dict[str, str] = {}
     last_frame_sequence = 0
-    frame = adapter.step().to_dict()
+    frame = _normalize_frame_device_codes(adapter.step().to_dict())
     last_frame_sequence = int(frame.get("sequence", 0))
     adapter.set_mission_active(False)
     emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
@@ -158,7 +173,7 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
         if input_closed.is_set() and commands.empty():
             return 0
         if state == "RUNNING":
-            frame = adapter.step().to_dict()
+            frame = _normalize_frame_device_codes(adapter.step().to_dict())
             last_frame_sequence = int(frame.get("sequence", last_frame_sequence))
             emit({"event": "frame", "payload": frame})
         now = time.monotonic()
@@ -224,7 +239,7 @@ def main() -> int:
     # The UI uses this frame to align Unity's generated scene before START;
     # advancing only after START caused the target and fleet to jump on the
     # first visible mission frame.
-    initial_frame = adapter.step().to_dict()
+    initial_frame = _normalize_frame_device_codes(adapter.step().to_dict())
     emit({"event": "frame", "payload": initial_frame})
     frame_interval = 1.0 / max(1.0, args.fps)
 
@@ -262,7 +277,7 @@ def main() -> int:
             # already disappeared.  Returning also releases vendor resources.
             return 0
         if state in {"RUNNING", "PREVIEW"}:
-            frame = adapter.step().to_dict()
+            frame = _normalize_frame_device_codes(adapter.step().to_dict())
             emit({"event": "frame", "payload": frame})
             if state == "RUNNING" and frame.get("terminalStatus"):
                 state = str(frame["terminalStatus"])
