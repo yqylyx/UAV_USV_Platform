@@ -18,6 +18,7 @@ from app.adapters import AdaptiveCaptureAdapter, AdaptiveEscortAdapter, CaptureA
 
 
 PROTOCOL_VERSION = "algorithm.command.v1"
+COMMAND_CACHE_LIMIT = 10000
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
@@ -221,6 +222,10 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
                     protocol_error("IDENTITY_MISMATCH", "runtime identity mismatch", cid)
                 elif command["commandSequence"] != command_sequence + 1:
                     protocol_error("SEQUENCE_MISMATCH", "command sequence is not contiguous", cid)
+                elif len(result_cache) >= COMMAND_CACHE_LIMIT:
+                    # Retain every prior result (including business rejections).
+                    # Overflow must not consume ordering or mutate the adapter.
+                    protocol_error("CAPACITY_EXCEEDED", "command cache limit reached", cid)
                 else:
                     command_bodies[cid] = json.dumps(command, sort_keys=True, separators=(",", ":"))
                     command_sequence += 1
