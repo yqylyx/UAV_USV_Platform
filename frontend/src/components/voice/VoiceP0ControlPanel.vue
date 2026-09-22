@@ -19,6 +19,7 @@ import type {
 } from '@/types/voiceControl'
 import type { UnityWindowMessage } from '@/utils/unityWebglProtocol'
 import { unwrapUnityPresentationMessage } from '@/utils/unityWebglProtocol'
+import VoiceIntelligenceInput from './VoiceIntelligenceInput.vue'
 
 interface UnityPresentationSession {
   connected: boolean
@@ -40,6 +41,7 @@ const dialogOpen = ref(false)
 const chosenMockOutcome = ref<VoiceMockOutcome>('SUCCESS')
 const presentationPendingSince = ref<number | null>(null)
 const presentationBridgeEnabled = import.meta.env.VITE_VOICE_UNITY_PRESENTATION_V1 === 'true'
+const voiceP1PreparationEnabled = import.meta.env.VITE_VOICE_P1_PREPARATION === 'true'
 const presentationBridgeReady = ref(false)
 const presentationBridgeStatus = ref(presentationBridgeEnabled ? '等待展示绑定' : 'E03 未启用')
 const helloAttempts = ref(0)
@@ -108,6 +110,12 @@ const presentationCanResync = computed(() => execution.value?.state === 'SUCCEED
 const contextSummary = computed(() => context.value
   ? `运行 ${context.value.algorithmRunId} · ${context.value.state} · 帧 ${context.value.latestFrameSequence} · 心跳${heartbeatFresh.value ? '正常' : '失效'}`
   : '尚未发现可控制的独立算法实例')
+const allowedIntelligenceActions = computed<VoiceAction[]>(() => {
+  const knownActions = actions.map(item => item.action)
+  return context.value
+    ? knownActions.filter(action => context.value?.capabilities.includes(action))
+    : knownActions
+})
 
 function disabledReason(action: VoiceAction) {
   if (recoveryPending.value || responseUnknown.value) return '请先核对上一次写请求的权威结果'
@@ -140,6 +148,10 @@ async function cancel() {
   }
   await store.cancel()
   if (proposal.value?.status === 'CANCELLED') dialogOpen.value = false
+}
+
+async function handleVoiceCandidate(intent: VoiceIntent) {
+  await propose(intent)
 }
 
 function presentationIdentityMatches(message: UnityPresentationIncoming) {
@@ -369,12 +381,25 @@ onBeforeUnmount(() => {
         <div><dt>接入设备</dt><dd>{{ runtimeHint.deviceCodes.length }} 台</dd></div>
       </dl>
     </article>
-    <p class="scope-note">当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。</p>
+    <p class="scope-note">
+      {{ voiceP1PreparationEnabled
+        ? '已启用供应商无关输入准备；解析仅生成候选，单设备控制尚未开放。'
+        : '当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。' }}
+    </p>
     <p v-if="recoveryPending" class="recovery-note">正在使用原请求内容和原幂等键核对上次未确认的响应……</p>
     <p v-else-if="responseUnknown" class="recovery-note">上次写请求结果未知，不能换新幂等键重发。</p>
     <p v-else-if="!recoveryAvailable" class="error">本地恢复日志不可用，写操作已阻止。</p>
     <p v-if="presentationBinding?.bindingId" class="scope-note" :title="presentationBinding.bindingId">展示绑定已建立。</p>
     <p v-if="presentationBridgeEnabled" class="scope-note">展示桥：{{ presentationBridgeStatus }}</p>
+
+    <VoiceIntelligenceInput
+      v-if="voiceP1PreparationEnabled"
+      :allowed-actions="allowedIntelligenceActions"
+      :device-codes="runtimeHint.deviceCodes"
+      :submission-disabled="loading || recoveryPending || responseUnknown || !context"
+      :action-disabled-reason="disabledReason"
+      @candidate="handleVoiceCandidate"
+    />
 
     <div class="action-grid">
       <button
