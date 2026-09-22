@@ -23,11 +23,14 @@ export interface VoiceAudioInput {
   audio: Blob
   locale: string
   requestId: string
+  signal?: AbortSignal
 }
 
 export interface VoiceTranscript {
   requestId: string
   text: string
+  locale: string
+  durationMs: number | null
   provider: string
   model: string
 }
@@ -38,6 +41,14 @@ export interface VoiceParseRequest {
   locale: string
   allowedActions: VoiceAction[]
   availableDeviceCodes: string[]
+  runtimeContext: VoiceInterpretationRuntimeContext | null
+  signal?: AbortSignal
+}
+
+export interface VoiceInterpretationRuntimeContext {
+  runtimeRef: string
+  runtimeGeneration: string
+  contextVersion: number
 }
 
 export interface VoiceIntentCandidate {
@@ -69,4 +80,23 @@ export interface VoiceIntelligenceAdapter {
   readonly mode: 'MOCK' | 'BACKEND'
   transcribe(input: VoiceAudioInput): Promise<VoiceTranscript>
   parse(input: VoiceParseRequest): Promise<VoiceParseResult>
+}
+
+export type VoiceIntelligenceErrorCode =
+  | 'VOICE_INVALID_REQUEST'
+  | 'VOICE_AUDIO_EMPTY'
+  | 'VOICE_AUDIO_TOO_LARGE'
+  | 'VOICE_AUDIO_FORMAT_UNSUPPORTED'
+  | 'VOICE_TEXT_TOO_LONG'
+  | 'VOICE_REQUEST_CANCELLED'
+  | 'VOICE_TRANSCRIPTION_TIMEOUT'
+  | 'VOICE_PARSE_TIMEOUT'
+  | 'VOICE_PROVIDER_UNAVAILABLE'
+  | 'VOICE_MALFORMED_RESPONSE'
+
+export class VoiceIntelligenceError extends Error {
+  constructor(message: string, public readonly code: VoiceIntelligenceErrorCode) {
+    super(message)
+    this.name = 'VoiceIntelligenceError'
+  }
 }

@@ -3,16 +3,27 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Mic, Square, WandSparkles } from '@lucide/vue'
 
 import { createVoiceIntelligenceAdapter } from '@/services/voiceIntelligence'
+import { VOICE_AUDIO_MAX_BYTES } from '@/api/voiceIntelligence'
 import type { VoiceAction, VoiceIntent } from '@/types/voiceControl'
-import type { VoiceInputStage, VoiceIntelligenceAdapter, VoiceParseResult } from '@/types/voiceIntelligence'
+import type {
+  VoiceInputStage,
+  VoiceIntelligenceAdapter,
+  VoiceInterpretationRuntimeContext,
+  VoiceParseResult,
+} from '@/types/voiceIntelligence'
 
 const props = withDefaults(defineProps<{
   adapter?: VoiceIntelligenceAdapter
   allowedActions: VoiceAction[]
   deviceCodes: string[]
+  runtimeContext?: VoiceInterpretationRuntimeContext | null
+  operatorScope?: string
   submissionDisabled?: boolean
   actionDisabledReason?: (action: VoiceAction) => string
-}>(), { adapter: undefined, submissionDisabled: false, actionDisabledReason: undefined })
+}>(), {
+  adapter: undefined, runtimeContext: null, operatorScope: '',
+  submissionDisabled: false, actionDisabledReason: undefined,
+})
 const emit = defineEmits<{ candidate: [intent: VoiceIntent] }>()
 
 const adapter = props.adapter ?? createVoiceIntelligenceAdapter()
@@ -23,6 +34,13 @@ const message = ref('可直接输入文字；语音识别结果也会先放入�
 let recorder: MediaRecorder | null = null
 let stream: MediaStream | null = null
 let chunks: Blob[] = []
+let transcriptionController: AbortController | null = null
+let parseController: AbortController | null = null
+let disposed = false
+let discardRecording = false
+let recordingTimer: number | undefined
+let scopeResetting = false
+const recordingMaxMs = 15_000
 
 const busy = computed(() => ['TRANSCRIBING', 'PARSING'].includes(stage.value))
 const candidate = computed(() => result.value?.status === 'CANDIDATE' ? result.value : null)
@@ -36,6 +54,7 @@ const statusLabel = computed(() => ({
 }[stage.value]))
 
 watch(draft, () => {
+  if (scopeResetting) { scopeResetting = false; return }
   if (!['RECORDING', 'TRANSCRIBING', 'PARSING'].includes(stage.value)) {
     result.value = null
     stage.value = draft.value.trim() ? 'READY_TO_PARSE' : 'IDLE'
@@ -43,12 +62,36 @@ watch(draft, () => {
   }
 })
 
+watch(() => props.operatorScope, (current, previous) => {
+  if (previous === undefined || current === previous) return
+  transcriptionController?.abort()
+  parseController?.abort()
+  discardRecording = true
+  if (recorder?.state === 'recording') recorder.stop()
+  stopTracks()
+  window.clearTimeout(recordingTimer)
+  chunks = []
+  scopeResetting = true
+  draft.value = ''
+  result.value = null
+  stage.value = 'IDLE'
+  message.value = '操作员已切换，请重新输入指令。'
+})
+
 function stopTracks() {
   stream?.getTracks().forEach(track => track.stop())
   stream = null
 }
 
+function preferredAudioType() {
+  const candidates = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm']
+  if (typeof MediaRecorder.isTypeSupported !== 'function') return ''
+  return candidates.find(type => MediaRecorder.isTypeSupported(type)) ?? ''
+}
+
 async function startRecording() {
+  transcriptionController?.abort()
+  parseController?.abort()
   result.value = null
   message.value = ''
   try {
@@ -57,38 +100,76 @@ async function startRecording() {
     }
     stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     chunks = []
-    recorder = new MediaRecorder(stream)
-    recorder.addEventListener('dataavailable', event => { if (event.data.size > 0) chunks.push(event.data) })
+    discardRecording = false
+    const mimeType = preferredAudioType()
+    recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+    recorder.addEventListener('dataavailable', event => {
+      if (event.data.size > 0) chunks.push(event.data)
+      if (chunks.reduce((size, chunk) => size + chunk.size, 0) > VOICE_AUDIO_MAX_BYTES
+        && recorder?.state === 'recording') {
+        message.value = '录音已达到 5 MiB 上限，正在停止。'
+        recorder.stop()
+      }
+    })
     recorder.addEventListener('stop', () => { void transcribeRecording() }, { once: true })
-    recorder.start()
+    recorder.start(1000)
+    recordingTimer = window.setTimeout(() => {
+      if (recorder?.state === 'recording') {
+        message.value = '已达到 15 秒录音上限，正在识别。'
+        recorder.stop()
+      }
+    }, recordingMaxMs)
     stage.value = 'RECORDING'
     message.value = '录音仅在当前页面暂存；停止后交给已配置的识别适配器。'
   } catch (error) {
     stopTracks()
     stage.value = 'ERROR'
-    message.value = error instanceof Error ? error.message : '无法启动录音。'
+    message.value = error instanceof DOMException && error.name === 'NotAllowedError'
+      ? '麦克风权限被拒绝，请授权后重试或改用文字输入。'
+      : error instanceof Error ? error.message : '无法启动录音。'
   }
 }
 
 function stopRecording() {
+  window.clearTimeout(recordingTimer)
   if (recorder?.state === 'recording') recorder.stop()
 }
 
 async function transcribeRecording() {
+  window.clearTimeout(recordingTimer)
+  const completedRecorder = recorder
+  if (disposed || discardRecording) {
+    discardRecording = false
+    if (recorder === completedRecorder) recorder = null
+    chunks = []
+    stopTracks()
+    return
+  }
   stage.value = 'TRANSCRIBING'
   stopTracks()
+  const recordedChunks = chunks
+  chunks = []
+  let requestController: AbortController | null = null
   try {
-    const audio = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' })
-    const transcript = await adapter.transcribe({ audio, locale: 'zh-CN', requestId: crypto.randomUUID() })
+    transcriptionController?.abort()
+    const controller = new AbortController()
+    requestController = controller
+    transcriptionController = controller
+    const audio = new Blob(recordedChunks, { type: completedRecorder?.mimeType || 'audio/webm' })
+    const transcript = await adapter.transcribe({
+      audio, locale: 'zh-CN', requestId: crypto.randomUUID(), signal: controller.signal,
+    })
+    if (disposed || controller.signal.aborted) return
     draft.value = transcript.text
     stage.value = 'READY_TO_PARSE'
     message.value = `识别结果来自 ${transcript.provider}；请核对文字后再解析。`
   } catch (error) {
+    if (disposed || requestController?.signal.aborted) return
     stage.value = 'ERROR'
     message.value = error instanceof Error ? error.message : '语音识别失败。'
   } finally {
-    recorder = null
-    chunks = []
+    if (recorder === completedRecorder) recorder = null
+    if (transcriptionController === requestController) transcriptionController = null
   }
 }
 
@@ -100,17 +181,25 @@ async function parseDraft() {
   }
   stage.value = 'PARSING'
   result.value = null
+  let requestController: AbortController | null = null
   try {
+    parseController?.abort()
+    const controller = new AbortController()
+    requestController = controller
+    parseController = controller
     const parsed = await adapter.parse({
       requestId: crypto.randomUUID(), text: draft.value, locale: 'zh-CN',
       allowedActions: props.allowedActions, availableDeviceCodes: props.deviceCodes,
+      runtimeContext: props.runtimeContext, signal: controller.signal,
     })
+    if (disposed || controller.signal.aborted) return
     result.value = parsed
     stage.value = parsed.status === 'NOT_ACTIONABLE' ? 'NEEDS_CLARIFICATION' : parsed.status
     message.value = parsed.status === 'CANDIDATE'
       ? `已解析为 ${parsed.action}；仍需生成并确认后端冻结提案。`
       : parsed.message
   } catch (error) {
+    if (disposed || requestController?.signal.aborted) return
     stage.value = 'ERROR'
     message.value = error instanceof Error ? error.message : '意图解析失败。'
   }
@@ -122,7 +211,11 @@ function submitCandidate() {
 }
 
 onBeforeUnmount(() => {
+  disposed = true
+  transcriptionController?.abort()
+  parseController?.abort()
   if (recorder?.state === 'recording') recorder.stop()
+  window.clearTimeout(recordingTimer)
   stopTracks()
 })
 </script>

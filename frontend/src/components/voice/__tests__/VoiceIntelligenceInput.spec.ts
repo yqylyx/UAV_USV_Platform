@@ -10,6 +10,8 @@ function mountInput() {
       adapter: createMockVoiceIntelligenceAdapter(),
       allowedActions: ['START', 'PAUSE', 'RESUME', 'STOP'],
       deviceCodes: ['UAV-001', 'USV-001'],
+      runtimeContext: null,
+      operatorScope: 'admin',
       actionDisabledReason: () => '',
     },
   })
@@ -49,5 +51,14 @@ describe('VoiceIntelligenceInput', () => {
 
     expect(wrapper.text()).toContain('暂不支持指定单台设备')
     expect(wrapper.find('.candidate').exists()).toBe(false)
+  })
+
+  it('clears unsubmitted text when the operator changes', async () => {
+    const wrapper = mountInput()
+    await wrapper.get('textarea').setValue('暂停当前任务')
+    await wrapper.setProps({ operatorScope: 'operator-b' })
+
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('')
+    expect(wrapper.text()).toContain('操作员已切换')
   })
 })

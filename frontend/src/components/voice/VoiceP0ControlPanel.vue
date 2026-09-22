@@ -9,6 +9,7 @@ import {
   voiceP0MockEnabled,
 } from '@/api/voiceControl'
 import { useVoiceControlStore } from '@/stores/voiceControl'
+import { useAuthStore } from '@/stores/auth'
 import type {
   UnityPresentationIncoming,
   UnityPresentationOutgoing,
@@ -30,6 +31,7 @@ interface UnityPresentationSession {
 const props = defineProps<{ runtimeHint: VoiceMockRuntimeHint; unitySession: UnityPresentationSession }>()
 const emit = defineEmits<{ presentationMessage: [message: UnityPresentationOutgoing] }>()
 const store = useVoiceControlStore()
+const authStore = useAuthStore()
 const {
   context, proposal, execution, presentationBinding, loading, error, errorCode,
   recoveryPending, recoveryAvailable,
@@ -116,6 +118,12 @@ const allowedIntelligenceActions = computed<VoiceAction[]>(() => {
     ? knownActions.filter(action => context.value?.capabilities.includes(action))
     : knownActions
 })
+const intelligenceRuntimeContext = computed(() => context.value ? {
+  runtimeRef: context.value.runtimeRef,
+  runtimeGeneration: context.value.runtimeGeneration,
+  contextVersion: context.value.contextVersion,
+} : null)
+const operatorScope = computed(() => authStore.user?.username ?? '')
 
 function disabledReason(action: VoiceAction) {
   if (recoveryPending.value || responseUnknown.value) return '请先核对上一次写请求的权威结果'
@@ -396,6 +404,8 @@ onBeforeUnmount(() => {
       v-if="voiceP1PreparationEnabled"
       :allowed-actions="allowedIntelligenceActions"
       :device-codes="runtimeHint.deviceCodes"
+      :runtime-context="intelligenceRuntimeContext"
+      :operator-scope="operatorScope"
       :submission-disabled="loading || recoveryPending || responseUnknown || !context"
       :action-disabled-reason="disabledReason"
       @candidate="handleVoiceCandidate"

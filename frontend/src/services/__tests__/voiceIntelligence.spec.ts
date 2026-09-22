@@ -6,7 +6,7 @@ import type { VoiceParseRequest } from '@/types/voiceIntelligence'
 function request(text: string, allowedActions: VoiceParseRequest['allowedActions'] = ['START', 'PAUSE', 'RESUME', 'STOP']): VoiceParseRequest {
   return {
     requestId: '11111111-1111-4111-8111-111111111111', text, locale: 'zh-CN',
-    allowedActions, availableDeviceCodes: ['UAV-001', 'USV-001'],
+    allowedActions, availableDeviceCodes: ['UAV-001', 'USV-001'], runtimeContext: null,
   }
 }
 

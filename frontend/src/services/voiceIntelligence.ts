@@ -6,6 +6,8 @@ import type {
   VoiceParseResult,
   VoiceTranscript,
 } from '@/types/voiceIntelligence'
+import { VoiceIntelligenceError } from '@/types/voiceIntelligence'
+import { interpretVoiceText, transcribeVoiceAudio } from '@/api/voiceIntelligence'
 
 const actionIntent: Record<VoiceAction, VoiceIntent> = {
   START: 'MISSION_START',
@@ -83,12 +85,25 @@ export function createMockVoiceIntelligenceAdapter(mockTranscript = '暂停任�
     name: 'local-mock',
     mode: 'MOCK',
     async transcribe(input: VoiceAudioInput): Promise<VoiceTranscript> {
+      if (input.signal?.aborted) throw new VoiceIntelligenceError('请求已取消。', 'VOICE_REQUEST_CANCELLED')
       if (input.audio.size === 0) throw new Error('没有录制到有效音频，请检查麦克风权限后重试。')
-      return { requestId: input.requestId, text: mockTranscript, provider: 'local-mock', model: 'fixed-transcript-v1' }
+      return {
+        requestId: input.requestId, text: mockTranscript, locale: input.locale, durationMs: null,
+        provider: 'local-mock', model: 'fixed-transcript-v1',
+      }
     },
     async parse(input: VoiceParseRequest) {
       return parseMockVoiceIntent(input)
     },
+  }
+}
+
+export function createBackendVoiceIntelligenceAdapter(): VoiceIntelligenceAdapter {
+  return {
+    name: 'platform-backend',
+    mode: 'BACKEND',
+    transcribe: transcribeVoiceAudio,
+    parse: interpretVoiceText,
   }
 }
 
@@ -104,7 +119,7 @@ const unavailableAdapter: VoiceIntelligenceAdapter = {
 }
 
 export function createVoiceIntelligenceAdapter(): VoiceIntelligenceAdapter {
-  return import.meta.env.VITE_VOICE_P1_MOCK === 'true'
-    ? createMockVoiceIntelligenceAdapter()
-    : unavailableAdapter
+  if (import.meta.env.VITE_VOICE_P1_MOCK === 'true') return createMockVoiceIntelligenceAdapter()
+  if (import.meta.env.VITE_VOICE_P1_BACKEND === 'true') return createBackendVoiceIntelligenceAdapter()
+  return unavailableAdapter
 }
