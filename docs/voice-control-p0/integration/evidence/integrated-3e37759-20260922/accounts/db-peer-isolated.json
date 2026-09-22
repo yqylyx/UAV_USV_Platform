@@ -1,0 +1,255 @@
+{
+  "capturedAt": "2026-09-22T11:18:59.824316+00:00",
+  "stage": "peer-isolated",
+  "runs": [
+    "1790075904910",
+    "1790075931593"
+  ],
+  "records": [
+    {
+      "data": {
+        "_id": "5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+        "state": "STOPPED",
+        "_owner": 1,
+        "_ready": true,
+        "_binding": "e159b58a-2044-4b4a-b40f-3c398d65c1ba",
+        "_members": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "missionId": null,
+        "_challenge": {
+          "kind": "SCENE_READY",
+          "sequence": 2,
+          "bindingId": "e159b58a-2044-4b4a-b40f-3c398d65c1ba",
+          "expiresAt": "2026-09-22T11:18:38.914191Z",
+          "requestId": "4ddf5ce9-8cb6-47ae-8303-3ae3fe31fe82",
+          "executionId": null,
+          "runtimeGeneration": "2e173b0c-74b3-4a3e-a716-81b7bb866d10"
+        },
+        "runtimeRef": "5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+        "sceneReady": false,
+        "_configHash": "b6b2db1aae1f84ae29235ef3ebc8af31648b191e92dc6ba596f1f22466308efc",
+        "runtimeKind": "STANDALONE_ALGORITHM",
+        "capabilities": [
+          "START",
+          "PAUSE",
+          "RESUME",
+          "STOP"
+        ],
+        "missionRunId": null,
+        "runtimeScope": "MISSION_CENTER",
+        "stateVersion": 1,
+        "_nextSequence": 1,
+        "_challengeUsed": true,
+        "_sceneSequence": 2,
+        "algorithmRunId": "1790075904910",
+        "contextVersion": 6,
+        "protocolVersion": "algorithm.command.v1",
+        "executionBackend": "PYTHON_SIMULATION",
+        "runtimeGeneration": "2e173b0c-74b3-4a3e-a716-81b7bb866d10",
+        "_heartbeatSequence": 9,
+        "_protocolViolations": 0,
+        "latestFrameSequence": 1,
+        "lastHeartbeatReceivedAt": "2026-09-22T11:18:34.443439Z"
+      },
+      "table": "context"
+    },
+    {
+      "data": {
+        "_id": "684d4cb7-e3e0-4bf9-a14a-01f56d998f2b",
+        "state": "PREPARED",
+        "_owner": 2,
+        "_ready": true,
+        "_binding": "9001c838-6b16-455f-ae5a-979126a75cf9",
+        "_members": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "missionId": null,
+        "_challenge": {
+          "kind": "SCENE_READY",
+          "sequence": 1,
+          "bindingId": "9001c838-6b16-455f-ae5a-979126a75cf9",
+          "expiresAt": "2026-09-22T11:19:02.064743Z",
+          "requestId": "bcc391d5-433c-43e8-97be-c7856fae65e5",
+          "executionId": null,
+          "runtimeGeneration": "e5bcaa2d-ba70-4562-b928-90a4ede3994c"
+        },
+        "runtimeRef": "684d4cb7-e3e0-4bf9-a14a-01f56d998f2b",
+        "sceneReady": false,
+        "_configHash": "b6b2db1aae1f84ae29235ef3ebc8af31648b191e92dc6ba596f1f22466308efc",
+        "runtimeKind": "STANDALONE_ALGORITHM",
+        "capabilities": [
+          "START",
+          "PAUSE",
+          "RESUME",
+          "STOP"
+        ],
+        "missionRunId": null,
+        "runtimeScope": "MISSION_CENTER",
+        "stateVersion": 0,
+        "_nextSequence": 0,
+        "_challengeUsed": true,
+        "_sceneSequence": 1,
+        "algorithmRunId": "1790075931593",
+        "contextVersion": 3,
+        "protocolVersion": "algorithm.command.v1",
+        "executionBackend": "PYTHON_SIMULATION",
+        "runtimeGeneration": "e5bcaa2d-ba70-4562-b928-90a4ede3994c",
+        "_heartbeatSequence": 7,
+        "_protocolViolations": 0,
+        "latestFrameSequence": 1,
+        "lastHeartbeatReceivedAt": "2026-09-22T11:18:59.188295Z"
+      },
+      "table": "context"
+    },
+    {
+      "data": {
+        "_id": "c3cdcaa2-5928-4b05-81f1-587e26909a98",
+        "plan": {
+          "action": "STOP",
+          "runtimeRef": "5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+          "stateVersion": 0,
+          "policyVersion": "voice-p0.v1",
+          "contextVersion": 3,
+          "runtimeGeneration": "2e173b0c-74b3-4a3e-a716-81b7bb866d10",
+          "explicitDeviceCodes": [
+            "UAV-001",
+            "UAV-002",
+            "UAV-003",
+            "USV-001",
+            "USV-002",
+            "USV-003"
+          ]
+        },
+        "_owner": 1,
+        "status": "CONFIRMED",
+        "planHash": "9b0227871a143e1c46e932c6552f1ca29e641d10ba0d3babfdb0573582d0b3b0",
+        "createdAt": "2026-09-22T11:18:31.660498Z",
+        "expiresAt": "2026-09-22T11:19:01.660498Z",
+        "proposalId": "c3cdcaa2-5928-4b05-81f1-587e26909a98",
+        "executionId": "0fe2010c-40fa-4135-b081-4b363bf35b7e",
+        "planVersion": 1,
+        "requiresConfirmation": true
+      },
+      "table": "proposal"
+    },
+    {
+      "data": {
+        "_id": "0fe2010c-40fa-4135-b081-4b363bf35b7e",
+        "_plan": {
+          "action": "STOP",
+          "runtimeRef": "5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+          "stateVersion": 0,
+          "policyVersion": "voice-p0.v1",
+          "contextVersion": 3,
+          "runtimeGeneration": "2e173b0c-74b3-4a3e-a716-81b7bb866d10",
+          "explicitDeviceCodes": [
+            "UAV-001",
+            "UAV-002",
+            "UAV-003",
+            "USV-001",
+            "USV-002",
+            "USV-003"
+          ]
+        },
+        "state": "SUCCEEDED",
+        "_owner": 1,
+        "action": "STOP",
+        "_manual": false,
+        "outcome": "SUCCESS",
+        "commandId": "b113fb37-11b7-4518-a98b-86f2f8287ec8",
+        "createdAt": "2026-09-22T11:18:34.936845Z",
+        "errorCode": null,
+        "updatedAt": "2026-09-22T11:18:35.127177Z",
+        "_flushedAt": "2026-09-22T11:18:35.051990Z",
+        "proposalId": "c3cdcaa2-5928-4b05-81f1-587e26909a98",
+        "runtimeRef": "5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+        "timedOutAt": null,
+        "_queryCount": 0,
+        "executionId": "0fe2010c-40fa-4135-b081-4b363bf35b7e",
+        "_resultFrame": 1,
+        "_eventSequence": 2,
+        "_sendStartedAt": "2026-09-22T11:18:34.977249Z",
+        "_commandSequence": 1,
+        "runtimeGeneration": "2e173b0c-74b3-4a3e-a716-81b7bb866d10",
+        "presentationStatus": "NOT_REQUIRED"
+      },
+      "table": "execution"
+    },
+    {
+      "data": {
+        "kind": "COMMAND_RESULT",
+        "status": "ACCEPTED",
+        "commandId": "b113fb37-11b7-4518-a98b-86f2f8287ec8",
+        "errorCode": null,
+        "runtimeRef": "5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+        "runtimeState": "PREPARED",
+        "stateVersion": 0,
+        "eventSequence": 1,
+        "protocolVersion": "algorithm.command.v1",
+        "lastFrameSequence": 1,
+        "runtimeGeneration": "2e173b0c-74b3-4a3e-a716-81b7bb866d10",
+        "affectedDeviceCodes": []
+      },
+      "table": "event",
+      "receivedAt": "2026-09-22T11:18:35.101046Z"
+    },
+    {
+      "data": {
+        "kind": "COMMAND_RESULT",
+        "status": "SUCCEEDED",
+        "commandId": "b113fb37-11b7-4518-a98b-86f2f8287ec8",
+        "errorCode": null,
+        "runtimeRef": "5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+        "runtimeState": "STOPPED",
+        "stateVersion": 1,
+        "eventSequence": 2,
+        "protocolVersion": "algorithm.command.v1",
+        "lastFrameSequence": 1,
+        "runtimeGeneration": "2e173b0c-74b3-4a3e-a716-81b7bb866d10",
+        "affectedDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ]
+      },
+      "table": "event",
+      "receivedAt": "2026-09-22T11:18:35.127177Z"
+    },
+    {
+      "table": "outbox",
+      "status": "SENT",
+      "claimedAt": "2026-09-22T11:18:34.975852Z",
+      "executionId": "0fe2010c-40fa-4135-b081-4b363bf35b7e"
+    },
+    {
+      "table": "idempotency",
+      "userId": 1,
+      "bodyHash": "4a89e079f8bae1e8cbaaf6cb05ebc5f735f1541c649be55b045fa4c1caa924ca",
+      "resourceId": "c3cdcaa2-5928-4b05-81f1-587e26909a98",
+      "operationKey": "confirm:c3cdcaa2-5928-4b05-81f1-587e26909a98",
+      "idempotencyKey": "5a2f42a4-f4f8-43aa-973c-a31cb9b68089"
+    },
+    {
+      "table": "idempotency",
+      "userId": 1,
+      "bodyHash": "d9e2a58995ea7f4f2bc66dc77499ecc97420a3cb3fec44b756a29f01f42e9610",
+      "resourceId": "c3cdcaa2-5928-4b05-81f1-587e26909a98",
+      "operationKey": "propose",
+      "idempotencyKey": "1ee99f00-978e-4963-a668-abb4bba87175"
+    }
+  ]
+}

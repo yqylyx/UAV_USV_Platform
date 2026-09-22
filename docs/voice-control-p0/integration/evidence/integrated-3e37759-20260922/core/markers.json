@@ -1,0 +1,74 @@
+[
+  {
+    "at": "2026-09-22T11:11:30.875Z",
+    "type": "dropped-confirm-response",
+    "request": {
+      "expectedPlanVersion": 1,
+      "expectedPlanHash": "8a7e2ed2c03f0262b74d064a1a1645c9624ed0bd09dd69de4bace2f76fb15be9"
+    },
+    "idempotencyKey": "cdb15642-9313-4af5-b8d3-f607593696e6",
+    "response": {
+      "code": "SUCCESS",
+      "message": "操作成功",
+      "data": {
+        "proposal": {
+          "proposalId": "691d792b-7e65-42da-b1b4-9a3de6232743",
+          "status": "CONFIRMED",
+          "planVersion": 1,
+          "planHash": "8a7e2ed2c03f0262b74d064a1a1645c9624ed0bd09dd69de4bace2f76fb15be9",
+          "plan": {
+            "runtimeRef": "844acca0-3c84-48ad-9e90-7ec7af717bca",
+            "runtimeGeneration": "fafa9a27-9bf9-42d4-b5b9-5cc0afcf1eb4",
+            "contextVersion": 4,
+            "stateVersion": 1,
+            "action": "PAUSE",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T11:11:25.447909Z",
+          "expiresAt": "2026-09-22T11:11:55.447909Z",
+          "executionId": "6b9f3f0c-cb9f-4ee6-a1ea-091dd529bfd4"
+        },
+        "execution": {
+          "executionId": "6b9f3f0c-cb9f-4ee6-a1ea-091dd529bfd4",
+          "proposalId": "691d792b-7e65-42da-b1b4-9a3de6232743",
+          "commandId": "1fa70010-87d0-4509-bc46-ad1f20a603fc",
+          "runtimeRef": "844acca0-3c84-48ad-9e90-7ec7af717bca",
+          "runtimeGeneration": "fafa9a27-9bf9-42d4-b5b9-5cc0afcf1eb4",
+          "action": "PAUSE",
+          "state": "QUEUED",
+          "outcome": "UNKNOWN",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "NOT_REQUIRED",
+          "createdAt": "2026-09-22T11:11:30.840752Z",
+          "updatedAt": "2026-09-22T11:11:30.840752Z"
+        }
+      },
+      "timestamp": "2026-09-22T11:11:30.864310Z"
+    }
+  },
+  {
+    "at": "2026-09-22T11:12:24.973Z",
+    "type": "blocked-frame-report",
+    "url": "http://127.0.0.1:15174/api/voice/contexts/844acca0-3c84-48ad-9e90-7ec7af717bca/presentation/reports",
+    "body": {
+      "runtimeGeneration": "fafa9a27-9bf9-42d4-b5b9-5cc0afcf1eb4",
+      "bindingId": "04667029-e2e4-4e14-a351-9b6eb2da1a67",
+      "kind": "FRAME_APPLIED",
+      "executionId": "8114f883-a636-446a-a30f-412e16ae5fde",
+      "requestId": "31fce04d-1cb9-4c96-94f9-38e0aa77a48a",
+      "sequence": 2,
+      "frameSequence": 169,
+      "applied": true
+    }
+  }
+]

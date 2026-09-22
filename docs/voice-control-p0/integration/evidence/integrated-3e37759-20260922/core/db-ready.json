@@ -1,0 +1,62 @@
+{
+  "capturedAt": "2026-09-22T11:11:06.965214+00:00",
+  "stage": "ready",
+  "runs": [
+    "1790075460800"
+  ],
+  "records": [
+    {
+      "data": {
+        "_id": "844acca0-3c84-48ad-9e90-7ec7af717bca",
+        "state": "PREPARED",
+        "_owner": 1,
+        "_ready": true,
+        "_binding": "25821f11-b867-4a4a-b15e-fbeb14cd6e18",
+        "_members": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "missionId": null,
+        "_challenge": {
+          "kind": "SCENE_READY",
+          "sequence": 1,
+          "bindingId": "25821f11-b867-4a4a-b15e-fbeb14cd6e18",
+          "expiresAt": "2026-09-22T11:11:11.141605Z",
+          "requestId": "77781c52-e1df-4a07-aced-113e666823fd",
+          "executionId": null,
+          "runtimeGeneration": "fafa9a27-9bf9-42d4-b5b9-5cc0afcf1eb4"
+        },
+        "runtimeRef": "844acca0-3c84-48ad-9e90-7ec7af717bca",
+        "sceneReady": false,
+        "_configHash": "b6b2db1aae1f84ae29235ef3ebc8af31648b191e92dc6ba596f1f22466308efc",
+        "runtimeKind": "STANDALONE_ALGORITHM",
+        "capabilities": [
+          "START",
+          "PAUSE",
+          "RESUME",
+          "STOP"
+        ],
+        "missionRunId": null,
+        "runtimeScope": "MISSION_CENTER",
+        "stateVersion": 0,
+        "_nextSequence": 0,
+        "_challengeUsed": true,
+        "_sceneSequence": 1,
+        "algorithmRunId": "1790075460800",
+        "contextVersion": 3,
+        "protocolVersion": "algorithm.command.v1",
+        "executionBackend": "PYTHON_SIMULATION",
+        "runtimeGeneration": "fafa9a27-9bf9-42d4-b5b9-5cc0afcf1eb4",
+        "_heartbeatSequence": 5,
+        "_protocolViolations": 0,
+        "latestFrameSequence": 1,
+        "lastHeartbeatReceivedAt": "2026-09-22T11:11:06.282464Z"
+      },
+      "table": "context"
+    }
+  ]
+}

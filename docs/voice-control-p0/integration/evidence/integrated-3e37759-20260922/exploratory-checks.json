@@ -1,0 +1,64 @@
+[
+  {
+    "source": "acceptance-dual-3e37759",
+    "at": "2026-09-22T11:08:36.372Z",
+    "url": "http://127.0.0.1:15174/api/voice/commands/proposals",
+    "status": 409,
+    "method": "POST",
+    "request": {
+      "runtimeRef": "dff67d55-849f-45dd-ab17-1991b4e5ff2e",
+      "runtimeGeneration": "1ee9f8da-fb4b-4271-af64-3344645cda6a",
+      "expectedContextVersion": 5,
+      "intent": "MISSION_RESUME"
+    },
+    "idempotencyKey": "5d94852d-093b-4c79-8b92-f15ce2518017",
+    "body": {
+      "code": "SCENE_NOT_READY",
+      "message": "SCENE_NOT_READY",
+      "data": null,
+      "timestamp": "2026-09-22T11:08:36.366448Z"
+    }
+  },
+  {
+    "source": "acceptance-accounts-3e37759",
+    "at": "2026-09-22T11:14:55.214Z",
+    "url": "http://127.0.0.1:15174/api/algorithm-runs/1790075695174/prepare",
+    "status": 409,
+    "method": "POST",
+    "request": {
+      "algorithmCode": "ESCORT_GUARD",
+      "config": {
+        "uavCount": 3,
+        "usvCount": 3,
+        "targetCount": 2,
+        "protectedCount": 1,
+        "threatCount": 1,
+        "simultaneousThreats": 1,
+        "worldWidth": 360,
+        "worldHeight": 280,
+        "adaptiveMultiTarget": true,
+        "uavSpeedMps": 5,
+        "usvSpeedMps": 3,
+        "coordinateFrame": "FLEET_LOCAL_ENU",
+        "initialPosesCoordinateFrame": "GLOBAL_ENU",
+        "fleetOrigin": {
+          "eastM": -360,
+          "northM": -285,
+          "upM": 0
+        },
+        "initialPoses": [],
+        "targetBehavior": "MOVING",
+        "previewEnabled": false,
+        "threatMinDistanceM": 170,
+        "standaloneVirtualSimulation": true
+      }
+    },
+    "idempotencyKey": null,
+    "body": {
+      "code": "RUNTIME_BUSY",
+      "message": "RUNTIME_BUSY",
+      "data": null,
+      "timestamp": "2026-09-22T11:14:55.207693Z"
+    }
+  }
+]
