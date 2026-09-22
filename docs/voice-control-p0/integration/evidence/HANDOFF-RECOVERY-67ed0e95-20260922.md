@@ -6,6 +6,7 @@
 - 前端：`http://127.0.0.1:15174`
 - 数据库：`uav_usv_p0_integration`
 - 时间：2026-09-22 16:46:46—16:48:17（Asia/Shanghai）
+- Platform：`08fb85bba2bca358827ea8d0f507ba5b3f783c2d`
 - Unity：`ab1f8a0ca946c24c85abcb4388efd27e5156f226`
 
 ## 运行身份

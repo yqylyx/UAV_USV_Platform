@@ -2,7 +2,7 @@
   "schema": "p0.browser-presentation.evidence.v1",
   "startedAt": "2026-09-22T08:46:46.454Z",
   "appUrl": "http://127.0.0.1:15174/?workspace=simulation",
-  "platformCommit": "31a1e2b",
+  "platformCommit": "08fb85bba2bca358827ea8d0f507ba5b3f783c2d",
   "unityCommit": "ab1f8a0",
   "steps": [
     {
