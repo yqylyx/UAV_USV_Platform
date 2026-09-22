@@ -143,3 +143,13 @@ JDK 需在当前终端正确配置。上述用例使用 H2/受控子进程，不
 ## 9. 本包验证范围
 
 配置项已按当前项目源码核对；PowerShell 语法检查、前后端默认检查模式及 YAML 隔离配置结构检查均已通过。本次不输入凭据、不连接数据库、不启动前后端、不证明真实 Python/Unity 已通过联调。
+
+## 2026-09-21：总览与心跳修复
+
+隔离前端必须配置与后端一致的 VITE_PLATFORM_INTEGRATION_TOKEN；否则心跳会被拒绝。启动后端脚本现将本机令牌写入忽略目录 .local-tools/p0-integration/browser-integration-token.txt，前端脚本从该文件读取。该令牌用于既有浏览器集成接口，会进入浏览器代码，不是数据库密码；不要上传该文件或用于生产密钥。后端脚本重新生成令牌后须同时重启前端。
+
+总览默认资源入口修正为仓库已有的 /unity-overview/index.html，可用 VITE_OVERVIEW_WEBGL_URL 覆盖。原 /unity-vision-candidate/index.html 目录未随仓库提供，不能作为此隔离副本的默认构建。
+
+已修复 IntegrationController 的鉴权业务异常，错误令牌返回 401 而非被统一异常处理误报为 500。实际 HTTP 验证：正确令牌 200、错误令牌 401；总览 HTML、loader、framework、data、wasm 均可读取，wasm 文件头有效。以上不是实际 WebGL 渲染验收，仍需刷新浏览器观察画面和 Bridge。
+
+真实 Java—Python 进程联调及设备名单回归，见 [REAL-RUNNER-CHECK.md](REAL-RUNNER-CHECK.md)。

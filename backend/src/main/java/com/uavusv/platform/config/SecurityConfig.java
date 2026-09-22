@@ -121,7 +121,8 @@ public class SecurityConfig {
         objectMapper.writeValue(
                 response.getWriter(),
                 ApiResponse.failure(request.getRequestURI().substring(request.getContextPath().length()).startsWith("/api/voice/")
-                        ? errorCode.name() : errorCode.getCode(), errorCode.getMessage())
+                        ? errorCode.name() : errorCode.getCode(), errorCode == ErrorCode.UNAUTHORIZED
+                        ? "请先登录或登录状态已失效" : errorCode.getMessage())
         );
     }
 }
