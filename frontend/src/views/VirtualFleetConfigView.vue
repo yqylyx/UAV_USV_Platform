@@ -27,6 +27,7 @@ import {
   fetchAlgorithmFrames,
   prepareAlgorithmRun,
 } from '@/api/algorithm'
+import { useVoiceControlStore } from '@/stores/voiceControl'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
 import type { UnityPresentationOutgoing, VoiceMockRuntimeHint, VoiceRuntimeState } from '@/types/voiceControl'
 import {
@@ -135,6 +136,7 @@ const inspectorTab = ref<InspectorTab>('status')
 const logEntries = ref<string[]>([])
 const lastUnityMessage = ref<UnityMessage | null>(null)
 const voiceControlPanel = ref<InstanceType<typeof VoiceP0ControlPanel> | null>(null)
+const voiceControlStore = useVoiceControlStore()
 const presentationUnityInstanceId = ref(crypto.randomUUID().toLowerCase())
 const presentationSceneRevision = ref(0)
 const currentAlgorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
@@ -1248,6 +1250,41 @@ function followSelectedDevice() {
 simulationRuntime.events = { ready: onUnityReady, loading: onUnityLoading, message: onUnityMessage, error: onUnityError }
 simulationRuntime.requested.value = true
 watch(webglExpanded, () => window.dispatchEvent(new CustomEvent('unity-runtime-track')))
+let lastVoiceVisualStateVersion = -1
+watch(
+  () => [
+    voiceControlStore.context?.algorithmRunId ?? '',
+    voiceControlStore.context?.stateVersion ?? -1,
+    voiceControlStore.context?.state ?? '',
+  ] as const,
+  async ([algorithmRunId, stateVersion, runtimeState]) => {
+    if (algorithmRunId !== String(state.runId) || stateVersion === lastVoiceVisualStateVersion) return
+    lastVoiceVisualStateVersion = stateVersion
+    if (runtimeState === 'RUNNING') {
+      const resuming = state.mission === 'PAUSED'
+      state.mission = 'RUNNING'
+      algorithmPrepared.value = true
+      await synchronizeInitialAlgorithmFrame()
+      startMissionClock(resuming)
+      send('missionStart', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+      startAlgorithmPolling()
+      addLog(`voice runtime synchronized: RUNNING stateVersion=${stateVersion}`)
+    } else if (runtimeState === 'PAUSED') {
+      state.mission = 'PAUSED'
+      pauseMissionClock()
+      stopAlgorithmPolling()
+      send('missionPause', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+      addLog(`voice runtime synchronized: PAUSED stateVersion=${stateVersion}`)
+    } else if (['STOPPED', 'COMPLETED', 'FAILED'].includes(runtimeState)) {
+      state.mission = runtimeState === 'COMPLETED' ? 'COMPLETED' : runtimeState === 'FAILED' ? 'FAILED' : 'STOPPED'
+      pauseMissionClock()
+      stopAlgorithmPolling()
+      send('missionStop', { runtimeMode: 'VIRTUAL_SIMULATION', runId: state.runId })
+      addLog(`voice runtime synchronized: ${runtimeState} stateVersion=${stateVersion}`)
+    }
+  },
+  { immediate: true },
+)
 onBeforeUnmount(() => {
   clearTimeout(recoveryTimer)
   clearTacticalNotices()

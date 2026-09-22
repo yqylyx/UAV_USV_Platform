@@ -44,7 +44,9 @@ const presentationBridgeReady = ref(false)
 const presentationBridgeStatus = ref(presentationBridgeEnabled ? '等待展示绑定' : 'E03 未启用')
 const helloAttempts = ref(0)
 const lastSceneProbeAt = ref(0)
+const lastAutoBindingKey = ref('')
 let presentationRequestInFlight = false
+let presentationBindingInFlight = false
 let timer: number | undefined
 let pollTick = 0
 
@@ -244,10 +246,27 @@ async function handleUnityPresentationMessage(message: UnityWindowMessage) {
 }
 
 async function takePresentationBinding() {
-  await store.takePresentationBinding()
-  presentationBridgeReady.value = false
-  helloAttempts.value = 0
-  if (presentationBinding.value?.bindingId) emitHello()
+  lastAutoBindingKey.value = ''
+  await establishPresentationBinding('')
+}
+
+async function establishPresentationBinding(autoBindingKey: string) {
+  if (presentationBindingInFlight) return
+  if (autoBindingKey && autoBindingKey === lastAutoBindingKey.value && presentationBinding.value?.bindingId) {
+    emitHello()
+    return
+  }
+  presentationBindingInFlight = true
+  if (autoBindingKey) lastAutoBindingKey.value = autoBindingKey
+  try {
+    await store.takePresentationBinding()
+    presentationBridgeReady.value = false
+    helloAttempts.value = 0
+    if (presentationBinding.value?.bindingId) emitHello()
+    else if (autoBindingKey === lastAutoBindingKey.value) lastAutoBindingKey.value = ''
+  } finally {
+    presentationBindingInFlight = false
+  }
 }
 
 function setMockOutcome(event: Event) {
@@ -274,7 +293,13 @@ watch(() => [
   helloAttempts.value = 0
   store.presentationChallenge = null
   if (presentationBridgeEnabled && context.value && props.unitySession.connected && props.unitySession.sceneRevision > 0) {
-    await takePresentationBinding()
+    const autoBindingKey = [
+      context.value.runtimeRef,
+      context.value.runtimeGeneration,
+      props.unitySession.unityInstanceId,
+      props.unitySession.sceneRevision,
+    ].join(':')
+    await establishPresentationBinding(autoBindingKey)
   }
 })
 
