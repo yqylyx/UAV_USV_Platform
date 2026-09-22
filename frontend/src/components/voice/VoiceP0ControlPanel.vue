@@ -40,11 +40,18 @@ const dialogOpen = ref(false)
 const chosenMockOutcome = ref<VoiceMockOutcome>('SUCCESS')
 const presentationPendingSince = ref<number | null>(null)
 const presentationBridgeEnabled = import.meta.env.VITE_VOICE_UNITY_PRESENTATION_V1 === 'true'
+const runtimeEnded = computed(() => !!context.value && (
+  ['STOPPED', 'CANCELLED', 'COMPLETED', 'FAILED', 'LOST'].includes(context.value.state)
+  || (execution.value?.runtimeRef === context.value.runtimeRef
+    && execution.value.runtimeGeneration === context.value.runtimeGeneration
+    && execution.value.action === 'STOP' && execution.value.state === 'SUCCEEDED')
+))
 const presentationBridgeReady = ref(false)
 const presentationBridgeStatus = ref(presentationBridgeEnabled ? '等待展示绑定' : 'E03 未启用')
 const helloAttempts = ref(0)
 const lastSceneProbeAt = ref(0)
 const lastAutoBindingKey = ref('')
+let pendingFrameResync = false
 let presentationRequestInFlight = false
 let presentationBindingInFlight = false
 let timer: number | undefined
@@ -154,7 +161,7 @@ function presentationIdentityMatches(message: UnityPresentationIncoming) {
 }
 
 function emitHello() {
-  if (!presentationBridgeEnabled || !context.value || !presentationBinding.value?.bindingId
+  if (runtimeEnded.value || !presentationBridgeEnabled || !context.value || !presentationBinding.value?.bindingId
     || !props.unitySession.connected || props.unitySession.sceneRevision < 1) return
   emit('presentationMessage', {
     type: 'PRESENTATION_HELLO', protocolVersion: 'unity.presentation.v1',
@@ -168,7 +175,7 @@ function emitHello() {
 }
 
 async function requestPresentationProbe(forceFrameResync = false) {
-  if (!presentationBridgeEnabled || !presentationBridgeReady.value || presentationRequestInFlight
+  if (runtimeEnded.value || !presentationBridgeEnabled || !presentationBridgeReady.value || presentationRequestInFlight
     || presentationChallenge.value || !context.value || !presentationBinding.value?.bindingId) return
   const frameRequired = execution.value?.state === 'SUCCEEDED'
     && ['START', 'RESUME'].includes(execution.value.action)
@@ -195,6 +202,8 @@ async function requestPresentationProbe(forceFrameResync = false) {
 }
 
 async function resyncPresentation() {
+  pendingFrameResync = true
+  if (presentationRequestInFlight) return
   if (!presentationBridgeEnabled) {
     presentationBridgeStatus.value = '展示桥未启用，无法重新同步画面'
     return
@@ -211,10 +220,11 @@ async function resyncPresentation() {
   // asks the backend for a fresh one-time FRAME_APPLIED challenge.
   if (!store.clearStalePresentationRecovery()) return
   await requestPresentationProbe(true)
+  if (presentationChallenge.value?.kind === 'FRAME_APPLIED') pendingFrameResync = false
 }
 
 async function handleUnityPresentationMessage(message: UnityWindowMessage) {
-  if (!presentationBridgeEnabled) return
+  if (!presentationBridgeEnabled || runtimeEnded.value) return
   const unwrapped = unwrapUnityPresentationMessage(message)
   if (!unwrapped) return
   const incoming = unwrapped as unknown as UnityPresentationIncoming
@@ -292,7 +302,7 @@ watch(() => [
   presentationBridgeReady.value = false
   helloAttempts.value = 0
   store.presentationChallenge = null
-  if (presentationBridgeEnabled && context.value && props.unitySession.connected && props.unitySession.sceneRevision > 0) {
+  if (!runtimeEnded.value && presentationBridgeEnabled && context.value && props.unitySession.connected && props.unitySession.sceneRevision > 0) {
     const autoBindingKey = [
       context.value.runtimeRef,
       context.value.runtimeGeneration,
@@ -307,6 +317,13 @@ watch(() => [execution.value?.state, execution.value?.presentationStatus], ([sta
   if (state === 'SUCCEEDED' && presentation === 'PENDING') presentationPendingSince.value ??= Date.now()
   else presentationPendingSince.value = null
 }, { immediate: true })
+
+watch(runtimeEnded, ended => {
+  if (!ended) return
+  store.presentationChallenge = null
+  presentationBridgeReady.value = false
+  presentationBridgeStatus.value = '运行已结束，已停止展示探测'
+})
 
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') void store.refreshContexts()
@@ -328,14 +345,15 @@ onMounted(async () => {
       ? pollTick % (timedOutSeconds < 30 ? 2 : 10) === 0
       : true
     if (executionDue) void store.poll()
-    if (presentationBridgeEnabled) {
+    if (presentationBridgeEnabled && !runtimeEnded.value) {
       if (!presentationBridgeReady.value && helloAttempts.value < 30) emitHello()
       else if (!presentationBridgeReady.value && helloAttempts.value >= 30) presentationBridgeStatus.value = 'Unity 展示握手超时，请重新接管'
       else {
         if (presentationChallenge.value && Date.parse(presentationChallenge.value.expiresAt) <= Date.now()) {
           store.presentationChallenge = null
         }
-        void requestPresentationProbe()
+        if (pendingFrameResync) void resyncPresentation()
+        else void requestPresentationProbe()
       }
     }
   }, 1000)

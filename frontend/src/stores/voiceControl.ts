@@ -435,6 +435,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         this.errorCode = ''
         if (body.kind === 'FRAME_APPLIED' && this.execution) {
           this.execution = await fetchVoiceExecution(this.execution.executionId)
+          if (terminalStates.has(this.execution.state)) await this.refreshContexts()
           this.persist()
         }
         return true
@@ -453,6 +454,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
           // REPORTED_APPLIED or STALE.
           if (!executionNeedsPolling(this.execution)) return
           this.execution = await fetchVoiceExecution(this.execution.executionId)
+          if (terminalStates.has(this.execution.state)) await this.refreshContexts()
           this.persist()
         } else if (this.proposal?.status === 'AWAITING_CONFIRMATION') {
           this.proposal = await fetchVoiceProposal(this.proposal.proposalId)

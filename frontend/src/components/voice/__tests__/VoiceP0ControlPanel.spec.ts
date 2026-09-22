@@ -71,6 +71,45 @@ function mountPanel(presentationStatus: VoiceExecution['presentationStatus']) {
 }
 
 describe('VoiceP0ControlPanel presentation recovery UI', () => {
+  it('retains one resync click until the Unity handshake becomes ready', async () => {
+    const wrapper = mountPanel('STALE')
+    const store = useVoiceControlStore()
+    const originalExecutionId = store.execution!.executionId
+    store.takePresentationBinding = vi.fn().mockImplementation(async () => {
+      store.presentationBinding = { bindingId: '77777777-7777-4777-8777-777777777777', runtimeGeneration: context.runtimeGeneration }
+    })
+    store.requestPresentationChallenge = vi.fn().mockImplementation(async () => {
+      const challenge = { runtimeGeneration: context.runtimeGeneration, bindingId: '77777777-7777-4777-8777-777777777777', kind: 'FRAME_APPLIED' as const, executionId: originalExecutionId, requestId: '88888888-8888-4888-8888-888888888888', sequence: 2, expiresAt: new Date(Date.now() + 5000).toISOString() }
+      store.presentationChallenge = challenge
+      return challenge
+    })
+    await wrapper.setProps({ unitySession: { connected: true, unityInstanceId: 'unity-test', sceneRevision: 1 } })
+    await nextTick()
+    await wrapper.get('button.presentation-resync').trigger('click')
+    expect(store.requestPresentationChallenge).not.toHaveBeenCalled()
+    await wrapper.vm.handleUnityPresentationMessage({ type: 'PRESENTATION_READY', payload: {
+      protocolVersion: 'unity.presentation.v1', runtimeRef: context.runtimeRef, runtimeGeneration: context.runtimeGeneration,
+      bindingId: '77777777-7777-4777-8777-777777777777', unityInstanceId: 'unity-test', sceneRevision: 1, scenarioReady: true,
+    } })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(store.requestPresentationChallenge).toHaveBeenCalledExactlyOnceWith('FRAME_APPLIED', originalExecutionId)
+    expect(store.execution!.executionId).toBe(originalExecutionId)
+    wrapper.unmount()
+  })
+
+
+  it('does not resume presentation probes after STOP succeeds while context is stale', async () => {
+    const wrapper = mountPanel('NOT_REQUIRED')
+    const store = useVoiceControlStore()
+    store.execution = { ...execution('NOT_REQUIRED'), action: 'STOP' }
+    store.takePresentationBinding = vi.fn()
+    store.requestPresentationChallenge = vi.fn()
+    await wrapper.setProps({ unitySession: { connected: true, unityInstanceId: 'unity-test', sceneRevision: 1 } })
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(store.takePresentationBinding).not.toHaveBeenCalled()
+    expect(store.requestPresentationChallenge).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   beforeEach(() => {
     vi.useFakeTimers()
     setActivePinia(createPinia())

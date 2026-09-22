@@ -148,7 +148,7 @@ function loadRuntimeRecovery(): VirtualFleetRecoverySnapshot | null {
     const raw = sessionStorage.getItem(runtimeRecoveryKey)
     if (!raw) return null
     const snapshot = JSON.parse(raw) as VirtualFleetRecoverySnapshot
-    const active = ['RUNNING', 'PAUSED', 'COMPLETING'].includes(snapshot.state?.mission)
+    const active = ['RUNNING', 'PAUSED', 'COMPLETING', 'COMPLETED', 'STOPPED', 'FAILED', 'CANCELLED'].includes(snapshot.state?.mission)
     const fresh = Date.now() - Date.parse(snapshot.savedAt) < 12 * 60 * 60 * 1000
     return snapshot.version === 1
       && snapshot.userScope === runtimeRecoveryUser
@@ -513,7 +513,7 @@ function clearRuntimeRecovery() {
 function persistRuntimeRecovery() {
   runtimeRecoveryWriteTimer = undefined
   if (!runtimeRecoveryUser || authStore.user?.username !== runtimeRecoveryUser || !savedScenario
-    || !['RUNNING', 'PAUSED', 'COMPLETING'].includes(state.mission)) {
+    || !['RUNNING', 'PAUSED', 'COMPLETING', 'COMPLETED', 'STOPPED', 'FAILED', 'CANCELLED'].includes(state.mission)) {
     clearRuntimeRecovery()
     return
   }
@@ -651,7 +651,7 @@ function finalizeTerminalMission(status: string, sequence: number) {
   pauseMissionClock()
   stopAlgorithmPolling()
   algorithmPrepared.value = false
-  clearRuntimeRecovery()
+  persistRuntimeRecovery()
   algorithmPreparePromise = null
   addLog(`mission terminal applied by Unity: ${status} sequence=${sequence}`)
   send('missionStop', {
@@ -731,7 +731,7 @@ async function onUnityReady() {
     try {
       const runtime = await fetchAlgorithmRunStatus(state.runId)
       const runtimeState = runtime.state.toUpperCase()
-      if (!['RUNNING', 'PAUSED'].includes(runtimeState)) {
+      if (!['RUNNING', 'PAUSED', 'PREPARED', 'STOPPED', 'COMPLETED', 'FAILED', 'CANCELLED'].includes(runtimeState)) {
         failSceneRecovery(`算法运行状态为 ${runtimeState}，不能恢复原运行场景。`)
         clearRuntimeRecovery()
         return
@@ -1414,7 +1414,10 @@ watch(
   },
   { immediate: true },
 )
+window.addEventListener('pagehide', persistRuntimeRecovery)
+
 onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', persistRuntimeRecovery)
   persistRuntimeRecovery()
   clearTimeout(recoveryTimer)
   clearTacticalNotices()
