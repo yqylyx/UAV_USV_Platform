@@ -46,6 +46,7 @@
     "core/stopped.png": "0b437608bce6e8718f321bf2b5c5d4819c08b0522a05ea78f4c150efef0bbf85",
     "core/verified-summary.json": "fe54542fc8ff92b918965b791dbb5b6be9feb03b8546a07fae389034e41d435a",
     "backend/target/platform-backend-0.1.0-SNAPSHOT.jar": "1d722a5cc4e1598c87742d493f72a0078ab55d22127ee2ac030fad59e6832d44",
-    "algorithm-service/runner.py": "c5a202692006b38506817c9c56b8f897bd99a74ef75f384147cb6de119ca597b"
+    "algorithm-service/runner.py": "c5a202692006b38506817c9c56b8f897bd99a74ef75f384147cb6de119ca597b",
+    ".gitattributes": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da"
   }
 }
