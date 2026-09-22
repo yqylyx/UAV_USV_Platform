@@ -849,8 +849,14 @@
         document.body.appendChild(script);
       }
 
+      function isTrustedParentMessageEvent(event, expectedOrigin, expectedParent) {
+        return !!event
+          && event.origin === expectedOrigin
+          && event.source === expectedParent;
+      }
+
       window.addEventListener('message', function (event) {
-        if (event.origin !== window.location.origin) return;
+        if (!isTrustedParentMessageEvent(event, window.location.origin, window.parent)) return;
         var data = event.data || {};
         if (data.source !== 'vue-console' || !data.message) return;
         if (data.runtimeScope && data.runtimeScope !== runtimeScope) return;

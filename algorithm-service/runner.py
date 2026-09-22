@@ -4,9 +4,11 @@ import argparse
 import base64
 import json
 import queue
+import re
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -15,13 +17,31 @@ sys.path.insert(0, str(ROOT))
 from app.adapters import AdaptiveCaptureAdapter, AdaptiveEscortAdapter, CaptureAdapter, EscortAdapter
 
 
+PROTOCOL_VERSION = "algorithm.command.v1"
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+COMMAND_KEYS = {
+    "protocolVersion", "runtimeRef", "runtimeGeneration", "kind", "commandId",
+    "commandSequence", "expectedStateVersion", "action", "parameters",
+}
+STATUS_QUERY_KEYS = {
+    "protocolVersion", "runtimeRef", "runtimeGeneration", "kind", "queryId", "commandId",
+}
+
+
+@dataclass(frozen=True)
+class MalformedProtocolInput:
+    detail: str
+
+
 def command_reader(commands: queue.Queue, input_closed: threading.Event) -> None:
     try:
         for line in sys.stdin:
             try:
                 commands.put(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+            except json.JSONDecodeError as error:
+                commands.put(MalformedProtocolInput(f"invalid JSON at column {error.colno}"))
     finally:
         # The Java backend owns stdin.  EOF means its owning runtime no longer
         # exists, so the child must not remain as an orphaned preview process.
@@ -35,7 +55,49 @@ def emit(payload: dict) -> None:
 
 def emit_v1(payload: dict) -> None:
     """Write one protocol event to stdout; diagnostics never share stdout."""
-    emit({"protocolVersion": "algorithm.command.v1", **payload})
+    emit({"protocolVersion": PROTOCOL_VERSION, **payload})
+
+
+def _is_uuid(value: object) -> bool:
+    return isinstance(value, str) and UUID_PATTERN.fullmatch(value) is not None
+
+
+def _is_contract_int(value: object, minimum: int) -> bool:
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and minimum <= value <= 9007199254740991
+    )
+
+
+def _command_shape_error(command: dict) -> str | None:
+    if set(command) != COMMAND_KEYS:
+        return "COMMAND fields do not match the v1 schema"
+    if command.get("protocolVersion") != PROTOCOL_VERSION:
+        return "algorithm.command.v1 is required"
+    if not _is_uuid(command.get("commandId")):
+        return "commandId must be a lowercase UUID"
+    if not _is_contract_int(command.get("commandSequence"), 1):
+        return "commandSequence must be a positive integer"
+    if not _is_contract_int(command.get("expectedStateVersion"), 0):
+        return "expectedStateVersion must be a non-negative integer"
+    if command.get("action") not in {"START", "PAUSE", "RESUME", "STOP"}:
+        return "unsupported action"
+    if command.get("parameters") != {}:
+        return "parameters must be an empty object in P0"
+    return None
+
+
+def _status_query_shape_error(command: dict) -> str | None:
+    if set(command) != STATUS_QUERY_KEYS:
+        return "STATUS_QUERY fields do not match the v1 schema"
+    if command.get("protocolVersion") != PROTOCOL_VERSION:
+        return "algorithm.command.v1 is required"
+    if not _is_uuid(command.get("queryId")):
+        return "queryId must be a lowercase UUID"
+    if not _is_uuid(command.get("commandId")):
+        return "commandId must be a lowercase UUID"
+    return None
 
 
 def _normalize_frame_device_codes(frame: dict) -> dict:
@@ -91,6 +153,11 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
     frame_interval = 1.0 / max(1.0, args.fps)
     next_heartbeat = time.monotonic()
 
+    def protocol_error(error_code: str, detail: str, related_command_id: str | None = None) -> None:
+        emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
+                 "kind": "PROTOCOL_ERROR", "relatedCommandId": related_command_id,
+                 "errorCode": error_code, "detail": detail[:256]})
+
     def result(command: dict, status: str, error: str | None = None) -> dict:
         nonlocal state_version
         cid = str(command.get("commandId", ""))
@@ -116,40 +183,44 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
         except queue.Empty:
             command = None
         if command is not None:
-            if isinstance(command, dict) and command.get("kind") == "STATUS_QUERY":
+            if isinstance(command, MalformedProtocolInput):
+                protocol_error("MALFORMED_MESSAGE", command.detail)
+            elif isinstance(command, dict) and command.get("kind") == "STATUS_QUERY":
                 cid = str(command.get("commandId", ""))
-                cached = result_cache.get(cid)
-                emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
-                         "kind": "STATUS_REPLY", "queryId": command.get("queryId"),
-                         "commandId": cid, "known": bool(cached),
-                         "result": cached[-1] if cached else None})
+                shape_error = _status_query_shape_error(command)
+                if shape_error:
+                    protocol_error(
+                        "MALFORMED_MESSAGE", shape_error,
+                        cid if _is_uuid(command.get("commandId")) else None,
+                    )
+                elif command.get("runtimeRef") != runtime_ref or command.get("runtimeGeneration") != generation:
+                    protocol_error("IDENTITY_MISMATCH", "runtime identity mismatch", cid)
+                else:
+                    cached = result_cache.get(cid)
+                    emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
+                             "kind": "STATUS_REPLY", "queryId": command.get("queryId"),
+                             "commandId": cid, "known": bool(cached),
+                             "result": cached[-1] if cached else None})
             elif not isinstance(command, dict) or command.get("kind") != "COMMAND":
-                emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
-                         "kind": "PROTOCOL_ERROR", "relatedCommandId": None,
-                         "errorCode": "MALFORMED_MESSAGE", "detail": "COMMAND object required"})
+                protocol_error("MALFORMED_MESSAGE", "COMMAND or STATUS_QUERY object required")
             else:
                 cid = str(command.get("commandId", ""))
-                if cid in result_cache:
+                if _is_uuid(command.get("commandId")) and cid in result_cache:
                     body = json.dumps(command, sort_keys=True, separators=(",", ":"))
                     if command_bodies.get(cid) != body:
-                        emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
-                                 "kind": "PROTOCOL_ERROR", "relatedCommandId": cid,
-                                 "errorCode": "COMMAND_ID_CONFLICT", "detail": "command body differs"})
+                        protocol_error("COMMAND_ID_CONFLICT", "command body differs", cid)
                     else:
                         for cached in result_cache[cid]:
                             emit_v1(cached)
+                elif (shape_error := _command_shape_error(command)) is not None:
+                    protocol_error(
+                        "MALFORMED_MESSAGE", shape_error,
+                        cid if _is_uuid(command.get("commandId")) else None,
+                    )
                 elif command.get("runtimeRef") != runtime_ref or command.get("runtimeGeneration") != generation:
-                    emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
-                             "kind": "PROTOCOL_ERROR", "relatedCommandId": cid,
-                             "errorCode": "IDENTITY_MISMATCH", "detail": "runtime identity mismatch"})
-                elif int(command.get("commandSequence", -1)) != command_sequence + 1:
-                    emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
-                             "kind": "PROTOCOL_ERROR", "relatedCommandId": cid,
-                             "errorCode": "SEQUENCE_MISMATCH", "detail": "command sequence is not contiguous"})
-                elif command.get("action") not in {"START", "PAUSE", "RESUME", "STOP"}:
-                    emit_v1({"runtimeRef": runtime_ref, "runtimeGeneration": generation,
-                             "kind": "PROTOCOL_ERROR", "relatedCommandId": cid,
-                             "errorCode": "MALFORMED_MESSAGE", "detail": "unsupported action"})
+                    protocol_error("IDENTITY_MISMATCH", "runtime identity mismatch", cid)
+                elif command["commandSequence"] != command_sequence + 1:
+                    protocol_error("SEQUENCE_MISMATCH", "command sequence is not contiguous", cid)
                 else:
                     command_bodies[cid] = json.dumps(command, sort_keys=True, separators=(",", ":"))
                     command_sequence += 1
@@ -158,7 +229,7 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
                                "RESUME": {"PAUSED"}, "STOP": {"PREPARED", "PREVIEW", "RUNNING", "PAUSED"}}[action]
                     if state not in allowed:
                         result(command, "REJECTED", "INVALID_STATE")
-                    elif int(command.get("expectedStateVersion", -1)) != state_version:
+                    elif command["expectedStateVersion"] != state_version:
                         result(command, "REJECTED", "STATE_VERSION_MISMATCH")
                     else:
                         result(command, "ACCEPTED")
