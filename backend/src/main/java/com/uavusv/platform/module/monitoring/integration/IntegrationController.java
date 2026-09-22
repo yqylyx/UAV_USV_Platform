@@ -9,14 +9,14 @@ import com.uavusv.platform.module.runtimecontrol.service.RuntimeControlService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
+import com.uavusv.platform.common.exception.BusinessException;
+import com.uavusv.platform.common.exception.ErrorCode;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -48,7 +48,7 @@ public class IntegrationController {
     ) {
         verifyToken(token);
         if (!RuntimeStateService.UNITY_CODE.equals(request.componentCode())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported component code");
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Unsupported component code");
         }
 
         runtimeStateService.observeUnityHeartbeat(request, servletRequest.getRemoteAddr());
@@ -67,7 +67,7 @@ public class IntegrationController {
 
     private void verifyToken(String token) {
         if (token == null || !MessageDigest.isEqual(expectedToken, token.getBytes(StandardCharsets.UTF_8))) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid integration token");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Invalid integration token");
         }
     }
 }

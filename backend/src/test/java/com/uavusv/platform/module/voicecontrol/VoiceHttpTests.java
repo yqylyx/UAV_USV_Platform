@@ -117,14 +117,16 @@ class VoiceHttpTests {
 
     @Test
     void unauthenticatedGetAndPostAre401() throws Exception {
-        mvc.perform(get("/api/voice/contexts")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/voice/contexts")).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("请先登录或登录状态已失效"));
         mvc.perform(
                         post("/api/voice/commands/proposals")
                                 .servletPath("/api/voice/commands/proposals")
                                 .contentType("application/json")
                                 .content("{}"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.message").value("请先登录或登录状态已失效"));
     }
 
     @Test

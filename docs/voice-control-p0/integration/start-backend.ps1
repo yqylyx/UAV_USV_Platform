@@ -40,6 +40,9 @@ try {
     $env:P0_ADMIN_PASSWORD = Read-SecretText 'p0_admin login password (used on first creation only)'
     if ([string]::IsNullOrWhiteSpace($env:P0_DB_PASSWORD) -or [string]::IsNullOrWhiteSpace($env:P0_ADMIN_PASSWORD)) { throw 'Passwords must not be empty.' }
     $env:P0_INTEGRATION_TOKEN = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
+    $tokenDir = Join-Path $repo '.local-tools/p0-integration'
+    New-Item -ItemType Directory -Path $tokenDir -Force | Out-Null
+    $env:P0_INTEGRATION_TOKEN | Set-Content -LiteralPath (Join-Path $tokenDir 'browser-integration-token.txt') -Encoding ASCII
     $env:P0_PYTHON = $pythonExe
     $env:P0_RUNNER = $runnerFile
     $configUri = ([Uri]$config).AbsoluteUri
