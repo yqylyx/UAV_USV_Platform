@@ -367,6 +367,15 @@
         var type = normalizeCommand(message.type);
         var payload = message.payload || {};
 
+        if (type === 'presentationhello' || type === 'presentationprobe') {
+          window.uavUsvUnityInstance.SendMessage(
+            'PlatformBridge',
+            'Receive',
+            JSON.stringify(message),
+          );
+          return true;
+        }
+
         if (type === 'initializeplatform') {
           return sendPlatformBridge('InitializePlatform', {
             runId: String(payload.runId || runId || ''),
@@ -738,7 +747,7 @@
           window.requestAnimationFrame(function () {
             window.requestAnimationFrame(function () {
               if (serial !== viewportTransitionSerial || viewportTransitioning) return;
-          if (transitionSnapshot) transitionSnapshot.classList.remove('visible');
+              if (transitionSnapshot) transitionSnapshot.classList.remove('visible');
               postUnityMessage('viewportApplied', {
                 width: window.innerWidth,
                 height: window.innerHeight,
