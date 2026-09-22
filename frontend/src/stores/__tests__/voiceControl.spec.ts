@@ -252,4 +252,17 @@ describe('voiceControl store polling and recovery', () => {
     expect(voiceApi.fetchVoiceExecution).not.toHaveBeenCalled()
     expect(voiceApi.fetchVoiceProposal).not.toHaveBeenCalled()
   })
+
+  it('ignores a context response arriving after the user changes', async () => {
+    const store = setupStore()
+    store.contexts = []
+    let finish!: (value: VoiceRuntimeContext[]) => void
+    voiceApi.fetchVoiceContexts.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const pending = store.refreshContexts()
+    useAuthStore().user = { username: 'second-user', role: 'ADMIN' }
+    finish([context])
+
+    expect(await pending).toBe(false)
+    expect(store.contexts).toEqual([])
+  })
 })

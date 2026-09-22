@@ -512,7 +512,7 @@ function clearRuntimeRecovery() {
 
 function persistRuntimeRecovery() {
   runtimeRecoveryWriteTimer = undefined
-  if (!runtimeRecoveryUser || !savedScenario
+  if (!runtimeRecoveryUser || authStore.user?.username !== runtimeRecoveryUser || !savedScenario
     || !['RUNNING', 'PAUSED', 'COMPLETING'].includes(state.mission)) {
     clearRuntimeRecovery()
     return

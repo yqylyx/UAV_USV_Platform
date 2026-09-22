@@ -150,10 +150,11 @@ export const useVoiceControlStore = defineStore('voiceControl', {
     },
     async refreshContexts(expectedAlgorithmRunId?: string) {
       expectedAlgorithmRunId ??= this.expectedAlgorithmRunId
+      const requestedBy = this.userScope()
       const requestVersion = ++this.contextRequestVersion
       try {
         const contexts = await fetchVoiceContexts()
-        if (requestVersion !== this.contextRequestVersion || expectedAlgorithmRunId !== this.expectedAlgorithmRunId) return false
+        if (requestedBy !== this.userScope() || requestVersion !== this.contextRequestVersion || expectedAlgorithmRunId !== this.expectedAlgorithmRunId) return false
         this.contexts = contexts
         const matches = contexts.filter(item => item.algorithmRunId === expectedAlgorithmRunId)
         if (matches.length !== 1) {
@@ -169,7 +170,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         this.errorCode = ''
         return true
       } catch (error) {
-        if (requestVersion === this.contextRequestVersion) this.captureError(error, '无法读取语音控制上下文')
+        if (requestedBy === this.userScope() && requestVersion === this.contextRequestVersion) this.captureError(error, '无法读取语音控制上下文')
         return false
       }
     },
