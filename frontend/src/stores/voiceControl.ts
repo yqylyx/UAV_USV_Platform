@@ -135,6 +135,19 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         localStorage.removeItem(this.journalKey(true))
       } catch { this.recoveryAvailable = false }
     },
+    clearStalePresentationRecovery() {
+      if (this.execution?.state !== 'SUCCEEDED' || this.execution.presentationStatus !== 'STALE') return false
+      this.presentationChallenge = null
+      try {
+        localStorage.removeItem(this.journalKey(true))
+        return true
+      } catch {
+        this.recoveryAvailable = false
+        this.errorCode = 'LOCAL_RECOVERY_UNAVAILABLE'
+        this.error = '无法清理已过期的展示恢复记录，请刷新页面后重试。'
+        return false
+      }
+    },
     async refreshContexts(expectedAlgorithmRunId?: string) {
       expectedAlgorithmRunId ??= this.expectedAlgorithmRunId
       const requestVersion = ++this.contextRequestVersion

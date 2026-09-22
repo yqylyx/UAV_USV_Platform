@@ -211,4 +211,31 @@ describe('voiceControl store polling and recovery', () => {
     expect(voiceApi.createVoiceProposal).toHaveBeenCalledOnce()
     expect(store.responseUnknown).toBe(false)
   })
+
+  it('discards only the expired presentation recovery before a STALE resync', () => {
+    const store = setupStore()
+    store.execution = execution({ presentationStatus: 'STALE' })
+    store.presentationChallenge = {
+      requestId: '99999999-9999-4999-8999-999999999999',
+      runtimeGeneration: context.runtimeGeneration,
+      bindingId: '77777777-7777-4777-8777-777777777777',
+      sequence: 4,
+      kind: 'FRAME_APPLIED',
+      executionId: store.execution.executionId,
+      expiresAt: '2026-09-21T00:00:30.000Z',
+    }
+    localStorage.setItem('voice-p0.presentation-journal.v1:admin', JSON.stringify({
+      userScope: 'admin',
+      runtimeRef: context.runtimeRef,
+      runtimeGeneration: context.runtimeGeneration,
+      kind: 'PRESENTATION_REPORT',
+      phase: 'RESPONSE_UNKNOWN',
+    }))
+    localStorage.setItem('voice-p0.operation-journal.v1:admin', JSON.stringify({ kind: 'CONFIRM' }))
+
+    expect(store.clearStalePresentationRecovery()).toBe(true)
+    expect(store.presentationChallenge).toBeNull()
+    expect(localStorage.getItem('voice-p0.presentation-journal.v1:admin')).toBeNull()
+    expect(localStorage.getItem('voice-p0.operation-journal.v1:admin')).not.toBeNull()
+  })
 })

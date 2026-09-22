@@ -209,7 +209,7 @@ async function resyncPresentation() {
   }
   // A stale or expired challenge cannot be reused. Explicit recovery always
   // asks the backend for a fresh one-time FRAME_APPLIED challenge.
-  store.presentationChallenge = null
+  if (!store.clearStalePresentationRecovery()) return
   await requestPresentationProbe(true)
 }
 
