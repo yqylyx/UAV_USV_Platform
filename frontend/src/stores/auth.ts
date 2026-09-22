@@ -58,6 +58,8 @@ export const useAuthStore = defineStore('auth', {
           try {
             localStorage.removeItem(`voice-p0.active-command.v2:${previousUsername}`)
             localStorage.removeItem(`voice-p0.operation-journal.v1:${previousUsername}`)
+            localStorage.removeItem(`voice-p0.presentation-journal.v1:${previousUsername}`)
+            sessionStorage.removeItem(`virtual-fleet.runtime-recovery.v1:${previousUsername}`)
             localStorage.removeItem('voice-p0.active-command.v1')
           } catch {
             // Logout still completes when browser storage is unavailable.

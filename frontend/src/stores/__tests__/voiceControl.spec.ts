@@ -238,4 +238,18 @@ describe('voiceControl store polling and recovery', () => {
     expect(localStorage.getItem('voice-p0.presentation-journal.v1:admin')).toBeNull()
     expect(localStorage.getItem('voice-p0.operation-journal.v1:admin')).not.toBeNull()
   })
+
+  it('does not expose the previous user execution after switching users', async () => {
+    const store = setupStore()
+    store.execution = execution({ presentationStatus: 'REPORTED_APPLIED' })
+    store.proposal = proposal
+    useAuthStore().user = { username: 'second-user', role: 'ADMIN' }
+
+    await store.recover()
+
+    expect(store.execution).toBeNull()
+    expect(store.proposal).toBeNull()
+    expect(voiceApi.fetchVoiceExecution).not.toHaveBeenCalled()
+    expect(voiceApi.fetchVoiceProposal).not.toHaveBeenCalled()
+  })
 })

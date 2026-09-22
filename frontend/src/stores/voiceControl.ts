@@ -182,6 +182,14 @@ export const useVoiceControlStore = defineStore('voiceControl', {
     },
     async recover() {
       if (!this.userScope()) return
+      // Pinia survives route changes. Clear volatile data before reading the
+      // current user's scoped records so another user's execution can never
+      // remain visible after logout/login in the same browser tab.
+      this.proposal = null
+      this.execution = null
+      this.presentationBinding = null
+      this.presentationChallenge = null
+      this.responseUnknown = false
       try {
         // v1 was not user-scoped and therefore must not be trusted or exposed
         // after upgrading to the v3.0 recovery rules.

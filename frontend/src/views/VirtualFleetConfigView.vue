@@ -25,8 +25,10 @@ import {
 import {
   controlAlgorithmRun,
   fetchAlgorithmFrames,
+  fetchAlgorithmRunStatus,
   prepareAlgorithmRun,
 } from '@/api/algorithm'
+import { useAuthStore } from '@/stores/auth'
 import { useVoiceControlStore } from '@/stores/voiceControl'
 import type { AlgorithmRuntimeFrame } from '@/types/mission'
 import type { UnityPresentationOutgoing, VoiceMockRuntimeHint, VoiceRuntimeState } from '@/types/voiceControl'
@@ -112,19 +114,71 @@ type InspectorTab = 'status' | 'voice' | 'protocol' | 'logs'
 
 type TacticalEvent = SimulationTacticalNotice
 
+type VirtualFleetRecoverySnapshot = {
+  version: 1
+  userScope: string
+  savedAt: string
+  state: {
+    algorithm: string
+    uavCount: number
+    usvCount: number
+    uavSpeed: number
+    usvSpeed: number
+    mission: string
+    runId: number
+    sequence: number
+  }
+  savedScenario: Record<string, unknown>
+  latestPoseBatch: Record<string, unknown> | null
+  initialScenarioPoses: ScenarioInitialPose[]
+  plannedScenarioPoses: GridScenarioPose[]
+  currentAlgorithmFrame: AlgorithmRuntimeFrame | null
+  selectedDevice: string
+  cameraMode: string
+  missionElapsedMs: number
+}
+
+const authStore = useAuthStore()
+const runtimeRecoveryUser = authStore.user?.username ?? ''
+const runtimeRecoveryKey = `virtual-fleet.runtime-recovery.v1:${runtimeRecoveryUser}`
+
+function loadRuntimeRecovery(): VirtualFleetRecoverySnapshot | null {
+  if (!runtimeRecoveryUser) return null
+  try {
+    const raw = sessionStorage.getItem(runtimeRecoveryKey)
+    if (!raw) return null
+    const snapshot = JSON.parse(raw) as VirtualFleetRecoverySnapshot
+    const active = ['RUNNING', 'PAUSED', 'COMPLETING'].includes(snapshot.state?.mission)
+    const fresh = Date.now() - Date.parse(snapshot.savedAt) < 12 * 60 * 60 * 1000
+    return snapshot.version === 1
+      && snapshot.userScope === runtimeRecoveryUser
+      && active
+      && fresh
+      && Number.isSafeInteger(snapshot.state.runId)
+      && snapshot.state.runId > 0
+      && !!snapshot.savedScenario
+      ? snapshot
+      : null
+  } catch {
+    return null
+  }
+}
+
+const restoredRuntime = loadRuntimeRecovery()
+
 const unityPanel = simulationRuntime.panel
 const recoveringScene = simulationRuntime.recovering
-let savedScenario: Record<string, unknown> | null = null
-let latestPoseBatch: Record<string, unknown> | null = null
+let savedScenario: Record<string, unknown> | null = restoredRuntime?.savedScenario ?? null
+let latestPoseBatch: Record<string, unknown> | null = restoredRuntime?.latestPoseBatch ?? null
 let recoveryTimer: number | undefined
 let recoveryPoseSequence: number | null = null
 let restoredCamera = { mode: 'overview', deviceCode: '' }
 const unityReady = ref(false)
-const selectedDevice = ref('')
-const cameraMode = ref('overview')
+const selectedDevice = ref(restoredRuntime?.selectedDevice ?? '')
+const cameraMode = ref(restoredRuntime?.cameraMode ?? 'overview')
 const scenarioReadyRunId = ref<number | null>(null)
 const scenarioLoading = ref(false)
-const algorithmPrepared = ref(false)
+const algorithmPrepared = ref(restoredRuntime !== null)
 const algorithmPrepareError = ref('')
 const algorithmPreparing = ref(false)
 const missionActionMessage = ref('')
@@ -139,11 +193,11 @@ const voiceControlPanel = ref<InstanceType<typeof VoiceP0ControlPanel> | null>(n
 const voiceControlStore = useVoiceControlStore()
 const presentationUnityInstanceId = ref(crypto.randomUUID().toLowerCase())
 const presentationSceneRevision = ref(0)
-const currentAlgorithmFrame = ref<AlgorithmRuntimeFrame | null>(null)
+const currentAlgorithmFrame = ref<AlgorithmRuntimeFrame | null>(restoredRuntime?.currentAlgorithmFrame ?? null)
 const tacticalHistory = simulationRuntime.tacticalHistory
 const consumedTacticalEventIds = new Set<string>()
-const initialScenarioPoses = ref<ScenarioInitialPose[]>([])
-const plannedScenarioPoses = ref<GridScenarioPose[]>([])
+const initialScenarioPoses = ref<ScenarioInitialPose[]>(restoredRuntime?.initialScenarioPoses ?? [])
+const plannedScenarioPoses = ref<GridScenarioPose[]>(restoredRuntime?.plannedScenarioPoses ?? [])
 const sceneLocked = computed(() => (
   state.mission === 'RUNNING'
   || state.mission === 'PAUSED'
@@ -226,7 +280,7 @@ const terminalBlockerLabel = computed(() => {
   if (blocker === 'POST_MISSION_FORMATION') return '归队编组尚未到位'
   return blocker
 })
-const missionElapsedMs = ref(0)
+const missionElapsedMs = ref(restoredRuntime?.missionElapsedMs ?? 0)
 const missionClockNow = ref(Date.now())
 const missionClockStartedAt = ref<number | null>(null)
 let missionClockTimer: number | null = null
@@ -436,7 +490,7 @@ const fleetOriginEnu: EnuOrigin = {
   upM: 0,
 }
 
-const state = reactive({
+const state = reactive(restoredRuntime?.state ?? {
   algorithm: 'ESCORT_GUARD',
   uavCount: 3,
   usvCount: 3,
@@ -446,6 +500,54 @@ const state = reactive({
   runId: 7001,
   sequence: 0,
 })
+
+let runtimeRecoveryWriteTimer: number | undefined
+
+function clearRuntimeRecovery() {
+  window.clearTimeout(runtimeRecoveryWriteTimer)
+  runtimeRecoveryWriteTimer = undefined
+  if (!runtimeRecoveryUser) return
+  try { sessionStorage.removeItem(runtimeRecoveryKey) } catch { /* recovery is best-effort */ }
+}
+
+function persistRuntimeRecovery() {
+  runtimeRecoveryWriteTimer = undefined
+  if (!runtimeRecoveryUser || !savedScenario
+    || !['RUNNING', 'PAUSED', 'COMPLETING'].includes(state.mission)) {
+    clearRuntimeRecovery()
+    return
+  }
+  const snapshot: VirtualFleetRecoverySnapshot = {
+    version: 1,
+    userScope: runtimeRecoveryUser,
+    savedAt: new Date().toISOString(),
+    state: { ...state },
+    savedScenario,
+    latestPoseBatch,
+    initialScenarioPoses: initialScenarioPoses.value,
+    plannedScenarioPoses: plannedScenarioPoses.value,
+    currentAlgorithmFrame: currentAlgorithmFrame.value,
+    selectedDevice: selectedDevice.value,
+    cameraMode: cameraMode.value,
+    missionElapsedMs: missionElapsedMs.value + (missionClockStartedAt.value === null
+      ? 0
+      : Date.now() - missionClockStartedAt.value),
+  }
+  try { sessionStorage.setItem(runtimeRecoveryKey, JSON.stringify(snapshot)) } catch { /* best-effort */ }
+}
+
+function scheduleRuntimeRecovery() {
+  if (runtimeRecoveryWriteTimer !== undefined) return
+  runtimeRecoveryWriteTimer = window.setTimeout(persistRuntimeRecovery, 500)
+}
+
+watch(
+  () => [
+    state.algorithm, state.uavCount, state.usvCount, state.uavSpeed, state.usvSpeed,
+    state.mission, state.runId, state.sequence, selectedDevice.value, cameraMode.value,
+  ],
+  scheduleRuntimeRecovery,
+)
 
 const voiceRuntimeHint = computed<VoiceMockRuntimeHint>(() => {
   const stateMap: Record<string, VoiceRuntimeState> = {
@@ -526,6 +628,7 @@ function send(type: string, payload: Record<string, unknown> = {}) {
   }
   if (type === 'applyPoseBatch') {
     latestPoseBatch = JSON.parse(JSON.stringify(payload))
+    scheduleRuntimeRecovery()
     // An in-flight HTTP frame can arrive during an iframe reload. Cache it,
     // but don't send it into an unacknowledged scene or advance Unity blindly.
     if (recoveringScene.value || scenarioReadyRunId.value !== state.runId) return
@@ -548,6 +651,7 @@ function finalizeTerminalMission(status: string, sequence: number) {
   pauseMissionClock()
   stopAlgorithmPolling()
   algorithmPrepared.value = false
+  clearRuntimeRecovery()
   algorithmPreparePromise = null
   addLog(`mission terminal applied by Unity: ${status} sequence=${sequence}`)
   send('missionStop', {
@@ -595,6 +699,14 @@ function finishSceneRecovery() {
   send('setCameraMode', restoredCamera)
   missionActionMessage.value = ''
   unityPanel.value?.syncViewport()
+  algorithmPrepared.value = true
+  if (state.mission === 'RUNNING' || state.mission === 'COMPLETING') {
+    startMissionClock(true)
+    startAlgorithmPolling()
+  } else {
+    pauseMissionClock()
+  }
+  scheduleRuntimeRecovery()
   addLog(`场景恢复完成：原 runId=${state.runId}，序列=${state.sequence}`)
 }
 
@@ -607,7 +719,7 @@ function restoreLatestPose() {
   }
 }
 
-function onUnityReady() {
+async function onUnityReady() {
   unityReady.value = true
   addLog('platformBridgeReady: Unity WebGL 已连接')
   send('initializePlatform', {
@@ -616,6 +728,21 @@ function onUnityReady() {
     buildId: 'vue-virtual-fleet-v2-compatible',
   })
   if (recoveringScene.value && savedScenario) {
+    try {
+      const runtime = await fetchAlgorithmRunStatus(state.runId)
+      const runtimeState = runtime.state.toUpperCase()
+      if (!['RUNNING', 'PAUSED'].includes(runtimeState)) {
+        failSceneRecovery(`算法运行状态为 ${runtimeState}，不能恢复原运行场景。`)
+        clearRuntimeRecovery()
+        return
+      }
+      state.mission = runtimeState
+      algorithmPrepared.value = true
+      addLog(`algorithm runtime recovered: ${runtimeState} runId=${state.runId}`)
+    } catch (error) {
+      failSceneRecovery(`无法核对原算法运行：${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
     clearTimeout(recoveryTimer)
     recoveryTimer = window.setTimeout(() => failSceneRecovery('场景或设备位置未确认，不能将连接在线视为恢复成功。请重试。'), 45000)
     // Restore only the renderer, never prepare/start a second algorithm run.
@@ -1071,6 +1198,7 @@ async function stopMission() {
     state.mission = 'STOPPED'
     pauseMissionClock()
     algorithmPrepared.value = false
+    clearRuntimeRecovery()
     algorithmPreparePromise = null
     stopAlgorithmPolling()
     currentAlgorithmFrame.value = null
@@ -1085,6 +1213,7 @@ async function resetMission() {
   clearTacticalNotices()
   savedScenario = null
   latestPoseBatch = null
+  clearRuntimeRecovery()
   recoveringScene.value = false
   simulationRuntime.recoveryError.value = ''
   stopAlgorithmPolling()
@@ -1286,6 +1415,7 @@ watch(
   { immediate: true },
 )
 onBeforeUnmount(() => {
+  persistRuntimeRecovery()
   clearTimeout(recoveryTimer)
   clearTacticalNotices()
   simulationRuntime.events = null
