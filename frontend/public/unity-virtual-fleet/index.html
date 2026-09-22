@@ -367,7 +367,7 @@
         var type = normalizeCommand(message.type);
         var payload = message.payload || {};
 
-        if (type === 'presentationhello' || type === 'presentationprobe') {
+        if (type === 'presentation_hello' || type === 'presentation_probe') {
           window.uavUsvUnityInstance.SendMessage(
             'PlatformBridge',
             'Receive',
