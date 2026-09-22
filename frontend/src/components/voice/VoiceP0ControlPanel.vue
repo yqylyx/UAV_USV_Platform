@@ -18,6 +18,7 @@ import type {
   VoiceMockRuntimeHint,
 } from '@/types/voiceControl'
 import type { UnityWindowMessage } from '@/utils/unityWebglProtocol'
+import { unwrapUnityPresentationMessage } from '@/utils/unityWebglProtocol'
 
 interface UnityPresentationSession {
   connected: boolean
@@ -211,9 +212,10 @@ async function resyncPresentation() {
 }
 
 async function handleUnityPresentationMessage(message: UnityWindowMessage) {
-  if (!presentationBridgeEnabled || !message.raw) return
-  if (!['PRESENTATION_READY', 'PRESENTATION_HEARTBEAT', 'PRESENTATION_REPORT'].includes(message.type)) return
-  const incoming = message.raw as unknown as UnityPresentationIncoming
+  if (!presentationBridgeEnabled) return
+  const unwrapped = unwrapUnityPresentationMessage(message)
+  if (!unwrapped) return
+  const incoming = unwrapped as unknown as UnityPresentationIncoming
   if (!presentationIdentityMatches(incoming)) return
   if (incoming.type === 'PRESENTATION_READY' || incoming.type === 'PRESENTATION_HEARTBEAT') {
     presentationBridgeReady.value = true

@@ -26,6 +26,17 @@ export function createVueConsoleEnvelope<T>(
   }
 }
 
+export function unwrapUnityPresentationMessage(message: UnityWindowMessage) {
+  if (!['PRESENTATION_READY', 'PRESENTATION_HEARTBEAT', 'PRESENTATION_REPORT'].includes(message.type)) {
+    return null
+  }
+  return {
+    ...(message.payload ?? {}),
+    type: message.type,
+    requestId: message.requestId ?? message.payload?.requestId,
+  }
+}
+
 export function parseUnityWindowMessage(data: unknown): UnityWindowMessage | null {
   if (!data) return null
   if (typeof data === 'string') {
