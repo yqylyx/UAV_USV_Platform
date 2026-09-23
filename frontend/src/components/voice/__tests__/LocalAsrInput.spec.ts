@@ -105,11 +105,21 @@ describe('D1 isolated ASR UI', () => {
     expect(button(wrapper, '使用原请求恢复')).toBeUndefined()
   })
   it.each(['VOICE_NO_SPEECH', 'VOICE_TRANSCRIPT_TOO_LONG', 'VOICE_AUDIO_TOO_LONG',
-    'VOICE_REQUEST_OUTCOME_UNKNOWN', 'VOICE_REQUEST_EXPIRED', 'IDEMPOTENCY_CONFLICT'])('does not retry deterministic %s', async code => {
+    'VOICE_AUDIO_FORMAT_UNSUPPORTED', 'VOICE_REQUEST_OUTCOME_UNKNOWN', 'VOICE_REQUEST_EXPIRED',
+    'IDEMPOTENCY_CONFLICT'])('does not retry deterministic %s', async code => {
     const { wrapper, transcribe } = setup(vi.fn().mockRejectedValue(new ApiClientError('failure', 422, code)))
     await upload(wrapper)
     expect(button(wrapper, '使用原请求恢复').attributes('disabled')).toBeDefined()
     expect(transcribe).toHaveBeenCalledOnce()
+  })
+  it('explains an invalid MP3 instead of showing the generic request failure', async () => {
+    const { wrapper } = setup(vi.fn().mockRejectedValue(
+      new ApiClientError('语音请求未完成，请检查输入或联系管理员', 415, 'VOICE_AUDIO_FORMAT_UNSUPPORTED'),
+    ))
+    await upload(wrapper)
+    expect(wrapper.text()).toContain('音频格式或文件内容无效')
+    expect(wrapper.text()).not.toContain('语音请求未完成')
+    expect(button(wrapper, '使用原请求恢复').attributes('disabled')).toBeDefined()
   })
   it('rejects empty files and unsupported types before API', async () => {
     const { wrapper, transcribe } = setup()
