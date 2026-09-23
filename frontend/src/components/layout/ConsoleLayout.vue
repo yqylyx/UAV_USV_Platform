@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import {
   Activity,
+  Mic,
   Boxes,
   Camera,
   Crosshair,
@@ -33,6 +34,7 @@ const props = withDefaults(defineProps<{
 })
 
 const SIDEBAR_STORAGE_KEY = 'uav-usv:sidebar-collapsed'
+const asrOnly = import.meta.env.VITE_VOICE_ASR_ONLY === 'true'
 const router = useRouter()
 const authStore = useAuthStore()
 const monitoringStore = useMonitoringStore()
@@ -103,6 +105,9 @@ async function logout() {
       </button>
 
       <nav class="navigation console-navigation" aria-label="主导航">
+        <RouterLink v-if="asrOnly" class="nav-item" active-class="active" to="/asr" title="本地语音识别">
+          <Mic :size="18" /><span class="console-nav-label">本地语音识别</span>
+        </RouterLink>
         <RouterLink class="nav-item" active-class="active" exact-active-class="active" to="/" title="系统总览">
           <Activity :size="18" />
           <span class="console-nav-label">系统总览</span>

@@ -11,6 +11,7 @@ import VisualSensorView from '@/views/OpticalVisionView.vue'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    { path: '/asr', name: 'local-asr', component: () => import('@/views/LocalAsrView.vue'), meta: { requiresAuth: true } },
     { path: '/', name: 'dashboard', component: OverviewWorkspaceView, meta: { requiresAuth: true } },
     { path: '/devices', name: 'devices', component: DeviceManagementView, meta: { requiresAuth: true } },
     { path: '/situation', name: 'situation', component: MissionWorkspaceView, meta: { requiresAuth: true } },

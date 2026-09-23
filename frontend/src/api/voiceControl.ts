@@ -127,7 +127,7 @@ export async function fetchVoiceContext(runtimeRef: string): Promise<VoiceRuntim
   return response.data.data
 }
 
-export async function createVoiceProposal(payload: VoiceProposalRequest, idempotencyKey: string): Promise<VoiceProposal> {
+export async function createVoiceProposal(payload: VoiceProposalRequest, idempotencyKey: string, interpretationId?: string): Promise<VoiceProposal> {
   if (mockEnabled) {
     const replay = proposalReplay.get(idempotencyKey)
     if (replay) return clone(replay)
@@ -158,7 +158,10 @@ export async function createVoiceProposal(payload: VoiceProposalRequest, idempot
     return clone(proposal)
   }
   const response = await http.post<ApiResponse<VoiceProposal>>('/voice/commands/proposals', payload, {
-    headers: await csrfHeaders(idempotencyKey),
+    headers: {
+      ...await csrfHeaders(idempotencyKey),
+      ...(interpretationId ? { 'X-Voice-Interpretation-ID': interpretationId } : {}),
+    },
   })
   return response.data.data
 }

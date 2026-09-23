@@ -94,6 +94,20 @@ function setupStore() {
 }
 
 describe('voiceControl store polling and recovery', () => {
+  it('persists interpretation source and preserves it during recovery', async () => {
+    localStorage.clear()
+    const store = setupStore()
+    const source = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    voiceApi.createVoiceProposal.mockRejectedValueOnce(new ApiClientError('lost'))
+    await store.propose('MISSION_START', source)
+    const first = voiceApi.createVoiceProposal.mock.calls[0]!
+    const journal = store.loadJournal()!
+    expect(journal.interpretationId).toBe(source)
+    voiceApi.createVoiceProposal.mockResolvedValueOnce(proposal)
+    await store.replayJournal(journal)
+    expect(voiceApi.createVoiceProposal).toHaveBeenLastCalledWith(first[0], first[1], source)
+    localStorage.clear()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     voiceApi.fetchVoiceContexts.mockResolvedValue([context])

@@ -1,0 +1,199 @@
+import concurrent.futures
+import http.client
+import threading
+import time
+import unittest
+import json
+import io
+
+from asr_server import AsrError, MAX_AUDIO, MAX_BODY, REVISION, Runtime, Server, decode_audio, parse_multipart
+
+TOKEN = 'test-only-not-a-deployment-secret-12345678'
+ID = '11111111-1111-4111-8111-111111111111'
+
+
+def multipart(audio=b'fixture', mime='audio/mpeg', extra=b''):
+    body = (b'--boundary\r\nContent-Disposition: form-data; name="requestId"\r\n\r\n' + ID.encode()
+            + b'\r\n--boundary\r\nContent-Disposition: form-data; name="locale"\r\n\r\nzh-CN'
+            + b'\r\n--boundary\r\nContent-Disposition: form-data; name="audio"; filename="sample"\r\nContent-Type: '
+            + mime.encode() + b'\r\n\r\n' + audio + b'\r\n' + extra + b'--boundary--\r\n')
+    return body
+
+
+class FakeEngine:
+    revision = REVISION
+    def __init__(self):
+        self.block = None
+        self.error = None
+    def transcribe(self, *args):
+        if self.block:
+            self.block.wait(2)
+        if self.error:
+            raise self.error
+        return '停止任务', 1000
+
+
+class HttpTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = FakeEngine()
+        self.runtime = Runtime(TOKEN, self.engine)
+        self.server = Server(0, self.runtime)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        if self.engine.block:
+            self.engine.block.set()
+        self.server.shutdown()
+        self.server.server_close()
+        self.runtime.pool.shutdown(wait=True)
+        self.thread.join()
+
+    def request(self, body=None, headers=None, method='POST', path='/internal/asr/transcriptions'):
+        conn = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=3)
+        merged = {'Authorization': 'Bearer ' + TOKEN, 'X-ASR-Timeout-Ms': '1000',
+                  'Content-Type': 'multipart/form-data; boundary=boundary'}
+        merged.update(headers or {})
+        conn.request(method, path, body=multipart() if body is None and method == 'POST' else body, headers=merged)
+        response = conn.getresponse()
+        result = response.status, json.loads(response.read()), dict(response.getheaders())
+        conn.close()
+        return result
+
+    def test_success_closed_shape(self):
+        status, body, headers = self.request()
+        self.assertEqual(status, 200)
+        self.assertEqual(set(body), {'requestId', 'text', 'durationMs', 'modelRevision'})
+        self.assertEqual(body['requestId'], ID)
+        self.assertEqual(headers['Cache-Control'], 'no-store')
+        self.assertEqual(self.runtime.calls, 1)
+
+    def test_auth_rejected_before_model(self):
+        status, body, _ = self.request(headers={'Authorization': 'Bearer wrong'})
+        self.assertEqual((status, body['code'], self.runtime.calls), (401, 'ASR_UNAVAILABLE', 0))
+
+    def test_not_ready_and_ready(self):
+        self.runtime.engine = None
+        self.assertEqual(self.request(method='GET', path='/health/ready')[0], 503)
+        self.assertEqual(self.request()[0], 503)
+        self.runtime.engine = self.engine
+        self.assertEqual(self.request(method='GET', path='/health/ready')[1], {'ready': True})
+
+    def test_invalid_deadline(self):
+        for value in ('0', '120001', 'abc', '-1'):
+            self.assertEqual(self.request(headers={'X-ASR-Timeout-Ms': value})[0], 503)
+        self.assertEqual(self.runtime.calls, 0)
+
+    def test_large_body_rejected_before_read(self):
+        self.assertEqual(self.request(headers={'Content-Length': str(MAX_BODY + 1)})[0], 413)
+        self.assertEqual(self.runtime.calls, 0)
+
+    def test_duplicate_and_unknown_parts(self):
+        for name in ('audio', 'other'):
+            extra = ('--boundary\r\nContent-Disposition: form-data; name="' + name + '"\r\n\r\nx\r\n').encode()
+            self.assertEqual(self.request(multipart(extra=extra))[0], 503)
+        self.assertEqual(self.runtime.calls, 0)
+
+    def test_empty_wrong_locale_and_uuid(self):
+        for body in (multipart(b''), multipart().replace(b'zh-CN', b'en-US'), multipart().replace(ID.encode(), b'bad')):
+            self.assertEqual(self.request(body)[0], 503)
+
+    def test_unsupported_mime(self):
+        self.assertEqual(self.request(multipart(mime='audio/wav'))[0], 415)
+
+    def test_expired_work_remains_busy_ready_stays_true(self):
+        self.engine.block = threading.Event()
+        status, body, _ = self.request(headers={'X-ASR-Timeout-Ms': '30'})
+        self.assertEqual((status, body['code']), (504, 'ASR_TIMEOUT'))
+        self.assertEqual(self.request(method='GET', path='/health/ready')[0], 200)
+        status, body, headers = self.request()
+        self.assertEqual((status, body['code']), (429, 'ASR_BUSY'))
+        self.assertEqual(headers['Retry-After'], '2')
+        self.assertEqual(self.runtime.calls, 1)
+        self.engine.block.set()
+        for _ in range(100):
+            if not self.runtime.slot.locked():
+                break
+            time.sleep(.005)
+        self.assertEqual(self.request()[0], 200)
+
+    def test_busy_includes_slow_body_read(self):
+        import socket
+        sock = socket.create_connection(('127.0.0.1', self.server.server_port))
+        sock.sendall((f'POST /internal/asr/transcriptions HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {TOKEN}\r\n'
+                      'X-ASR-Timeout-Ms: 150\r\nContent-Type: multipart/form-data; boundary=boundary\r\nContent-Length: 200\r\n\r\nx').encode())
+        for _ in range(100):
+            if self.runtime.slot.locked():
+                break
+            time.sleep(.001)
+        self.assertEqual(self.request()[0], 429)
+        self.assertEqual(self.runtime.calls, 0)
+        sock.close()
+
+    def test_known_errors_closed_body(self):
+        for status, code in ((422, 'ASR_NO_SPEECH'), (422, 'ASR_TRANSCRIPT_TOO_LONG'), (415, 'ASR_AUDIO_FORMAT_UNSUPPORTED')):
+            self.engine.error = AsrError(status, code, '受控错误')
+            result, body, _ = self.request()
+            self.assertEqual((result, body['code']), (status, code))
+            self.assertEqual(set(body), {'requestId', 'code', 'message'})
+
+    def test_unexpected_error_does_not_leak(self):
+        self.engine.error = RuntimeError('secret private transcript C:/private/path')
+        status, body, _ = self.request()
+        self.assertEqual(status, 503)
+        self.assertNotIn('secret', json.dumps(body))
+
+
+def encoded_silence(seconds, format='mp3', codec='libmp3lame', rate=48000, layout='mono'):
+    import av
+    import numpy as np
+    output = io.BytesIO()
+    with av.open(output, mode='w', format=format) as container:
+        stream = container.add_stream(codec, rate=rate)
+        stream.layout = layout
+        for start in range(0, int(seconds * rate), 960):
+            size = min(960, int(seconds * rate) - start)
+            frame = av.AudioFrame.from_ndarray(np.zeros((1, size), dtype=np.float32), format='fltp', layout=layout)
+            frame.sample_rate = rate
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode(None):
+            container.mux(packet)
+    return output.getvalue()
+
+
+class DecodeTests(unittest.TestCase):
+    def test_mp3_actual_duration(self):
+        samples, duration = decode_audio(encoded_silence(1), 'audio/mpeg', time.monotonic() + 10)
+        self.assertEqual(len(samples), 16000)
+        self.assertEqual(duration, 1000)
+
+    def test_webm_opus(self):
+        samples, duration = decode_audio(encoded_silence(1, 'webm', 'libopus'), 'audio/webm', time.monotonic() + 10)
+        self.assertEqual(duration, 1000)
+
+    def test_fake_mime_and_damage(self):
+        for data, mime in ((b'not audio', 'audio/webm'), (encoded_silence(1), 'audio/webm')):
+            with self.assertRaises(AsrError) as context:
+                decode_audio(data, mime, time.monotonic() + 10)
+            self.assertEqual(context.exception.status, 415)
+
+    def test_60_second_boundary(self):
+        self.assertEqual(decode_audio(encoded_silence(60), 'audio/mpeg', time.monotonic() + 10)[1], 60000)
+        with self.assertRaises(AsrError) as context:
+            decode_audio(encoded_silence(60.01), 'audio/mpeg', time.monotonic() + 10)
+        self.assertEqual(context.exception.code, 'ASR_AUDIO_TOO_LONG')
+
+    def test_decode_deadline(self):
+        with self.assertRaises(AsrError) as context:
+            decode_audio(b'x', 'audio/mpeg', time.monotonic() - 1)
+        self.assertEqual(context.exception.code, 'ASR_TIMEOUT')
+
+    def test_audio_limit(self):
+        with self.assertRaises(AsrError) as context:
+            parse_multipart('multipart/form-data; boundary=boundary', multipart(b'x' * (MAX_AUDIO + 1)))
+        self.assertEqual(context.exception.code, 'ASR_AUDIO_TOO_LARGE')
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
