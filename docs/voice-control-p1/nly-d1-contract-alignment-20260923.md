@@ -4,7 +4,7 @@
 
 ## 已对齐的接口
 
-公共接口POST `/api/voice/intelligence/transcriptions`，三标识一致，动态CSRF，登录ADMIN；不调用意图接口或生成控制记录。独立前端页面`/asr`，环境开关`VITE_VOICE_ASR_ONLY=true`，默认仍关闭。
+公共接口POST `/api/voice/intelligence/transcriptions`，三标识一致，动态CSRF，登录ADMIN；不调用意图接口或生成控制记录。前端固定接入算法仿真页面右侧“语音控制”面板，不设独立页面或导航；环境开关`VITE_VOICE_ASR_ONLY=true`，默认仍关闭。
 
 格式仅WebM/Opus与MP3；文件1字节至5MiB、总multipart6MiB；58秒软停止、完整实际音频≤60000ms；最多2声道、48kHz、禁止视频；文字1–500 Unicode码点。不支持其他格式的声明留E1。
 

@@ -15,7 +15,7 @@
 
 - 当前分支：`nly/voice-control-p1-preparation`，起点 `f603b01035316cc18d91c332fd578658c7b093ea`。
 - 已成功fetch远端；开发时该远端分支仍为f603b01，mxy/p1-backend-20260923为09863cd。
-- 新增 `asr-service/`、前端ASR-only组件、独立 `/asr` 路由、导航及配置说明；既有转写API增加D1超时入口。
+- 新增 `asr-service/`、前端ASR-only组件及配置说明；集成决议已取消独立`/asr`页面和导航，组件固定放入算法仿真页面右侧面板；既有转写API增加D1超时入口。
 - ASR-only开关默认false。未修改用户本机.env.local，未替mxy启用后端，未更改数据库。
 - 未修改backend、algorithm-service/runner.py或Unity C#。
 - Unity VirtualFleet只读核对HEAD：`ab1f8a0ca946c24c85abcb4388efd27e5156f226`，工作树无修改；不是本轮真实画面验收结果。
@@ -25,8 +25,8 @@
 
 ### 前端
 
-- `/asr` 不需要仿真实例，初次访问不启动系统总览Unity；从仿真页切入保留已加载的P0会话。
-- 新增 `VITE_VOICE_ASR_ONLY=false`；启用后展示独立入口及语音栏ASR组件，隐藏旧意图解析组件。
+- 算法仿真页面右侧语音栏直接展示ASR组件，不要求生成场景、算法实例或Unity就绪；不再提供独立页面。
+- 新增 `VITE_VOICE_ASR_ONLY=false`；启用后在右侧语音栏显示ASR组件并隐藏旧意图解析组件。
 - ASR-only只请求Java转写接口，无Mock自动降级；后端test-fixture标明不计入验收。
 - 录音WebM/Opus，58秒单调计时软停止并等待尾帧；另有MP3文件测试入口。
 - 真实CSRF及三标识沿用既有适配器；ASR等待140秒（组件计时包含CSRF准备）；无自动POST重试。
@@ -70,7 +70,7 @@
 2. 在i5部署机安装锁定环境，部署同revision模型文件；设置Java和Python共用凭据，不在聊天/日志发值。
 3. Java实现/核验120秒总期限、动态剩余期限、ID及模型校验、错误映射、权限/CSRF、内存幂等或已有持久化方案。
 4. 确认Java multipart和任何代理均无音频临时落盘；Python只验证了自身内存路径，不能代替全链路隐私验收。
-5. 前端设置VITE_VOICE_ASR_ONLY=true并重启/重新构建；通过统一localhost会话登录后访问/asr，不先生成仿真。
+5. 前端设置VITE_VOICE_ASR_ONLY=true并重启/重新构建；通过统一localhost会话登录后进入`/?workspace=simulation`，无需生成场景或启动算法实例。
 6. D01–D12按真实环境执行，尤其真人录音、浏览器版本/麦克风权限、原始录音格式、重启、缓存、权限、P0兼容。
 7. 交给nly复核D01/D07/D12及人工重启证据；双方通过后只宣布D1，不标E1完成。
 

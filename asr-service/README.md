@@ -81,8 +81,8 @@ $candidate | Select-Object ProcessId,ExecutablePath,CommandLine
 
 仅在前端本地环境或部署环境设置 `VITE_VOICE_ASR_ONLY=true`，重启Vite/重新构建。默认false不变。
 
-- 独立入口 `/asr`；导航显示“本地语音识别”。初次直接进入不启动Unity；已加载的P0/Unity会话保留。
-- 仿真页原语音栏可显示相同ASR组件，原P0按钮不改；ASR-only隐藏旧意图输入。
+- 唯一入口位于算法仿真工作区（`/?workspace=simulation`）右侧“语音控制”面板，不增加独立页面或侧边栏导航。旧`/asr`书签仅重定向到该工作区。
+- 进入算法仿真工作区即可录音，不要求生成场景、启动算法实例或等待Unity就绪；原P0手工按钮保持独立。ASR-only隐藏旧意图输入。
 - ASR-only始终调用真实Java转写接口，不受旧P1 Mock开关影响、不自动降级Mock。若Java返回test-fixture，显著标明不可用于真实验收。
 - 58秒软停止，等待尾帧；140秒总等待；手动原键/Blob恢复最多10分钟；账号变化、卸载、退出清理；不存localStorage/Pinia。
 - Chromium录音需要真实麦克风权限及localhost/HTTPS。MP3上传测试不能代替浏览器实录验收。
