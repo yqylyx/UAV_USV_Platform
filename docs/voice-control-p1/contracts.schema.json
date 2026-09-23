@@ -67,9 +67,6 @@
           "type": "string",
           "enum": [
             "audio/webm",
-            "audio/ogg",
-            "audio/mp4",
-            "audio/wav",
             "audio/mpeg"
           ]
         },
@@ -450,7 +447,8 @@
             "VOICE_REQUEST_OUTCOME_UNKNOWN",
             "VOICE_PROVIDER_INVALID_RESPONSE",
             "VOICE_INTERPRETATION_INVALID",
-            "VOICE_BUDGET_EXCEEDED"
+            "VOICE_BUDGET_EXCEEDED",
+            "VOICE_TRANSCRIPT_TOO_LONG"
           ]
         },
         "message": {
@@ -483,6 +481,74 @@
       },
       "required": [
         "X-Voice-Interpretation-ID"
+      ]
+    },
+    "AsrInternalSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        },
+        "modelRevision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "requestId",
+        "text",
+        "durationMs",
+        "modelRevision"
+      ]
+    },
+    "AsrInternalError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "code": {
+          "enum": [
+            "ASR_BUSY",
+            "ASR_UNAVAILABLE",
+            "ASR_TIMEOUT",
+            "ASR_NO_SPEECH",
+            "ASR_AUDIO_TOO_LARGE",
+            "ASR_AUDIO_TOO_LONG",
+            "ASR_AUDIO_FORMAT_UNSUPPORTED",
+            "ASR_TRANSCRIPT_TOO_LONG"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "requestId",
+        "code",
+        "message"
       ]
     }
   }

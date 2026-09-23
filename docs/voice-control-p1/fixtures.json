@@ -12,9 +12,9 @@
       }
     },
     {
-      "id": "TREQ-02",
+      "id": "TREQ-02-D1-WAV-UNSUPPORTED",
       "definition": "TranscriptionRequestMetadata",
-      "valid": true,
+      "valid": false,
       "data": {
         "requestId": "11111111-1111-4111-8111-111111111111",
         "locale": "zh-CN",
@@ -530,6 +530,131 @@
       "valid": false,
       "data": {
         "X-Voice-Interpretation-ID": "invalid"
+      }
+    },
+    {
+      "id": "D1-INTERNAL-valid",
+      "definition": "AsrInternalSuccess",
+      "valid": true,
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "停止任务",
+        "durationMs": 1800,
+        "modelRevision": "r1"
+      }
+    },
+    {
+      "id": "D1-INTERNAL-mismatch-shape",
+      "definition": "AsrInternalSuccess",
+      "valid": false,
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "停止任务",
+        "durationMs": null,
+        "modelRevision": "r1"
+      }
+    },
+    {
+      "id": "D1-INTERNAL-unknown-field",
+      "definition": "AsrInternalSuccess",
+      "valid": false,
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "停止任务",
+        "durationMs": 1800,
+        "modelRevision": "r1",
+        "action": "STOP"
+      }
+    },
+    {
+      "id": "D1-ASR_BUSY",
+      "definition": "AsrInternalError",
+      "valid": true,
+      "data": {
+        "requestId": null,
+        "code": "ASR_BUSY",
+        "message": "测试错误"
+      }
+    },
+    {
+      "id": "D1-ASR_UNAVAILABLE",
+      "definition": "AsrInternalError",
+      "valid": true,
+      "data": {
+        "requestId": null,
+        "code": "ASR_UNAVAILABLE",
+        "message": "测试错误"
+      }
+    },
+    {
+      "id": "D1-ASR_TIMEOUT",
+      "definition": "AsrInternalError",
+      "valid": true,
+      "data": {
+        "requestId": null,
+        "code": "ASR_TIMEOUT",
+        "message": "测试错误"
+      }
+    },
+    {
+      "id": "D1-ASR_NO_SPEECH",
+      "definition": "AsrInternalError",
+      "valid": true,
+      "data": {
+        "requestId": null,
+        "code": "ASR_NO_SPEECH",
+        "message": "测试错误"
+      }
+    },
+    {
+      "id": "D1-ASR_AUDIO_TOO_LARGE",
+      "definition": "AsrInternalError",
+      "valid": true,
+      "data": {
+        "requestId": null,
+        "code": "ASR_AUDIO_TOO_LARGE",
+        "message": "测试错误"
+      }
+    },
+    {
+      "id": "D1-ASR_AUDIO_TOO_LONG",
+      "definition": "AsrInternalError",
+      "valid": true,
+      "data": {
+        "requestId": null,
+        "code": "ASR_AUDIO_TOO_LONG",
+        "message": "测试错误"
+      }
+    },
+    {
+      "id": "D1-ASR_AUDIO_FORMAT_UNSUPPORTED",
+      "definition": "AsrInternalError",
+      "valid": true,
+      "data": {
+        "requestId": null,
+        "code": "ASR_AUDIO_FORMAT_UNSUPPORTED",
+        "message": "测试错误"
+      }
+    },
+    {
+      "id": "D1-ASR_TRANSCRIPT_TOO_LONG",
+      "definition": "AsrInternalError",
+      "valid": true,
+      "data": {
+        "requestId": null,
+        "code": "ASR_TRANSCRIPT_TOO_LONG",
+        "message": "测试错误"
+      }
+    },
+    {
+      "id": "D1-TRANSCRIPT-TOO-LONG",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_TRANSCRIPT_TOO_LONG",
+        "message": "识别文字过长",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
       }
     }
   ]

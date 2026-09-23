@@ -24,6 +24,7 @@ public class VoiceHttpFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
+        if (req.getRequestURI().substring(req.getContextPath().length()).startsWith("/api/voice/intelligence/")) return true;
         return !req.getRequestURI()
                 .substring(req.getContextPath().length())
                 .startsWith("/api/voice/");

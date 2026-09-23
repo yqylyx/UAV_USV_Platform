@@ -1,0 +1,28 @@
+{
+  "base_commit": "09863cdd5c29a14d1c22ebdd66364bfea8d8dbee",
+  "jar_sha256": "02620331b62f897a18416573e778a3dc268170ada6a615ed0897a9bf67f9a7b3",
+  "sources": {
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrAdvice.java": "8637168b9edf0cd90985bf13a4944213dad309053b6d56a19002b99c86389bca",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrController.java": "b3dc148f688cfebc1f4ec6f59ba06d859d580f29104fc6a64e2bc12bae58ec35",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrFailure.java": "ccb0ef25a875703f5ebebab3825cd5ef0ba40587b276dc7d555ede0fa2e4362e",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrIngressFilter.java": "27f15529d56225483dcf7d16ddb40be99aa0128e941ee1a3b2135dfdfc233750",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrResponses.java": "521e80eb1ea4c83d5db4ad79900e82024f66fd7ff506e4d3887e02cd147828fb",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrService.java": "acc9e2122cb1b8c6269822554b085a617d3a0e1011076d0543a28c46af183fea",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrSettings.java": "526140b41ac3c6407441857af1043a814771e6b71915f2916f0a08bbccec637a",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrTransportConfig.java": "c0ac0a53f6c950b459264d8b7dc2bcf2cdc542a7e41192c57d1ecc0535ad5d4e",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AsrUploadFilter.java": "e1e478e0b3f918a5d94c7a9bcd74c9b4e014bcbb19612bb4ffc73ad3028e2e6a",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/AudioMultipart.java": "476798f0e2faa437d675399608fb363c2315278d43ae56073b89e2c59759883c",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/LocalAsrProvider.java": "54d8f9e87b8d0a8129bfce813c39e35ba052c02d439fe0c5556c0b781caa69cc",
+    "backend/src/main/java/com/uavusv/platform/module/voiceintelligence/SpeechProvider.java": "3b6c605ff207b48a618efe452fd23252208c616937135659f09a96d8f77ab9f6",
+    "backend/src/test/java/com/uavusv/platform/module/voiceintelligence/AsrEmbeddedTests.java": "52fdf09d5c424db30db0c42f8bb808555b33262b9e92ea653e5bd2e9e5f08185",
+    "backend/src/test/java/com/uavusv/platform/module/voiceintelligence/AsrHttpTests.java": "b593f8f8827dd7cce989ca2cb44ba230ed84ecd15f0bf1af0a206a801b54cf16",
+    "backend/src/test/java/com/uavusv/platform/module/voiceintelligence/AsrServiceTests.java": "0dd766dae234222245fe7d4d7b70f41193097fbcdf2b724dabdabdadb831e5d6",
+    "backend/src/test/java/com/uavusv/platform/module/voiceintelligence/AudioMultipartTests.java": "83d42d1a1093a89ea1588807fd756a014e841f25c357e27692f65667d6663e0b",
+    "backend/src/test/java/com/uavusv/platform/module/voiceintelligence/LocalAsrProviderTests.java": "54cd8ab3883ab599dfee75962970738009d64245c7afe02c047ef4e00486f458",
+    "backend/src/main/java/com/uavusv/platform/module/voicecontrol/VoiceHttpFilter.java": "75d608c95fe7985a2af930dda626ee3927c1f6d9857743bf8ec8321c169ae80b"
+  },
+  "packaging": "PASS",
+  "start_script_check_only": "PASS",
+  "real_asr_service": "BLOCKED: nly service not present; port 18082 not listening",
+  "real_browser_d1": "NOT_RUN"
+}

@@ -1,0 +1,8 @@
+# Load AFTER application-p0-integration.yml. No credentials in repository.
+app:
+  voiceintelligence:
+    enabled: ${D1_ASR_ENABLED:false}
+    base-url: http://127.0.0.1:18082
+    token: ${D1_ASR_TOKEN:}
+    model-revision: ${D1_ASR_MODEL_REVISION:}
+    model-alias: whisper-small-cpu-int8-r1
