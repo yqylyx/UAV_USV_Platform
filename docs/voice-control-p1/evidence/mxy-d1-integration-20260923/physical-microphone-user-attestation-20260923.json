@@ -1,0 +1,15 @@
+{
+  "date": "2026-09-23",
+  "source": "user-reported现场人工验收",
+  "environment": "localhost算法仿真页面右侧语音控制面板",
+  "input": "real physical microphone",
+  "result": "PASS",
+  "verified": [
+    "browser captured a real microphone recording",
+    "local ASR model returned transcript text",
+    "transcript was visible and editable"
+  ],
+  "privacy": "audio bytes and transcript text were not added to the repository",
+  "evidenceBoundary": "no requestId or transcript was invented; this record preserves only the user's pass conclusion",
+  "stage": "D1 D01-D12 complete; E1 remains NOT_RUN"
+}

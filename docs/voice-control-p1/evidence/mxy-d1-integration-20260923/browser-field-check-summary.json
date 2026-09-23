@@ -9,8 +9,8 @@
     "tenMinuteManualRecovery": "PASS; 5657ms and same request/idempotency key",
     "logoutAndSecondAccountCleanup": "PASS; p1_switch_admin received no prior text or recovery state",
     "p0ControlIsolation": "PASS; zero matching /api control requests",
-    "physicalMicrophone": "BLOCKED_NO_DEVICE; automated Edge reported NotFoundError"
+    "physicalMicrophone": "PASS_USER_ATTESTED; real physical microphone recording and editable transcript verified on 2026-09-23"
   },
   "physicalDeviceFallbackMessage": "PASS; 未检测到可用麦克风，请连接设备后重试。",
-  "audioDeviceBoundary": "repeatable browser checks used the Edge test audio device; this is not physical microphone acceptance"
+  "audioDeviceBoundary": "repeatable browser checks used the Edge test audio device; physical microphone acceptance was completed separately by the user without retaining audio or transcript"
 }

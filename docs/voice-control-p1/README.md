@@ -1,6 +1,6 @@
 # P1 D1 后端实现与测试
 
-当前范围为本地ASR转写；[公共契约](interface-contract.md)指向D1最终稿，意图解析默认关闭。本地识别只放在算法仿真页面右侧“语音控制”面板，不设独立页面或导航，且不要求生成场景、启动算法实例或Unity就绪。nly的f630a74已合入mxy联调分支；真实Java—Python HTTP、结果重放和Java重启防重已在mxy机通过，真实浏览器麦克风验收仍待执行。测试适配器不属于真实模型验收。
+当前范围为本地ASR转写；[公共契约](interface-contract.md)指向D1最终稿，意图解析默认关闭。本地识别只放在算法仿真页面右侧“语音控制”面板，不设独立页面或导航，且不要求生成场景、启动算法实例或Unity就绪。nly的f630a74已合入mxy联调分支；真实Java—Python HTTP、结果重放、Java重启防重及用户现场物理麦克风录音均已通过，D01–D12首轮验收结束。测试适配器不属于真实模型验收，E1完整工程清单仍待执行。
 
 配置见application-d1-asr.yml，启动见start-d1-java.ps1（默认只检查，需先打包）；需环境变量P0_DB_PASSWORD、P0_ADMIN_PASSWORD、P0_INTEGRATION_TOKEN、P0_PYTHON、P0_RUNNER，以及D1_ASR_TOKEN和D1_ASR_MODEL_REVISION。ASR仅127.0.0.1:18082。网页统一localhost，登录后进入`/?workspace=simulation`，校验现有Cookie及CSRF配置。
 
