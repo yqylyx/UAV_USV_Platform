@@ -1,0 +1,489 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Provider-neutral voice intelligence P1 contracts",
+  "not": {},
+  "definitions": {
+    "Uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "Action": {
+      "type": "string",
+      "enum": [
+        "START",
+        "PAUSE",
+        "RESUME",
+        "STOP"
+      ]
+    },
+    "Intent": {
+      "type": "string",
+      "enum": [
+        "MISSION_START",
+        "MISSION_PAUSE",
+        "MISSION_RESUME",
+        "MISSION_STOP"
+      ]
+    },
+    "DeviceCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "RuntimeContextHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtimeRef": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "runtimeGeneration": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "contextVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "runtimeRef",
+        "runtimeGeneration",
+        "contextVersion"
+      ]
+    },
+    "TranscriptionRequestMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "locale": {
+          "const": "zh-CN"
+        },
+        "audioContentType": {
+          "type": "string",
+          "enum": [
+            "audio/webm",
+            "audio/ogg",
+            "audio/mp4",
+            "audio/wav",
+            "audio/mpeg"
+          ]
+        },
+        "audioSizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5242880
+        }
+      },
+      "required": [
+        "requestId",
+        "locale",
+        "audioContentType",
+        "audioSizeBytes"
+      ]
+    },
+    "Transcript": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "locale": {
+          "const": "zh-CN"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60000
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 96
+        }
+      },
+      "required": [
+        "requestId",
+        "text",
+        "locale",
+        "durationMs",
+        "provider",
+        "model"
+      ]
+    },
+    "InterpretationRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "locale": {
+          "const": "zh-CN"
+        },
+        "allowedActions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Action"
+          },
+          "minItems": 0,
+          "maxItems": 4,
+          "uniqueItems": true
+        },
+        "availableDeviceCodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeviceCode"
+          },
+          "maxItems": 200,
+          "uniqueItems": true
+        },
+        "runtimeContext": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/RuntimeContextHint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "requestId",
+        "text",
+        "locale",
+        "allowedActions",
+        "availableDeviceCodes",
+        "runtimeContext"
+      ]
+    },
+    "CandidateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "CANDIDATE"
+        },
+        "requestId": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "intent": {
+          "$ref": "#/definitions/Intent"
+        },
+        "action": {
+          "$ref": "#/definitions/Action"
+        },
+        "normalizedText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "confidence": {
+          "oneOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 96
+        }
+      },
+      "required": [
+        "status",
+        "requestId",
+        "intent",
+        "action",
+        "normalizedText",
+        "confidence",
+        "provider",
+        "model"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "START"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "intent": {
+                "const": "MISSION_START"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "PAUSE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "intent": {
+                "const": "MISSION_PAUSE"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "RESUME"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "intent": {
+                "const": "MISSION_RESUME"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "STOP"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "intent": {
+                "const": "MISSION_STOP"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "NotReadyResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "NEEDS_CLARIFICATION",
+            "UNSUPPORTED",
+            "NOT_ACTIONABLE"
+          ]
+        },
+        "requestId": {
+          "$ref": "#/definitions/Uuid"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "AMBIGUOUS_ACTION",
+            "NEGATED_ACTION",
+            "NO_SUPPORTED_ACTION",
+            "UNSUPPORTED_CAPABILITY",
+            "UNSUPPORTED_TARGETING"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "normalizedText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 96
+        }
+      },
+      "required": [
+        "status",
+        "requestId",
+        "reason",
+        "message",
+        "normalizedText",
+        "provider",
+        "model"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NEEDS_CLARIFICATION"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "AMBIGUOUS_ACTION",
+                  "NO_SUPPORTED_ACTION"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "UNSUPPORTED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "UNSUPPORTED_CAPABILITY",
+                  "UNSUPPORTED_TARGETING"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_ACTIONABLE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "const": "NEGATED_ACTION"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "InterpretationResult": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/CandidateResult"
+        },
+        {
+          "$ref": "#/definitions/NotReadyResult"
+        }
+      ]
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "VOICE_INVALID_REQUEST",
+            "VOICE_AUDIO_EMPTY",
+            "VOICE_AUDIO_TOO_LARGE",
+            "VOICE_AUDIO_FORMAT_UNSUPPORTED",
+            "VOICE_TRANSCRIPTION_TIMEOUT",
+            "VOICE_PARSE_TIMEOUT",
+            "VOICE_PROVIDER_UNAVAILABLE",
+            "VOICE_RATE_LIMITED",
+            "VOICE_CONTEXT_CHANGED",
+            "IDEMPOTENCY_CONFLICT",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "CSRF_INVALID",
+            "VOICE_INTELLIGENCE_DISABLED",
+            "VOICE_AUDIO_TOO_LONG",
+            "VOICE_NO_SPEECH",
+            "VOICE_UPLOAD_TIMEOUT",
+            "VOICE_REQUEST_IN_PROGRESS",
+            "VOICE_REQUEST_EXPIRED",
+            "VOICE_REQUEST_OUTCOME_UNKNOWN",
+            "VOICE_PROVIDER_INVALID_RESPONSE",
+            "VOICE_INTERPRETATION_INVALID",
+            "VOICE_BUDGET_EXCEEDED"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "data": {
+          "type": "null"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "timestamp"
+      ]
+    },
+    "InterpretationSourceHeaders": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "X-Voice-Interpretation-ID": {
+          "$ref": "#/definitions/Uuid"
+        }
+      },
+      "required": [
+        "X-Voice-Interpretation-ID"
+      ]
+    }
+  }
+}
