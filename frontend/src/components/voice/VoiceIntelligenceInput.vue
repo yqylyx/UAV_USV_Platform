@@ -95,8 +95,12 @@ function resetInput() {
   draft.value = ''
   stage.value = 'IDLE'
 }
-watch(() => [props.operatorScope, props.inputDisabled, props.runtimeContext?.runtimeRef,
-  props.runtimeContext?.runtimeGeneration, props.runtimeContext?.contextVersion], () => {
+watch(() => JSON.stringify([
+  props.operatorScope,
+  props.inputDisabled,
+  props.runtimeContext?.runtimeRef,
+  props.runtimeContext?.runtimeGeneration,
+]), () => {
   resetInput()
   accessDenied.value = false
   message.value = '操作员已切换或运行上下文变化，请重新输入指令。'

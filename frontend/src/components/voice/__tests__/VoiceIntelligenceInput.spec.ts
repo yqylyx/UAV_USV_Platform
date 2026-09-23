@@ -71,6 +71,18 @@ describe('VoiceIntelligenceInput', () => {
     expect(wrapper.find('.candidate').exists()).toBe(false)
     wrapper.unmount()
   })
+  it('keeps input during same-generation context version refreshes', async () => {
+    const wrapper = backendInput(successfulParse)
+    await wrapper.setProps({ runtimeContext: {
+      runtimeRef: 'runtime-ref', runtimeGeneration: 'runtime-generation', contextVersion: 1,
+    } })
+    await wrapper.get('textarea').setValue('开始任务')
+    await wrapper.setProps({ runtimeContext: {
+      runtimeRef: 'runtime-ref', runtimeGeneration: 'runtime-generation', contextVersion: 2,
+    } })
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('开始任务')
+    wrapper.unmount()
+  })
   it('blocks new input after server revocation', async () => {
     const wrapper = backendInput(vi.fn().mockRejectedValue(new ApiClientError('撤权', 403, 'FORBIDDEN')))
     await wrapper.get('textarea').setValue('暂停')
