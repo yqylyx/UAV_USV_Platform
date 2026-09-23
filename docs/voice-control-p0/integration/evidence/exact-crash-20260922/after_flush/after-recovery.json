@@ -1,0 +1,31 @@
+{
+  "_id" : "148ba1d9-4929-4248-9591-ffe7cfb3dec0",
+  "_owner" : 1,
+  "_manual" : false,
+  "_eventSequence" : 0,
+  "_queryCount" : 0,
+  "_plan" : {
+    "runtimeRef" : "02e38109-5fdd-495f-a4db-9462fe6be535",
+    "runtimeGeneration" : "4db0f8ce-c534-4c25-850f-625e41629c9c",
+    "contextVersion" : 4,
+    "stateVersion" : 0,
+    "action" : "START",
+    "explicitDeviceCodes" : [ "UAV-001", "USV-001" ],
+    "policyVersion" : "voice-p0.v1"
+  },
+  "executionId" : "148ba1d9-4929-4248-9591-ffe7cfb3dec0",
+  "proposalId" : "6f3a3c8b-ed04-42fd-b1d4-b54507d1fd7d",
+  "commandId" : "da04bf54-27d9-4a65-b737-60da55cadc05",
+  "runtimeRef" : "02e38109-5fdd-495f-a4db-9462fe6be535",
+  "runtimeGeneration" : "4db0f8ce-c534-4c25-850f-625e41629c9c",
+  "action" : "START",
+  "state" : "TIMED_OUT",
+  "outcome" : "UNKNOWN",
+  "errorCode" : "RUNTIME_UNAVAILABLE",
+  "timedOutAt" : "2026-09-19T08:00:00Z",
+  "presentationStatus" : "PENDING",
+  "createdAt" : "2026-09-19T08:00:00Z",
+  "updatedAt" : "2026-09-19T08:00:00Z",
+  "_commandSequence" : 1,
+  "_sendStartedAt" : "2026-09-19T08:00:00Z"
+}

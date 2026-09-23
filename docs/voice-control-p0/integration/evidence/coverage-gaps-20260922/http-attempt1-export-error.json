@@ -1,0 +1,1345 @@
+{
+  "scope": "real HTTP + local MySQL + real backend process restart; negative presentation inputs only",
+  "checks": [
+    {
+      "name": "real_runner_running",
+      "result": "PASS",
+      "at": "2026-09-22T11:42:55.254128+00:00",
+      "executionId": "43b9ec20-bb99-4c34-ab47-581940522982",
+      "commandId": "cdf3d1c7-bfdd-48cc-8031-dfe84573a5f0"
+    },
+    {
+      "name": "running_role_revoked_VIEWER",
+      "result": "PASS",
+      "at": "2026-09-22T11:42:55.471645+00:00",
+      "executionCount": 1,
+      "sessionReused": true
+    },
+    {
+      "name": "running_role_revoked_OPERATOR",
+      "result": "PASS",
+      "at": "2026-09-22T11:42:55.599293+00:00",
+      "executionCount": 1,
+      "sessionReused": true
+    },
+    {
+      "name": "running_account_disabled_same_session",
+      "result": "PASS",
+      "at": "2026-09-22T11:42:55.892096+00:00"
+    },
+    {
+      "name": "old_binding_report_rejected",
+      "result": "PASS",
+      "at": "2026-09-22T11:42:56.673722+00:00",
+      "oldBindingId": "a7616d86-eadd-4bec-9ba9-2cf7cd99c46a",
+      "newBindingId": "5af6ee2f-54e3-4f82-b64d-c153f8f8d0fe"
+    },
+    {
+      "name": "foreign_generation_report_rejected_without_scene_or_algorithm_change",
+      "result": "PASS",
+      "at": "2026-09-22T11:42:56.951532+00:00"
+    }
+  ],
+  "requests": [
+    {
+      "at": "2026-09-22T11:42:54.734287+00:00",
+      "path": "/api/algorithm-runs/1790077372574/prepare",
+      "method": "POST",
+      "request": {
+        "algorithmCode": "GB_SFLA_CS",
+        "config": {
+          "standaloneVirtualSimulation": true,
+          "seed": 42
+        }
+      },
+      "key": "e79cf984-7d6e-47de-8a5f-bc9ac984486e",
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runId": 1790077372574,
+          "algorithmCode": "GB_SFLA_CS",
+          "state": "PREPARED",
+          "latestSequence": 1,
+          "error": null,
+          "latestFrame": {
+            "runId": 1790077372574,
+            "algorithmCode": "GB_SFLA_CS",
+            "sequence": 1,
+            "timestamp": 1790077374664,
+            "phase": "ESCAPE_PURSUIT",
+            "agents": [
+              {
+                "code": "UAV-001",
+                "type": "UAV",
+                "x": -49.56852308690079,
+                "y": -34.74735860698932,
+                "z": 19.227272727272727,
+                "heading": 233.95839760062836,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-001"
+              },
+              {
+                "code": "UAV-002",
+                "type": "UAV",
+                "x": 3.310301938154258,
+                "y": -30.900699275416265,
+                "z": 21.045454545454547,
+                "heading": 291.39496440401757,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-002"
+              },
+              {
+                "code": "UAV-003",
+                "type": "UAV",
+                "x": -49.50035203619419,
+                "y": 35.01875932474017,
+                "z": 22.863636363636363,
+                "heading": 122.49018594647708,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-003"
+              },
+              {
+                "code": "USV-001",
+                "type": "USV",
+                "x": -2.7546675856720175,
+                "y": -38.49639178334854,
+                "z": 0.0,
+                "heading": 121.17403624054563,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-001"
+              },
+              {
+                "code": "USV-002",
+                "type": "USV",
+                "x": 50.06289120971476,
+                "y": -34.68624102285255,
+                "z": 0.0,
+                "heading": 34.81789566004705,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-002"
+              },
+              {
+                "code": "USV-003",
+                "type": "USV",
+                "x": 0.3195064086540175,
+                "y": 35.01776667748939,
+                "z": 0.0,
+                "heading": 217.3413712920808,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-003"
+              }
+            ],
+            "targets": [
+              {
+                "code": "TARGET-001",
+                "type": "CAPTURE_TARGET",
+                "x": 61.969084097528366,
+                "y": 33.0712353347908,
+                "z": 0.0,
+                "heading": 56.25,
+                "visible": true,
+                "groupId": "",
+                "state": "",
+                "threatLevel": 0
+              }
+            ],
+            "metrics": {
+              "progress": 0.0,
+              "captured": false,
+              "formationReady": false,
+              "captureAgents": 0,
+              "requiredCaptureAgents": 6,
+              "capability": "ENCIRCLEMENT",
+              "targetInsideFormation": false,
+              "combinedMaxGapDeg": 278.16,
+              "maxAllowedGapDeg": 81.0,
+              "maximumSlotError": 84.54,
+              "minimumRadiusM": 61.68,
+              "maximumRadiusM": 130.54,
+              "allowedRadiusBandM": [
+                13.5,
+                61.0
+              ],
+              "containmentConfidence": 0.0,
+              "coarseContainment": false,
+              "compactSupportMode": false,
+              "safeContainmentReady": false,
+              "domainFormationReady": false,
+              "ringGeometryReady": false,
+              "ringDiagnostics": {
+                "USV-0": {
+                  "expected": 3,
+                  "actual": 3,
+                  "maxGapDeg": 278.16,
+                  "maxAllowedGapDeg": 120.0,
+                  "maxRadialErrorM": 74.49,
+                  "ready": false
+                },
+                "UAV-0": {
+                  "expected": 3,
+                  "actual": 3,
+                  "maxGapDeg": 311.52,
+                  "maxAllowedGapDeg": 120.0,
+                  "maxRadialErrorM": 84.54,
+                  "ready": false
+                }
+              },
+              "captureHoldFrames": 0,
+              "requiredCaptureHoldFrames": 20,
+              "captureStage": 1,
+              "missionStage": "ESCAPE",
+              "stableContainmentFrames": 0,
+              "requiredStableContainmentFrames": 20,
+              "gapRepairRequired": false,
+              "arrivalRatio": 0.0,
+              "captureBlocker": "PURSUIT_DISTANCE",
+              "containmentContract": {
+                "ready": false,
+                "blocker": "TARGET_OUTSIDE_HULL",
+                "targetInside": false,
+                "maxGapDeg": 278.16,
+                "maxAllowedGapDeg": 81.0,
+                "sectorCount": 5,
+                "coveredSectors": 2,
+                "minimumSeparationM": 9.72,
+                "requiredSeparationM": 7.1,
+                "radialSpreadM": 68.86,
+                "uavCount": 3,
+                "usvCount": 3,
+                "invalidParticipants": 0,
+                "stationaryParticipants": 0,
+                "detachedParticipants": 0
+              },
+              "settlingStarted": false,
+              "containmentCandidate": false,
+              "stalledFrames": 0,
+              "replanCount": 0,
+              "avoidanceCount": 2,
+              "totalDistance": 0.0,
+              "meanDistanceToTarget": 92.631,
+              "targetTravelDistanceM": 0.0,
+              "requiredPursuitDistanceM": 80.0,
+              "pursuitProgress": 0.0,
+              "targetSpeedMps": 1.539,
+              "targetBehavior": "ESCAPE",
+              "targetIntent": "ESCAPE",
+              "targetIntentConfidence": 0.45,
+              "targetHeadingDeg": 56.25,
+              "targetSpeedReason": "ESCAPE_CRUISE",
+              "gapCenterDeg": 39.11,
+              "nearestInterceptorCode": "USV-003",
+              "nearestInterceptorDistanceM": 61.68,
+              "operationalBoundaryClearanceM": 152.73,
+              "targetNetDisplacementM": 0.0,
+              "captureRadius": 46.0,
+              "usvFormationRadius": 22.0,
+              "uavFormationRadius": 46.0,
+              "uavFormationAltitude": 26.0,
+              "usvFormationRings": 1,
+              "uavFormationRings": 1,
+              "usvAngularErrorDeg": 158.16,
+              "uavAngularErrorDeg": 191.52,
+              "minimumUsvSpacing": 11.8
+            },
+            "route": [],
+            "obstacles": [],
+            "terminalStatus": null,
+            "coordinateFrame": "FLEET_LOCAL_ENU"
+          },
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "protocolVersion": "algorithm.command.v1",
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:54.722966Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:54.822022+00:00",
+      "path": "/api/algorithm-runs/1790077372574/start",
+      "method": "POST",
+      "request": {},
+      "key": "316e79c3-4e13-4b10-b445-0502a368ace7",
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runId": 1790077372574,
+          "algorithmCode": "GB_SFLA_CS",
+          "state": "PREPARED",
+          "latestSequence": 1,
+          "error": null,
+          "latestFrame": {
+            "runId": 1790077372574,
+            "algorithmCode": "GB_SFLA_CS",
+            "sequence": 1,
+            "timestamp": 1790077374664,
+            "phase": "ESCAPE_PURSUIT",
+            "agents": [
+              {
+                "code": "UAV-001",
+                "type": "UAV",
+                "x": -49.56852308690079,
+                "y": -34.74735860698932,
+                "z": 19.227272727272727,
+                "heading": 233.95839760062836,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-001"
+              },
+              {
+                "code": "UAV-002",
+                "type": "UAV",
+                "x": 3.310301938154258,
+                "y": -30.900699275416265,
+                "z": 21.045454545454547,
+                "heading": 291.39496440401757,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-002"
+              },
+              {
+                "code": "UAV-003",
+                "type": "UAV",
+                "x": -49.50035203619419,
+                "y": 35.01875932474017,
+                "z": 22.863636363636363,
+                "heading": 122.49018594647708,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-003"
+              },
+              {
+                "code": "USV-001",
+                "type": "USV",
+                "x": -2.7546675856720175,
+                "y": -38.49639178334854,
+                "z": 0.0,
+                "heading": 121.17403624054563,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-001"
+              },
+              {
+                "code": "USV-002",
+                "type": "USV",
+                "x": 50.06289120971476,
+                "y": -34.68624102285255,
+                "z": 0.0,
+                "heading": 34.81789566004705,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-002"
+              },
+              {
+                "code": "USV-003",
+                "type": "USV",
+                "x": 0.3195064086540175,
+                "y": 35.01776667748939,
+                "z": 0.0,
+                "heading": 217.3413712920808,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-003"
+              }
+            ],
+            "targets": [
+              {
+                "code": "TARGET-001",
+                "type": "CAPTURE_TARGET",
+                "x": 61.969084097528366,
+                "y": 33.0712353347908,
+                "z": 0.0,
+                "heading": 56.25,
+                "visible": true,
+                "groupId": "",
+                "state": "",
+                "threatLevel": 0
+              }
+            ],
+            "metrics": {
+              "progress": 0.0,
+              "captured": false,
+              "formationReady": false,
+              "captureAgents": 0,
+              "requiredCaptureAgents": 6,
+              "capability": "ENCIRCLEMENT",
+              "targetInsideFormation": false,
+              "combinedMaxGapDeg": 278.16,
+              "maxAllowedGapDeg": 81.0,
+              "maximumSlotError": 84.54,
+              "minimumRadiusM": 61.68,
+              "maximumRadiusM": 130.54,
+              "allowedRadiusBandM": [
+                13.5,
+                61.0
+              ],
+              "containmentConfidence": 0.0,
+              "coarseContainment": false,
+              "compactSupportMode": false,
+              "safeContainmentReady": false,
+              "domainFormationReady": false,
+              "ringGeometryReady": false,
+              "ringDiagnostics": {
+                "USV-0": {
+                  "expected": 3,
+                  "actual": 3,
+                  "maxGapDeg": 278.16,
+                  "maxAllowedGapDeg": 120.0,
+                  "maxRadialErrorM": 74.49,
+                  "ready": false
+                },
+                "UAV-0": {
+                  "expected": 3,
+                  "actual": 3,
+                  "maxGapDeg": 311.52,
+                  "maxAllowedGapDeg": 120.0,
+                  "maxRadialErrorM": 84.54,
+                  "ready": false
+                }
+              },
+              "captureHoldFrames": 0,
+              "requiredCaptureHoldFrames": 20,
+              "captureStage": 1,
+              "missionStage": "ESCAPE",
+              "stableContainmentFrames": 0,
+              "requiredStableContainmentFrames": 20,
+              "gapRepairRequired": false,
+              "arrivalRatio": 0.0,
+              "captureBlocker": "PURSUIT_DISTANCE",
+              "containmentContract": {
+                "ready": false,
+                "blocker": "TARGET_OUTSIDE_HULL",
+                "targetInside": false,
+                "maxGapDeg": 278.16,
+                "maxAllowedGapDeg": 81.0,
+                "sectorCount": 5,
+                "coveredSectors": 2,
+                "minimumSeparationM": 9.72,
+                "requiredSeparationM": 7.1,
+                "radialSpreadM": 68.86,
+                "uavCount": 3,
+                "usvCount": 3,
+                "invalidParticipants": 0,
+                "stationaryParticipants": 0,
+                "detachedParticipants": 0
+              },
+              "settlingStarted": false,
+              "containmentCandidate": false,
+              "stalledFrames": 0,
+              "replanCount": 0,
+              "avoidanceCount": 2,
+              "totalDistance": 0.0,
+              "meanDistanceToTarget": 92.631,
+              "targetTravelDistanceM": 0.0,
+              "requiredPursuitDistanceM": 80.0,
+              "pursuitProgress": 0.0,
+              "targetSpeedMps": 1.539,
+              "targetBehavior": "ESCAPE",
+              "targetIntent": "ESCAPE",
+              "targetIntentConfidence": 0.45,
+              "targetHeadingDeg": 56.25,
+              "targetSpeedReason": "ESCAPE_CRUISE",
+              "gapCenterDeg": 39.11,
+              "nearestInterceptorCode": "USV-003",
+              "nearestInterceptorDistanceM": 61.68,
+              "operationalBoundaryClearanceM": 152.73,
+              "targetNetDisplacementM": 0.0,
+              "captureRadius": 46.0,
+              "usvFormationRadius": 22.0,
+              "uavFormationRadius": 46.0,
+              "uavFormationAltitude": 26.0,
+              "usvFormationRings": 1,
+              "uavFormationRings": 1,
+              "usvAngularErrorDeg": 158.16,
+              "uavAngularErrorDeg": 191.52,
+              "minimumUsvSpacing": 11.8
+            },
+            "route": [],
+            "obstacles": [],
+            "terminalStatus": null,
+            "coordinateFrame": "FLEET_LOCAL_ENU"
+          },
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "protocolVersion": "algorithm.command.v1",
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:54.819738Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.254128+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769",
+      "method": "GET",
+      "request": null,
+      "key": null,
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790077372574",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T11:42:54.733303Z",
+          "latestFrameSequence": 5,
+          "sceneReady": false,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:55.251014Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.263558+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769",
+      "method": "GET",
+      "request": null,
+      "key": null,
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790077372574",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T11:42:54.733303Z",
+          "latestFrameSequence": 5,
+          "sceneReady": false,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:55.262481Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.312276+00:00",
+      "path": "/api/voice/commands/proposals",
+      "method": "POST",
+      "request": {
+        "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+        "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+        "expectedContextVersion": 4,
+        "intent": "MISSION_PAUSE"
+      },
+      "key": "7251047b-7681-4226-a576-644e7733ee97",
+      "status": 201,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "5d6a3b65-3ffe-44ed-a835-4163fd909383",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "95506f4457905fa8702e28a9b9d8993b4e5ebb389f385ee9a679a02b99707a20",
+          "plan": {
+            "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+            "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+            "contextVersion": 4,
+            "stateVersion": 1,
+            "action": "PAUSE",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T11:42:55.270570Z",
+          "expiresAt": "2026-09-22T11:43:25.270570Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-22T11:42:55.310029Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.409085+00:00",
+      "path": "/api/voice/commands/proposals",
+      "method": "POST",
+      "request": {
+        "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+        "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+        "expectedContextVersion": 4,
+        "intent": "MISSION_PAUSE"
+      },
+      "key": "7251047b-7681-4226-a576-644e7733ee97",
+      "status": 403,
+      "response": {
+        "code": "FORBIDDEN",
+        "message": "FORBIDDEN",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:55.408079Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.418486+00:00",
+      "path": "/api/voice/commands/5d6a3b65-3ffe-44ed-a835-4163fd909383/confirm",
+      "method": "POST",
+      "request": {
+        "expectedPlanVersion": 1,
+        "expectedPlanHash": "95506f4457905fa8702e28a9b9d8993b4e5ebb389f385ee9a679a02b99707a20"
+      },
+      "key": "9e10d1d7-e839-40f2-8398-7ac3e9b4180d",
+      "status": 403,
+      "response": {
+        "code": "FORBIDDEN",
+        "message": "FORBIDDEN",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:55.416200Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.424856+00:00",
+      "path": "/api/voice/commands/5d6a3b65-3ffe-44ed-a835-4163fd909383/cancel",
+      "method": "POST",
+      "request": {
+        "expectedPlanVersion": 1,
+        "expectedPlanHash": "95506f4457905fa8702e28a9b9d8993b4e5ebb389f385ee9a679a02b99707a20"
+      },
+      "key": "6e70968f-2e88-4abb-8733-71ec1f245ec7",
+      "status": 403,
+      "response": {
+        "code": "FORBIDDEN",
+        "message": "FORBIDDEN",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:55.423645Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.471645+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769",
+      "method": "GET",
+      "request": null,
+      "key": null,
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790077372574",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T11:42:54.733303Z",
+          "latestFrameSequence": 7,
+          "sceneReady": false,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:55.470648Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.541637+00:00",
+      "path": "/api/voice/commands/proposals",
+      "method": "POST",
+      "request": {
+        "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+        "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+        "expectedContextVersion": 4,
+        "intent": "MISSION_PAUSE"
+      },
+      "key": "7251047b-7681-4226-a576-644e7733ee97",
+      "status": 403,
+      "response": {
+        "code": "FORBIDDEN",
+        "message": "FORBIDDEN",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:55.540236Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.547478+00:00",
+      "path": "/api/voice/commands/5d6a3b65-3ffe-44ed-a835-4163fd909383/confirm",
+      "method": "POST",
+      "request": {
+        "expectedPlanVersion": 1,
+        "expectedPlanHash": "95506f4457905fa8702e28a9b9d8993b4e5ebb389f385ee9a679a02b99707a20"
+      },
+      "key": "3837d8ae-2004-41e9-b0c1-11c09b449c75",
+      "status": 403,
+      "response": {
+        "code": "FORBIDDEN",
+        "message": "FORBIDDEN",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:55.546474Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.553982+00:00",
+      "path": "/api/voice/commands/5d6a3b65-3ffe-44ed-a835-4163fd909383/cancel",
+      "method": "POST",
+      "request": {
+        "expectedPlanVersion": 1,
+        "expectedPlanHash": "95506f4457905fa8702e28a9b9d8993b4e5ebb389f385ee9a679a02b99707a20"
+      },
+      "key": "8b18fb5b-e76b-4468-bd84-04d892d88159",
+      "status": 403,
+      "response": {
+        "code": "FORBIDDEN",
+        "message": "FORBIDDEN",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:55.552979Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.599293+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769",
+      "method": "GET",
+      "request": null,
+      "key": null,
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790077372574",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T11:42:54.733303Z",
+          "latestFrameSequence": 8,
+          "sceneReady": false,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:55.598227Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.887346+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769",
+      "method": "GET",
+      "request": null,
+      "key": null,
+      "status": 403,
+      "response": {
+        "code": "FORBIDDEN",
+        "message": "FORBIDDEN",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:55.886315Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:55.892096+00:00",
+      "path": "/api/voice/commands/proposals",
+      "method": "POST",
+      "request": {
+        "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+        "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+        "expectedContextVersion": 4,
+        "intent": "MISSION_PAUSE"
+      },
+      "key": "7251047b-7681-4226-a576-644e7733ee97",
+      "status": 403,
+      "response": {
+        "code": "FORBIDDEN",
+        "message": "FORBIDDEN",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:55.890884Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:56.195037+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769/presentation/bindings",
+      "method": "POST",
+      "request": {
+        "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+        "expectedBindingId": null
+      },
+      "key": "ccb5d305-1a4f-41f8-8c6f-8952bfe3426d",
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "bindingId": "a7616d86-eadd-4bec-9ba9-2cf7cd99c46a",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90"
+        },
+        "timestamp": "2026-09-22T11:42:56.194032Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:56.304210+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769/presentation/challenges",
+      "method": "POST",
+      "request": {
+        "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+        "bindingId": "a7616d86-eadd-4bec-9ba9-2cf7cd99c46a",
+        "kind": "SCENE_READY",
+        "executionId": null
+      },
+      "key": "f089ed1a-d412-4f2b-a61c-30cfa1ebc9a5",
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "bindingId": "a7616d86-eadd-4bec-9ba9-2cf7cd99c46a",
+          "kind": "SCENE_READY",
+          "executionId": null,
+          "requestId": "0d820b63-adca-4a41-bc86-cb2a35ab5fa0",
+          "sequence": 1,
+          "expiresAt": "2026-09-22T11:43:01.261403Z"
+        },
+        "timestamp": "2026-09-22T11:42:56.303086Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:56.551302+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769/presentation/bindings",
+      "method": "POST",
+      "request": {
+        "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+        "expectedBindingId": "a7616d86-eadd-4bec-9ba9-2cf7cd99c46a"
+      },
+      "key": "31f75854-c629-4f02-b3f1-0f07c7e2bb79",
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "bindingId": "5af6ee2f-54e3-4f82-b64d-c153f8f8d0fe",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90"
+        },
+        "timestamp": "2026-09-22T11:42:56.549296Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:56.673722+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769/presentation/reports",
+      "method": "POST",
+      "request": {
+        "runtimeGeneration": "a5c783f7-fa7c-4b9e-8a29-54dab58aa750",
+        "bindingId": "5af6ee2f-54e3-4f82-b64d-c153f8f8d0fe",
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "requestId": "0d820b63-adca-4a41-bc86-cb2a35ab5fa0",
+        "sequence": 1,
+        "frameSequence": 1,
+        "applied": true
+      },
+      "key": "066abc14-53dc-4442-a491-62a7715d2dd8",
+      "status": 409,
+      "response": {
+        "code": "CONTEXT_CHANGED",
+        "message": "CONTEXT_CHANGED",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:56.672718Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:56.797107+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769/presentation/reports",
+      "method": "POST",
+      "request": {
+        "runtimeGeneration": "a5c783f7-fa7c-4b9e-8a29-54dab58aa750",
+        "bindingId": "5af6ee2f-54e3-4f82-b64d-c153f8f8d0fe",
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "requestId": "0d820b63-adca-4a41-bc86-cb2a35ab5fa0",
+        "sequence": 1,
+        "frameSequence": 1,
+        "applied": true
+      },
+      "key": "7ee4a591-06ec-4480-9773-8194c09ef8ee",
+      "status": 409,
+      "response": {
+        "code": "GENERATION_MISMATCH",
+        "message": "GENERATION_MISMATCH",
+        "data": null,
+        "timestamp": "2026-09-22T11:42:56.795105Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:56.906762+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769",
+      "method": "GET",
+      "request": null,
+      "key": null,
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790077372574",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T11:42:55.919751Z",
+          "latestFrameSequence": 16,
+          "sceneReady": false,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:56.905573Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:56.996027+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769",
+      "method": "GET",
+      "request": null,
+      "key": null,
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790077372574",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T11:42:55.919751Z",
+          "latestFrameSequence": 17,
+          "sceneReady": false,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:56.995014Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:57.154595+00:00",
+      "path": "/api/voice/commands/proposals",
+      "method": "POST",
+      "request": {
+        "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+        "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+        "expectedContextVersion": 4,
+        "intent": "MISSION_PAUSE"
+      },
+      "key": "a90b6515-4b73-4da6-9b4f-1dbc9268b3bd",
+      "status": 201,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "50399fb9-f0c0-4718-96c6-611caeb11856",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "95506f4457905fa8702e28a9b9d8993b4e5ebb389f385ee9a679a02b99707a20",
+          "plan": {
+            "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+            "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+            "contextVersion": 4,
+            "stateVersion": 1,
+            "action": "PAUSE",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T11:42:57.103744Z",
+          "expiresAt": "2026-09-22T11:43:27.103744Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-22T11:42:57.152540Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:57.731043+00:00",
+      "path": "/api/voice/contexts/0bbf8848-7309-4a34-beb3-638c442b6769",
+      "method": "GET",
+      "request": null,
+      "key": null,
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790077372574",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T11:42:57.102740Z",
+          "latestFrameSequence": 23,
+          "sceneReady": false,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:57.728969Z"
+      }
+    },
+    {
+      "at": "2026-09-22T11:42:57.813505+00:00",
+      "path": "/api/algorithm-runs/1790077372574/stop",
+      "method": "POST",
+      "request": {},
+      "key": "8d4fd3d0-6cea-445c-8383-532c72943afd",
+      "status": 200,
+      "response": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runId": 1790077372574,
+          "algorithmCode": "GB_SFLA_CS",
+          "state": "RUNNING",
+          "latestSequence": 24,
+          "error": null,
+          "latestFrame": {
+            "runId": 1790077372574,
+            "algorithmCode": "GB_SFLA_CS",
+            "sequence": 24,
+            "timestamp": 1790077377730,
+            "phase": "ESCAPE_PURSUIT",
+            "agents": [
+              {
+                "code": "UAV-001",
+                "type": "UAV",
+                "x": -42.59269742097766,
+                "y": -30.72989860179926,
+                "z": 19.227272727272727,
+                "heading": 302.95839760062836,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-001"
+              },
+              {
+                "code": "UAV-002",
+                "type": "UAV",
+                "x": 8.796867892184112,
+                "y": -25.010228006102334,
+                "z": 21.045454545454547,
+                "heading": 0.39496440401757127,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-002"
+              },
+              {
+                "code": "UAV-003",
+                "type": "UAV",
+                "x": -41.46101821746608,
+                "y": 35.42991740338259,
+                "z": 22.863636363636363,
+                "heading": 53.490185946477084,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "UAV-003"
+              },
+              {
+                "code": "USV-001",
+                "type": "USV",
+                "x": 2.38742870294198,
+                "y": -33.23075042838275,
+                "z": 0.0,
+                "heading": 86.67403624054563,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-001"
+              },
+              {
+                "code": "USV-002",
+                "type": "USV",
+                "x": 51.743188987572786,
+                "y": -27.52145751051354,
+                "z": 0.0,
+                "heading": 69.31789566004704,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-002"
+              },
+              {
+                "code": "USV-003",
+                "type": "USV",
+                "x": 7.658576760545624,
+                "y": 35.56789642117648,
+                "z": 0.0,
+                "heading": 251.8413712920808,
+                "role": "INTERCEPTOR",
+                "status": "ACTIVE",
+                "groupId": "",
+                "assignedTargetCode": "",
+                "deviceCode": "USV-003"
+              }
+            ],
+            "targets": [
+              {
+                "code": "TARGET-001",
+                "type": "CAPTURE_TARGET",
+                "x": 64.8233186934764,
+                "y": 35.4903332801903,
+                "z": 0.0,
+                "heading": 36.93653605837333,
+                "visible": true,
+                "groupId": "",
+                "state": "",
+                "threatLevel": 0
+              }
+            ],
+            "metrics": {
+              "progress": 0.016,
+              "captured": false,
+              "formationReady": false,
+              "captureAgents": 1,
+              "requiredCaptureAgents": 6,
+              "capability": "ENCIRCLEMENT",
+              "targetInsideFormation": false,
+              "combinedMaxGapDeg": 281.65,
+              "maxAllowedGapDeg": 81.0,
+              "maximumSlotError": 80.19,
+              "minimumRadiusM": 57.16,
+              "maximumRadiusM": 126.19,
+              "allowedRadiusBandM": [
+                13.5,
+                61.0
+              ],
+              "containmentConfidence": 0.05,
+              "coarseContainment": false,
+              "compactSupportMode": false,
+              "safeContainmentReady": false,
+              "domainFormationReady": false,
+              "ringGeometryReady": false,
+              "ringDiagnostics": {
+                "USV-0": {
+                  "expected": 3,
+                  "actual": 3,
+                  "maxGapDeg": 281.65,
+                  "maxAllowedGapDeg": 120.0,
+                  "maxRadialErrorM": 70.85,
+                  "ready": false
+                },
+                "UAV-0": {
+                  "expected": 3,
+                  "actual": 3,
+                  "maxGapDeg": 312.83,
+                  "maxAllowedGapDeg": 120.0,
+                  "maxRadialErrorM": 80.19,
+                  "ready": false
+                }
+              },
+              "captureHoldFrames": 0,
+              "requiredCaptureHoldFrames": 20,
+              "captureStage": 1,
+              "missionStage": "ESCAPE",
+              "stableContainmentFrames": 0,
+              "requiredStableContainmentFrames": 20,
+              "gapRepairRequired": false,
+              "arrivalRatio": 0.167,
+              "captureBlocker": "PURSUIT_DISTANCE",
+              "containmentContract": {
+                "ready": false,
+                "blocker": "TARGET_OUTSIDE_HULL",
+                "targetInside": false,
+                "maxGapDeg": 281.65,
+                "maxAllowedGapDeg": 81.0,
+                "sectorCount": 5,
+                "coveredSectors": 2,
+                "minimumSeparationM": 10.42,
+                "requiredSeparationM": 7.1,
+                "radialSpreadM": 69.02,
+                "uavCount": 3,
+                "usvCount": 3,
+                "invalidParticipants": 0,
+                "stationaryParticipants": 0,
+                "detachedParticipants": 0
+              },
+              "settlingStarted": false,
+              "containmentCandidate": false,
+              "stalledFrames": 23,
+              "replanCount": 0,
+              "avoidanceCount": 69,
+              "totalDistance": 336.72,
+              "meanDistanceToTarget": 88.216,
+              "targetTravelDistanceM": 3.752,
+              "requiredPursuitDistanceM": 80.0,
+              "pursuitProgress": 0.047,
+              "targetSpeedMps": 1.732,
+              "targetBehavior": "BREAKOUT",
+              "targetIntent": "BREAKOUT",
+              "targetIntentConfidence": 0.47,
+              "targetHeadingDeg": 36.94,
+              "targetSpeedReason": "GAP_BREAKOUT",
+              "gapCenterDeg": 39.1,
+              "nearestInterceptorCode": "USV-003",
+              "nearestInterceptorDistanceM": 57.16,
+              "operationalBoundaryClearanceM": 149.88,
+              "targetNetDisplacementM": 3.741,
+              "captureRadius": 46.0,
+              "usvFormationRadius": 22.0,
+              "uavFormationRadius": 46.0,
+              "uavFormationAltitude": 26.0,
+              "usvFormationRings": 1,
+              "uavFormationRings": 1,
+              "usvAngularErrorDeg": 161.65,
+              "uavAngularErrorDeg": 192.83,
+              "minimumUsvSpacing": 11.8
+            },
+            "route": [],
+            "obstacles": [],
+            "terminalStatus": null,
+            "coordinateFrame": "FLEET_LOCAL_ENU"
+          },
+          "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+          "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+          "protocolVersion": "algorithm.command.v1",
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T11:42:57.812543Z"
+      }
+    }
+  ],
+  "runtimeRef": "0bbf8848-7309-4a34-beb3-638c442b6769",
+  "runtimeGeneration": "050c49ee-e510-41ca-9429-e9a9d27ebd90",
+  "runId": 1790077372574,
+  "result": "FAIL",
+  "error": "Local SQL failed",
+  "accountRestored": true
+}

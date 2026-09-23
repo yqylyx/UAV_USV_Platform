@@ -1,0 +1,6 @@
+Cached rejected commands 2000
+Cached rejected commands 4000
+Cached rejected commands 6000
+Cached rejected commands 8000
+Cached rejected commands 10000
+P17 PASS CAPACITY_EXCEEDED

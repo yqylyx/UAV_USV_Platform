@@ -1,0 +1,45 @@
+{
+  "caseId": "P17",
+  "runtimeRef": "15dff0d4-2a3b-4ae9-a65b-7594e5d109c6",
+  "runtimeGeneration": "55fe1d1b-b04c-47b7-bad2-8c9321d4f7c7",
+  "runnerSha256": "b3db7e3dba77f9e219ce302ad24f5d9e598975e97e9806da3a947fd6608b21bd",
+  "cachedCommands": 10000,
+  "commandsAndResponsesSha256": "338308de002b2267177a506604b44f64f2355579044c9f41899de0e75a435713",
+  "firstCommand": {
+    "protocolVersion": "algorithm.command.v1",
+    "runtimeRef": "15dff0d4-2a3b-4ae9-a65b-7594e5d109c6",
+    "runtimeGeneration": "55fe1d1b-b04c-47b7-bad2-8c9321d4f7c7",
+    "kind": "COMMAND",
+    "commandId": "167544dd-947c-4396-955d-3b0e3c38d64b",
+    "commandSequence": 1,
+    "expectedStateVersion": 0,
+    "action": "PAUSE",
+    "parameters": {}
+  },
+  "firstResult": {
+    "protocolVersion": "algorithm.command.v1",
+    "runtimeRef": "15dff0d4-2a3b-4ae9-a65b-7594e5d109c6",
+    "runtimeGeneration": "55fe1d1b-b04c-47b7-bad2-8c9321d4f7c7",
+    "kind": "COMMAND_RESULT",
+    "commandId": "167544dd-947c-4396-955d-3b0e3c38d64b",
+    "eventSequence": 1,
+    "status": "REJECTED",
+    "runtimeState": "PREPARED",
+    "stateVersion": 0,
+    "lastFrameSequence": 1,
+    "errorCode": "INVALID_STATE",
+    "affectedDeviceCodes": []
+  },
+  "overflow": {
+    "protocolVersion": "algorithm.command.v1",
+    "runtimeRef": "15dff0d4-2a3b-4ae9-a65b-7594e5d109c6",
+    "runtimeGeneration": "55fe1d1b-b04c-47b7-bad2-8c9321d4f7c7",
+    "kind": "PROTOCOL_ERROR",
+    "relatedCommandId": "2be45c79-1430-4bb7-924e-d3f2a14accc0",
+    "errorCode": "CAPACITY_EXCEEDED",
+    "detail": "command cache limit reached"
+  },
+  "oldReplayStable": true,
+  "result": "PASS",
+  "expected": "New command rejected with CAPACITY_EXCEEDED; old cached command remains replayable"
+}

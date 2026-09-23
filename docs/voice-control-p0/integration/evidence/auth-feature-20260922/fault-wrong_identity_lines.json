@@ -1,0 +1,24 @@
+{
+  "scenario" : "wrong_identity_lines",
+  "runtimeRef" : "77101d75-d3cb-4b91-9258-51caa8a4544f",
+  "trace" : "C:\\Users\\hp-pc\\Desktop\\Project4\\p0-acceptance-3e37759\\backend\\target\\fault-wrong_identity_lines-8580a8dd-35de-48d6-a68f-6a208aff6a87.jsonl",
+  "context" : {
+    "runtimeRef" : "77101d75-d3cb-4b91-9258-51caa8a4544f",
+    "runtimeGeneration" : "6988e7ee-f9f8-4aca-b63e-8ccc1501e862",
+    "contextVersion" : 3,
+    "stateVersion" : 0,
+    "runtimeScope" : "MISSION_CENTER",
+    "runtimeKind" : "STANDALONE_ALGORITHM",
+    "executionBackend" : "PYTHON_SIMULATION",
+    "algorithmRunId" : "990041",
+    "missionId" : null,
+    "missionRunId" : null,
+    "state" : "PREPARED",
+    "protocolVersion" : "algorithm.command.v1",
+    "lastHeartbeatReceivedAt" : "2026-09-19T08:00:00Z",
+    "latestFrameSequence" : 1,
+    "sceneReady" : false,
+    "capabilities" : [ "START", "PAUSE", "RESUME", "STOP" ]
+  },
+  "executions" : [ ]
+}

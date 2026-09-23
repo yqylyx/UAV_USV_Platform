@@ -1,0 +1,24 @@
+{
+  "scenario" : "ordinary_logs",
+  "runtimeRef" : "51158fd3-82b2-4807-be9d-bb264da0680f",
+  "trace" : "C:\\Users\\hp-pc\\Desktop\\Project4\\p0-acceptance-3e37759\\backend\\target\\fault-ordinary_logs-6ff24076-f402-4b31-a8bb-ca696be3a99e.jsonl",
+  "context" : {
+    "runtimeRef" : "51158fd3-82b2-4807-be9d-bb264da0680f",
+    "runtimeGeneration" : "08894668-40d3-4441-84fb-89e813733537",
+    "contextVersion" : 3,
+    "stateVersion" : 0,
+    "runtimeScope" : "MISSION_CENTER",
+    "runtimeKind" : "STANDALONE_ALGORITHM",
+    "executionBackend" : "PYTHON_SIMULATION",
+    "algorithmRunId" : "990041",
+    "missionId" : null,
+    "missionRunId" : null,
+    "state" : "PREPARED",
+    "protocolVersion" : "algorithm.command.v1",
+    "lastHeartbeatReceivedAt" : "2026-09-19T08:00:00Z",
+    "latestFrameSequence" : 1,
+    "sceneReady" : false,
+    "capabilities" : [ "START", "PAUSE", "RESUME", "STOP" ]
+  },
+  "executions" : [ ]
+}

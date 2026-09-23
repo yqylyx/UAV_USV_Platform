@@ -60,8 +60,11 @@ function publicExecution(value: VoiceExecution & { mockOutcome?: VoiceMockOutcom
 }
 
 function assertMockPlan(proposal: VoiceProposal, guard: VoicePlanGuardRequest) {
+  if (guard.expectedPlanVersion !== 1 || !/^[0-9a-f]{64}$/.test(guard.expectedPlanHash)) {
+    throw new ApiClientError('请求格式或版本不受支持，请刷新页面后重试', 400, 'INVALID_REQUEST')
+  }
   if (proposal.planVersion !== guard.expectedPlanVersion || proposal.planHash !== guard.expectedPlanHash) {
-    throw new ApiClientError('计划版本或哈希已变化，请重新创建提案', 409, 'PLAN_MISMATCH')
+    throw new ApiClientError('提案信息不一致，请重新获取提案', 409, 'PLAN_MISMATCH')
   }
 }
 
@@ -173,10 +176,10 @@ export async function fetchVoiceProposal(proposalId: string): Promise<VoicePropo
 
 export async function confirmVoiceProposal(proposalId: string, payload: VoicePlanGuardRequest, idempotencyKey: string): Promise<VoiceConfirmResult> {
   if (mockEnabled) {
-    const replay = confirmReplay.get(idempotencyKey)
-    if (replay) return clone(replay)
     const proposal = await fetchVoiceProposal(proposalId)
     assertMockPlan(proposal, payload)
+    const replay = confirmReplay.get(idempotencyKey)
+    if (replay) return clone(replay)
     if (proposal.status !== 'AWAITING_CONFIRMATION') throw new ApiClientError('提案已不可确认', 409, `PROPOSAL_${proposal.status}`)
     const now = new Date().toISOString()
     const execution: VoiceExecution & { mockOutcome?: VoiceMockOutcome; reads?: number } = {

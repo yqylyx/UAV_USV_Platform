@@ -1,0 +1,24 @@
+{
+  "scenario" : "old-proposal-replacement",
+  "runtimeRef" : "20f33d29-9bbb-4e5f-b576-8169e9f00beb",
+  "trace" : "C:\\Users\\hp-pc\\Desktop\\Project4\\p0-acceptance-3e37759\\backend\\target\\fault-normal-960d4622-2e60-49ba-90d6-0bc1f80f8766.jsonl",
+  "context" : {
+    "runtimeRef" : "20f33d29-9bbb-4e5f-b576-8169e9f00beb",
+    "runtimeGeneration" : "38079a11-9fd9-4757-b4b5-5c74fb41d325",
+    "contextVersion" : 3,
+    "stateVersion" : 0,
+    "runtimeScope" : "MISSION_CENTER",
+    "runtimeKind" : "STANDALONE_ALGORITHM",
+    "executionBackend" : "PYTHON_SIMULATION",
+    "algorithmRunId" : "990041",
+    "missionId" : null,
+    "missionRunId" : null,
+    "state" : "PREPARED",
+    "protocolVersion" : "algorithm.command.v1",
+    "lastHeartbeatReceivedAt" : "2026-09-19T08:00:00Z",
+    "latestFrameSequence" : 1,
+    "sceneReady" : false,
+    "capabilities" : [ "START", "PAUSE", "RESUME", "STOP" ]
+  },
+  "executions" : [ ]
+}

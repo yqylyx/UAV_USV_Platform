@@ -1,0 +1,7 @@
+{
+  "identityVerified": true,
+  "result": "PASS",
+  "terminatedPid": 28468,
+  "reason": "Pre-fix 22:32 worker-deadlock test child remained after proxy termination",
+  "remainingWorkspacePythonProcesses": 0
+}

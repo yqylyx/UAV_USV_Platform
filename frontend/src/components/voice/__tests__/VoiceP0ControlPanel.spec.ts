@@ -71,6 +71,44 @@ function mountPanel(presentationStatus: VoiceExecution['presentationStatus']) {
 }
 
 describe('VoiceP0ControlPanel presentation recovery UI', () => {
+  it('explains how to recover when no owned runtime is available', async () => {
+    const wrapper = mountPanel('NOT_REQUIRED')
+    const store = useVoiceControlStore()
+    store.contexts = []
+    store.execution = null
+    await nextTick()
+    expect(wrapper.text()).toContain('请重新生成场景')
+    expect(wrapper.text()).toContain('管理员清理旧运行')
+    wrapper.unmount()
+  })
+
+  it('serializes a scene probe and a newly due frame probe', async () => {
+    const wrapper = mountPanel('NOT_REQUIRED')
+    const store = useVoiceControlStore()
+    store.execution = { ...execution('NOT_REQUIRED'), action: 'PAUSE' }
+    store.takePresentationBinding = vi.fn().mockImplementation(async () => {
+      store.presentationBinding = { bindingId: '77777777-7777-4777-8777-777777777777', runtimeGeneration: context.runtimeGeneration }
+    })
+    let finishScene!: (value: null) => void
+    store.requestPresentationChallenge = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finishScene = resolve }))
+      .mockResolvedValue(null)
+    await wrapper.setProps({ unitySession: { connected: true, unityInstanceId: 'unity-test', sceneRevision: 1 } })
+    await nextTick()
+    await wrapper.vm.handleUnityPresentationMessage({ type: 'PRESENTATION_READY', payload: {
+      protocolVersion: 'unity.presentation.v1', runtimeRef: context.runtimeRef, runtimeGeneration: context.runtimeGeneration,
+      bindingId: '77777777-7777-4777-8777-777777777777', unityInstanceId: 'unity-test', sceneRevision: 1, scenarioReady: true,
+    } })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(store.requestPresentationChallenge).toHaveBeenCalledExactlyOnceWith('SCENE_READY', null)
+    store.execution = execution('PENDING')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(store.requestPresentationChallenge).toHaveBeenCalledTimes(1)
+    finishScene(null)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(store.requestPresentationChallenge).toHaveBeenNthCalledWith(2, 'FRAME_APPLIED', store.execution!.executionId)
+    wrapper.unmount()
+  })
+
   it('retains one resync click until the Unity handshake becomes ready', async () => {
     const wrapper = mountPanel('STALE')
     const store = useVoiceControlStore()
@@ -151,4 +189,18 @@ describe('VoiceP0ControlPanel presentation recovery UI', () => {
     expect(store.takePresentationBinding).toHaveBeenCalledOnce()
     wrapper.unmount()
   })
+})
+
+it.each([
+  ['INVALID_REQUEST', '请求格式或版本不受支持，请刷新页面后重试。'],
+  ['PLAN_MISMATCH', '提案信息不一致，请重新获取提案。'],
+])('I05 displays the actionable message for %s', async (code, message) => {
+  setActivePinia(createPinia())
+  const wrapper = mountPanel('REPORTED_APPLIED')
+  const store = useVoiceControlStore()
+  store.errorCode = code!
+  store.error = 'request rejected'
+  await nextTick()
+  expect(wrapper.text()).toContain(message)
+  wrapper.unmount()
 })

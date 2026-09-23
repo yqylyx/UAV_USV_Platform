@@ -1,0 +1,13 @@
+{
+  "deployedAt": "2026-09-22T19:46:58.5835165+08:00",
+  "jarSha256": "1D722A5CC4E1598C87742D493F72A0078AB55D22127EE2AC030FAD59E6832D44",
+  "runnerSha256": "C5A202692006B38506817C9C56B8F897BD99A74EF75F384147CB6DE119CA597B",
+  "frontendCommit": "ae46345f1ef22afafddff108f702727fc8bddad3",
+  "runnerPath": "C:/Users/hp-pc/Desktop/Project4/p0-acceptance-3e37759/algorithm-service/runner.py",
+  "unityPresentationV1": true,
+  "backendPid": 30564,
+  "frontendPid": 30468,
+  "backendCommit": "ae46345f1ef22afafddff108f702727fc8bddad3",
+  "workspace": "C:/Users/hp-pc/Desktop/Project4/p0-acceptance-3e37759",
+  "voiceEnabled": true
+}

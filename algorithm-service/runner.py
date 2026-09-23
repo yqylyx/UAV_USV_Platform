@@ -18,6 +18,7 @@ from app.adapters import AdaptiveCaptureAdapter, AdaptiveEscortAdapter, CaptureA
 
 
 PROTOCOL_VERSION = "algorithm.command.v1"
+COMMAND_CACHE_LIMIT = 10000
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
@@ -221,6 +222,10 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
                     protocol_error("IDENTITY_MISMATCH", "runtime identity mismatch", cid)
                 elif command["commandSequence"] != command_sequence + 1:
                     protocol_error("SEQUENCE_MISMATCH", "command sequence is not contiguous", cid)
+                elif len(result_cache) >= COMMAND_CACHE_LIMIT:
+                    # Retain every prior result (including business rejections).
+                    # Overflow must not consume ordering or mutate the adapter.
+                    protocol_error("CAPACITY_EXCEEDED", "command cache limit reached", cid)
                 else:
                     command_bodies[cid] = json.dumps(command, sort_keys=True, separators=(",", ":"))
                     command_sequence += 1
@@ -233,21 +238,35 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
                         result(command, "REJECTED", "STATE_VERSION_MISMATCH")
                     else:
                         result(command, "ACCEPTED")
-                        if action in {"START", "RESUME"}:
-                            adapter.set_mission_active(True)
-                            state = "RUNNING"
-                        elif action == "PAUSE":
-                            adapter.set_mission_active(False)
-                            state = "PAUSED"
+                        try:
+                            if action in {"START", "RESUME"}:
+                                adapter.set_mission_active(True)
+                                state = "RUNNING"
+                            elif action == "PAUSE":
+                                adapter.set_mission_active(False)
+                                state = "PAUSED"
+                            else:
+                                state = "STOPPED"
+                        except ValueError:
+                            # Adapter business rejection is a failed command, not
+                            # process death. Do not expose exception details or
+                            # invent a successful state/version transition.
+                            result(command, "FAILED", "ADAPTER_ERROR")
                         else:
-                            state = "STOPPED"
-                        result(command, "SUCCEEDED")
+                            result(command, "SUCCEEDED")
         if input_closed.is_set() and commands.empty():
             return 0
         if state == "RUNNING":
             frame = _normalize_frame_device_codes(adapter.step().to_dict())
             last_frame_sequence = int(frame.get("sequence", last_frame_sequence))
             emit({"event": "frame", "payload": frame})
+            terminal_state = frame.get("terminalStatus")
+            if terminal_state in {"COMPLETED", "FAILED"}:
+                # Natural completion is a runtime transition, not a new command
+                # result. Keep cached command receipts immutable for replay.
+                state = terminal_state
+                state_version += 1
+                next_heartbeat = 0.0
         now = time.monotonic()
         if now >= next_heartbeat:
             heartbeat_sequence += 1

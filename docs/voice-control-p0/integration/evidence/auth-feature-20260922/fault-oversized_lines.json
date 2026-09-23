@@ -1,0 +1,24 @@
+{
+  "scenario" : "oversized_lines",
+  "runtimeRef" : "c562ca78-521a-4825-b29a-98dc5c26035b",
+  "trace" : "C:\\Users\\hp-pc\\Desktop\\Project4\\p0-acceptance-3e37759\\backend\\target\\fault-oversized_lines-8e0c3c9a-5f19-4726-8162-948c15cf6161.jsonl",
+  "context" : {
+    "runtimeRef" : "c562ca78-521a-4825-b29a-98dc5c26035b",
+    "runtimeGeneration" : "7be7ff01-72f3-4b54-981b-a4db3e7f0fe5",
+    "contextVersion" : 3,
+    "stateVersion" : 0,
+    "runtimeScope" : "MISSION_CENTER",
+    "runtimeKind" : "STANDALONE_ALGORITHM",
+    "executionBackend" : "PYTHON_SIMULATION",
+    "algorithmRunId" : "990041",
+    "missionId" : null,
+    "missionRunId" : null,
+    "state" : "PREPARED",
+    "protocolVersion" : "algorithm.command.v1",
+    "lastHeartbeatReceivedAt" : "2026-09-19T08:00:00Z",
+    "latestFrameSequence" : 1,
+    "sceneReady" : false,
+    "capabilities" : [ "START", "PAUSE", "RESUME", "STOP" ]
+  },
+  "executions" : [ ]
+}

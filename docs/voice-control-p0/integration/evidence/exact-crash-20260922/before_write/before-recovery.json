@@ -1,0 +1,31 @@
+{
+  "_id" : "8f30353b-1840-43de-a9df-b7ba34d7ea42",
+  "_owner" : 1,
+  "_manual" : false,
+  "_eventSequence" : 0,
+  "_queryCount" : 0,
+  "_plan" : {
+    "runtimeRef" : "9b9b861e-328b-4a27-bc44-8d02d432b01f",
+    "runtimeGeneration" : "6607591f-3071-49e2-a578-4c28d83aeb09",
+    "contextVersion" : 4,
+    "stateVersion" : 0,
+    "action" : "START",
+    "explicitDeviceCodes" : [ "UAV-001", "USV-001" ],
+    "policyVersion" : "voice-p0.v1"
+  },
+  "executionId" : "8f30353b-1840-43de-a9df-b7ba34d7ea42",
+  "proposalId" : "302c5a53-28ae-455a-b9a8-8cb30fedb7ad",
+  "commandId" : "8b9ab975-b07c-4339-a803-ada064c27350",
+  "runtimeRef" : "9b9b861e-328b-4a27-bc44-8d02d432b01f",
+  "runtimeGeneration" : "6607591f-3071-49e2-a578-4c28d83aeb09",
+  "action" : "START",
+  "state" : "DISPATCHED",
+  "outcome" : "UNKNOWN",
+  "errorCode" : null,
+  "timedOutAt" : null,
+  "presentationStatus" : "PENDING",
+  "createdAt" : "2026-09-19T08:00:00Z",
+  "updatedAt" : "2026-09-19T08:00:00Z",
+  "_commandSequence" : 1,
+  "_sendStartedAt" : "2026-09-19T08:00:00Z"
+}

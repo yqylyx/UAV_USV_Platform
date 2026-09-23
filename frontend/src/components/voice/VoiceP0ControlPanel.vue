@@ -78,7 +78,8 @@ const presentationLabels: Record<string, string> = {
 const errorLabels: Record<string, string> = {
   CONTEXT_CHANGED: '运行上下文、设备集合或展示绑定已变化，请刷新后重新发起。',
   GENERATION_MISMATCH: '场景已重新生成，旧代次不能继续使用。',
-  PLAN_MISMATCH: '冻结计划版本或哈希不匹配，请重新创建提案。',
+  INVALID_REQUEST: '请求格式或版本不受支持，请刷新页面后重试。',
+  PLAN_MISMATCH: '提案信息不一致，请重新获取提案。',
   INVALID_STATE: '当前算法状态不接受该动作。',
   HEARTBEAT_STALE: '算法心跳已失效，暂时不能下发动作。',
   RUNTIME_UNAVAILABLE: '算法进程当前不可用。',
@@ -114,7 +115,7 @@ const presentationCanResync = computed(() => execution.value?.state === 'SUCCEED
   && execution.value.presentationStatus === 'STALE')
 const contextSummary = computed(() => context.value
   ? `运行 ${context.value.algorithmRunId} · ${context.value.state} · 帧 ${context.value.latestFrameSequence} · 心跳${heartbeatFresh.value ? '正常' : '失效'}`
-  : '尚未发现可控制的独立算法实例')
+  : '未发现可控制的算法实例，请重新生成场景；若提示运行被占用，请联系管理员清理旧运行。')
 
 function disabledReason(action: VoiceAction) {
   if (recoveryPending.value || responseUnknown.value) return '请先核对上一次写请求的权威结果'

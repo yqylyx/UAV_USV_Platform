@@ -1,0 +1,30 @@
+{
+  "caseId": "I05",
+  "schemaPolicy": "expectedPlanVersion const 1; validate schema before plan comparison",
+  "cases": [
+    {
+      "id": "I05-a",
+      "request": {
+        "expectedPlanVersion": 2,
+        "expectedPlanHash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedStatus": 400,
+      "expectedCode": "INVALID_REQUEST"
+    },
+    {
+      "id": "I05-b",
+      "request": {
+        "expectedPlanVersion": 1,
+        "expectedPlanHash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expectedStatus": 409,
+      "expectedCode": "PLAN_MISMATCH"
+    }
+  ],
+  "invariants": [
+    "proposal snapshot unchanged",
+    "execution count 0",
+    "outbox count 0",
+    "algorithm writes 0"
+  ]
+}
