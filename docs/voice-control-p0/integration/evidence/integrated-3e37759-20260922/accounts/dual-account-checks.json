@@ -1,0 +1,123 @@
+[
+  {
+    "check": "logout-clears-storage",
+    "user": "p0_admin",
+    "local": [],
+    "session": [],
+    "at": "2026-09-22T11:18:46.577Z"
+  },
+  {
+    "check": "foreign-context-not-listed",
+    "owner": "p0_admin",
+    "ref": "5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+    "status": 200
+  },
+  {
+    "check": "foreign-resource-denied",
+    "owner": "p0_admin",
+    "path": "/api/voice/contexts/5c3e2b38-a37e-4bae-8173-0356dde60ca0",
+    "status": 404,
+    "body": {
+      "code": "RESOURCE_NOT_FOUND",
+      "message": "RESOURCE_NOT_FOUND",
+      "data": null,
+      "timestamp": "2026-09-22T11:18:59.489641Z"
+    }
+  },
+  {
+    "check": "foreign-resource-denied",
+    "owner": "p0_admin",
+    "path": "/api/voice/executions/0fe2010c-40fa-4135-b081-4b363bf35b7e",
+    "status": 404,
+    "body": {
+      "code": "RESOURCE_NOT_FOUND",
+      "message": "RESOURCE_NOT_FOUND",
+      "data": null,
+      "timestamp": "2026-09-22T11:18:59.516688Z"
+    }
+  },
+  {
+    "check": "foreign-resource-denied",
+    "owner": "p0_admin",
+    "path": "/api/voice/commands/c3cdcaa2-5928-4b05-81f1-587e26909a98",
+    "status": 404,
+    "body": {
+      "code": "RESOURCE_NOT_FOUND",
+      "message": "RESOURCE_NOT_FOUND",
+      "data": null,
+      "timestamp": "2026-09-22T11:18:59.537591Z"
+    }
+  },
+  {
+    "check": "logout-clears-storage",
+    "user": "p0_peer_20260922",
+    "local": [],
+    "session": [],
+    "at": "2026-09-22T11:19:18.754Z"
+  },
+  {
+    "check": "foreign-context-not-listed",
+    "owner": "p0_peer_20260922",
+    "ref": "684d4cb7-e3e0-4bf9-a14a-01f56d998f2b",
+    "status": 200
+  },
+  {
+    "check": "foreign-resource-denied",
+    "owner": "p0_peer_20260922",
+    "path": "/api/voice/contexts/684d4cb7-e3e0-4bf9-a14a-01f56d998f2b",
+    "status": 404,
+    "body": {
+      "code": "RESOURCE_NOT_FOUND",
+      "message": "RESOURCE_NOT_FOUND",
+      "data": null,
+      "timestamp": "2026-09-22T11:19:28.952161Z"
+    }
+  },
+  {
+    "check": "foreign-resource-denied",
+    "owner": "p0_peer_20260922",
+    "path": "/api/voice/executions/48ba9be9-7f0c-48cb-be9a-dffc3e5ab8af",
+    "status": 404,
+    "body": {
+      "code": "RESOURCE_NOT_FOUND",
+      "message": "RESOURCE_NOT_FOUND",
+      "data": null,
+      "timestamp": "2026-09-22T11:19:28.967629Z"
+    }
+  },
+  {
+    "check": "foreign-resource-denied",
+    "owner": "p0_peer_20260922",
+    "path": "/api/voice/commands/f76c36d7-48d8-4d4f-b02a-feefea80deb1",
+    "status": 404,
+    "body": {
+      "code": "RESOURCE_NOT_FOUND",
+      "message": "RESOURCE_NOT_FOUND",
+      "data": null,
+      "timestamp": "2026-09-22T11:19:28.981637Z"
+    }
+  },
+  {
+    "check": "owner-can-read-own-historical-execution",
+    "status": 200,
+    "executionId": "0fe2010c-40fa-4135-b081-4b363bf35b7e"
+  },
+  {
+    "check": "logout-clears-storage",
+    "user": "p0_admin",
+    "local": [],
+    "session": [],
+    "at": "2026-09-22T11:19:48.519Z"
+  },
+  {
+    "check": "anonymous-denied",
+    "path": "/api/voice/contexts",
+    "status": 401,
+    "body": {
+      "code": "UNAUTHORIZED",
+      "message": "请先登录或登录状态已失效",
+      "data": null,
+      "timestamp": "2026-09-22T11:19:48.542907Z"
+    }
+  }
+]

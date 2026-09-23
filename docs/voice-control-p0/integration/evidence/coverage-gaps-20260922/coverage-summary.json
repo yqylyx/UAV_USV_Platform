@@ -1,0 +1,11 @@
+{
+  "caseCount": 96,
+  "counts": {
+    "PARTIAL": 51,
+    "PASS": 31,
+    "NOT_VERIFIED": 12,
+    "FAIL": 2
+  },
+  "javaArchivedExecutionCount": 426,
+  "note": "JUnit counts include repeated rounds and inherited base tests; never equate with 96 unique acceptance cases"
+}

@@ -206,4 +206,93 @@ class VoiceHttpTests {
                                 .content("{}"))
                 .andExpect(status().isUnsupportedMediaType());
     }
+
+    @Test void allEndpointsDenyAnonymousAndAllPostsRequireCsrf() throws Exception {
+        String id=VoiceJson.uuid();
+        String[] reads={"/contexts","/contexts/"+id,"/commands/"+id,"/executions/"+id,"/contexts/"+id+"/presentation/binding"};
+        String[] writes={"/commands/proposals","/commands/"+id+"/confirm","/commands/"+id+"/cancel","/contexts/"+id+"/presentation/bindings","/contexts/"+id+"/presentation/challenges","/contexts/"+id+"/presentation/reports"};
+        for(String suffix:reads)mvc.perform(get("/api/voice"+suffix)).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        for(String suffix:writes){
+            String path="/api/voice"+suffix;
+            mvc.perform(post(path).servletPath(path).contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
+            for(boolean invalid:new boolean[]{false,true}){
+                var request=post(path).servletPath(path).with(user("alice").roles("ADMIN")).header("Idempotency-Key",VoiceJson.uuid()).contentType("application/json").content("{}");
+                if(invalid)request.with(csrf().useInvalidToken());
+                mvc.perform(request).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALID"));
+            }
+        }
+        var jdbc=context.getBean(JdbcTemplate.class);
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM voice_proposal",Integer.class));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM voice_execution",Integer.class));
+    }
+    @Test void bothNonAdminRolesDenyEveryCommandWrite() throws Exception {
+        var jdbc=context.getBean(JdbcTemplate.class);
+        for(String role:new String[]{"VIEWER","OPERATOR"}) {
+            jdbc.update("UPDATE app_user SET role=? WHERE username='viewer'",role);
+            for(String suffix:new String[]{"/proposals","/"+VoiceJson.uuid()+"/confirm","/"+VoiceJson.uuid()+"/cancel"}){
+                mvc.perform(post("/api/voice/commands"+suffix).with(user("viewer").roles(role)).with(csrf()).header("Idempotency-Key",VoiceJson.uuid()).contentType("application/json").content("{}"))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("FORBIDDEN"));
+            }
+        }
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM voice_execution",Integer.class));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"I05-a,confirm", "I05-b,confirm", "I05-a,cancel", "I05-b,cancel"})
+    void i05SchemaAndPlanErrorsHaveNoSideEffects(String caseId, String operation) throws Exception {
+        var json=context.getBean(VoiceJson.class);
+        var store=context.getBean(VoiceStore.class);
+        var registry=context.getBean(RuntimeContextRegistry.class);
+        var service=context.getBean(VoiceCommandApplicationService.class);
+        var time=context.getBean(VoiceTime.class);
+        var writes=new java.util.ArrayList<com.fasterxml.jackson.databind.JsonNode>();
+        VoiceControlTests.login("alice");
+        var runtime=registry.register(7001,"i05-fixture");
+        String ref=runtime.path("runtimeRef").asText(), gen=runtime.path("runtimeGeneration").asText();
+        runtime.put("state","RUNNING");runtime.putArray("capabilities").add("PAUSE");runtime.putArray("_members").add("UAV-001");
+        store.locked(()->{store.save("voice_runtime_context",runtime);return null;});
+        registry.attach(ref,gen,writes::add,()->true);registry.channel(ref).heartbeatNanos=time.nanos();
+        var proposal=service.createProposal(VoiceJson.uuid(),json.object().put("runtimeRef",ref).put("runtimeGeneration",gen).put("expectedContextVersion",1).put("intent","MISSION_PAUSE")).data();
+        String id=proposal.path("proposalId").asText();
+        var before=store.get("voice_proposal",id).deepCopy();
+        var fixtures=json.mapper.readTree(java.nio.file.Files.readString(java.nio.file.Path.of("../docs/voice-control-p0/i05-http-fixtures.json")));
+        com.fasterxml.jackson.databind.JsonNode fixture=null;
+        for(var candidate:fixtures.path("cases"))if(candidate.path("id").asText().equals(caseId))fixture=candidate;
+        assertNotNull(fixture);
+        assertNotEquals(proposal.path("planHash"),fixture.path("request").path("expectedPlanHash"));
+        String path="/api/voice/commands/"+id+"/"+operation;
+        mvc.perform(post(path).servletPath(path).with(user("alice").roles("ADMIN")).with(csrf())
+                .header("Idempotency-Key",VoiceJson.uuid()).contentType("application/json").content(fixture.path("request").toString()))
+            .andExpect(status().is(fixture.path("expectedStatus").asInt()))
+            .andExpect(jsonPath("$.code").value(fixture.path("expectedCode").asText()));
+        assertEquals(before,store.get("voice_proposal",id));
+        assertEquals(0,store.jdbc.queryForObject("SELECT COUNT(*) FROM voice_execution",Integer.class));
+        assertEquals(0,store.jdbc.queryForObject("SELECT COUNT(*) FROM voice_outbox",Integer.class));
+        assertTrue(writes.isEmpty());
+    }
+    @Test void staleAdminSessionCannotBypassProxiedServiceAfterRevocation() {
+        VoiceControlTests.login("alice");
+        var service=context.getBean(VoiceCommandApplicationService.class);
+        assertTrue(org.springframework.aop.support.AopUtils.isAopProxy(service));
+        assertDoesNotThrow(service::contexts);
+        var jdbc=context.getBean(JdbcTemplate.class);var json=context.getBean(VoiceJson.class);
+        for(String role:java.util.List.of("VIEWER","OPERATOR")) {
+            jdbc.update("UPDATE app_user SET role=? WHERE username='alice'",role);
+            var failure=assertThrows(VoiceFailure.class,()->service.createProposal(VoiceJson.uuid(),json.object()));
+            assertEquals(403,failure.status);assertEquals("FORBIDDEN",failure.code);
+        }
+        jdbc.update("UPDATE app_user SET role='ADMIN',enabled=false WHERE username='alice'");
+        assertEquals(403,assertThrows(VoiceFailure.class,()->service.createProposal(VoiceJson.uuid(),json.object())).status);
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM voice_proposal",Integer.class));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM voice_execution",Integer.class));
+    }
+    @Test void everyVoicePostRejectsOversizedAndWrongMediaWithoutWrites() throws Exception {
+        String id=VoiceJson.uuid();
+        for(String path:java.util.List.of("/api/voice/commands/proposals","/api/voice/commands/"+id+"/confirm","/api/voice/commands/"+id+"/cancel","/api/voice/contexts/"+id+"/presentation/bindings","/api/voice/contexts/"+id+"/presentation/challenges","/api/voice/contexts/"+id+"/presentation/reports")) {
+            mvc.perform(post(path).servletPath(path).with(user("alice").roles("ADMIN")).with(csrf()).header("Idempotency-Key",VoiceJson.uuid()).contentType("application/json").content("x".repeat(16385))).andExpect(status().isPayloadTooLarge());
+            mvc.perform(post(path).servletPath(path).with(user("alice").roles("ADMIN")).with(csrf()).header("Idempotency-Key",VoiceJson.uuid()).contentType("text/plain").content("{}")).andExpect(status().isUnsupportedMediaType());
+        }
+        var jdbc=context.getBean(JdbcTemplate.class);
+        for(String table:java.util.List.of("voice_proposal","voice_execution","voice_outbox","voice_idempotency"))assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM "+table,Integer.class));
+    }
 }

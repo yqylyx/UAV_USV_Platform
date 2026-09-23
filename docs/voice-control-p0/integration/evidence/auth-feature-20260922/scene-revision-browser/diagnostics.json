@@ -1,0 +1,2648 @@
+{
+  "diagnostics": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "type": "log",
+      "text": "navigator.mediaDevices support available"
+    },
+    {
+      "type": "log",
+      "text": "navigator.mediaDevices support available"
+    },
+    {
+      "type": "log",
+      "text": "[UnityMemory] Configuration Parameters - Can be set up in boot.config\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-allocator-temp-initial-block-size-main=262144\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-allocator-temp-initial-block-size-worker=262144\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-nav-mesh-worker=65536\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-audio-worker=65536\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-cloud-worker=32768\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-background-worker=32768\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-bucket-allocator-granularity=16\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-bucket-allocator-bucket-count=8\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-bucket-allocator-block-size=4194304\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-bucket-allocator-block-count=1\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-main-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-thread-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-gfx-main-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-gfx-thread-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-cache-allocator-block-size=4194304\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-typetree-allocator-block-size=2097152\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-bucket-allocator-granularity=16\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-bucket-allocator-bucket-count=8\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-bucket-allocator-block-size=4194304\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-bucket-allocator-block-count=1\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-editor-allocator-block-size=1048576\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-main=4194304\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-job-temp-allocator-block-size=2097152\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-job-temp-allocator-block-size-background=1048576\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-job-temp-allocator-reduction-small-platforms=262144\"\n"
+    },
+    {
+      "type": "log",
+      "text": "Input System module state changed to: Initialized.\n"
+    },
+    {
+      "type": "log",
+      "text": "[PhysX] Initialized SinglethreadedTaskDispatcher.\n"
+    },
+    {
+      "type": "log",
+      "text": "Loading player data from data.unity3d\n"
+    },
+    {
+      "type": "log",
+      "text": "Initialize engine version: 2022.3.57f1 (9d8bd91adc0a)\n"
+    },
+    {
+      "type": "log",
+      "text": "[Subsystems] Discovering subsystems at path UnitySubsystems\n"
+    },
+    {
+      "type": "log",
+      "text": "Creating WebGL 2.0 context."
+    },
+    {
+      "type": "log",
+      "text": "Renderer: WebKit WebGL\n"
+    },
+    {
+      "type": "log",
+      "text": "Vendor:   WebKit\n"
+    },
+    {
+      "type": "log",
+      "text": "Version:  OpenGL ES 3.0 (WebGL 2.0 (OpenGL ES 3.0 Chromium))\n"
+    },
+    {
+      "type": "log",
+      "text": "GLES:     3\n"
+    },
+    {
+      "type": "log",
+      "text": " EXT_clip_control EXT_color_buffer_float EXT_color_buffer_half_float EXT_conservative_depth EXT_depth_clamp EXT_disjoint_timer_query_webgl2 EXT_float_blend EXT_polygon_offset_clamp EXT_texture_compression_bptc EXT_texture_compression_rgtc EXT_texture_filter_anisotropic EXT_texture_mirror_clamp_to_edge NV_shader_noperspective_interpolation OES_draw_buffers_indexed OES_sample_variables OES_shader_multisample_interpolation OES_texture_float_linear OVR_multiview2 WEBGL_clip_cull_distance WEBGL_compr"
+    },
+    {
+      "type": "log",
+      "text": "ression_rgtc GL_EXT_texture_filter_anisotropic GL_EXT_texture_mirror_clamp_to_edge GL_NV_shader_noperspective_interpolation GL_OES_draw_buffers_indexed GL_OES_sample_variables GL_OES_shader_multisample_interpolation GL_OES_texture_float_linear GL_OVR_multiview2 GL_WEBGL_clip_cull_distance GL_WEBGL_compressed_texture_astc GL_WEBGL_compressed_texture_etc GL_WEBGL_compressed_texture_etc1 GL_WEBGL_compressed_texture_s3tc GL_WEBGL_compressed_texture_s3tc_srgb GL_WEBGL_debug_renderer_info GL_WEBGL_deb"
+    },
+    {
+      "type": "log",
+      "text": "OPENGL LOG: Creating OpenGL ES 3.0 graphics device ; Context level  <OpenGL ES 3.0> ; Context handle 1\n"
+    },
+    {
+      "type": "log",
+      "text": "Input Manager initialize...\n"
+    },
+    {
+      "type": "log",
+      "text": "[PhysX] Initialized SinglethreadedTaskDispatcher.\n"
+    },
+    {
+      "type": "log",
+      "text": "UnloadTime: 4.699999 ms\n"
+    },
+    {
+      "type": "log",
+      "text": "SendMessage: object PlatformBridge not found!\n"
+    },
+    {
+      "type": "log",
+      "text": "Audio context resumed after 0.588 seconds."
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x547c0040be00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x547c0040be00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x547c0040be00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x547c0040be00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    },
+    {
+      "type": "log",
+      "text": "[UnityMemory] Configuration Parameters - Can be set up in boot.config\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-allocator-temp-initial-block-size-main=262144\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-allocator-temp-initial-block-size-worker=262144\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-nav-mesh-worker=65536\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-audio-worker=65536\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-cloud-worker=32768\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-background-worker=32768\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-bucket-allocator-granularity=16\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-bucket-allocator-bucket-count=8\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-bucket-allocator-block-size=4194304\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-bucket-allocator-block-count=1\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-main-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-thread-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-gfx-main-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-gfx-thread-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-cache-allocator-block-size=4194304\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-typetree-allocator-block-size=2097152\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-bucket-allocator-granularity=16\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-bucket-allocator-bucket-count=8\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-bucket-allocator-block-size=4194304\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-bucket-allocator-block-count=1\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-allocator-block-size=16777216\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-profiler-editor-allocator-block-size=1048576\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-temp-allocator-size-main=4194304\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-job-temp-allocator-block-size=2097152\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-job-temp-allocator-block-size-background=1048576\"\n"
+    },
+    {
+      "type": "log",
+      "text": "    \"memorysetup-job-temp-allocator-reduction-small-platforms=262144\"\n"
+    },
+    {
+      "type": "log",
+      "text": "Input System module state changed to: Initialized.\n"
+    },
+    {
+      "type": "log",
+      "text": "[PhysX] Initialized SinglethreadedTaskDispatcher.\n"
+    },
+    {
+      "type": "log",
+      "text": "Loading player data from data.unity3d\n"
+    },
+    {
+      "type": "log",
+      "text": "Initialize engine version: 2022.3.57f1 (9d8bd91adc0a)\n"
+    },
+    {
+      "type": "log",
+      "text": "[Subsystems] Discovering subsystems at path UnitySubsystems\n"
+    },
+    {
+      "type": "log",
+      "text": "Creating WebGL 2.0 context."
+    },
+    {
+      "type": "log",
+      "text": "Renderer: WebKit WebGL\n"
+    },
+    {
+      "type": "log",
+      "text": "Vendor:   WebKit\n"
+    },
+    {
+      "type": "log",
+      "text": "Version:  OpenGL ES 3.0 (WebGL 2.0 (OpenGL ES 3.0 Chromium))\n"
+    },
+    {
+      "type": "log",
+      "text": "GLES:     3\n"
+    },
+    {
+      "type": "log",
+      "text": " EXT_clip_control EXT_color_buffer_float EXT_color_buffer_half_float EXT_conservative_depth EXT_depth_clamp EXT_disjoint_timer_query_webgl2 EXT_float_blend EXT_polygon_offset_clamp EXT_texture_compression_bptc EXT_texture_compression_rgtc EXT_texture_filter_anisotropic EXT_texture_mirror_clamp_to_edge NV_shader_noperspective_interpolation OES_draw_buffers_indexed OES_sample_variables OES_shader_multisample_interpolation OES_texture_float_linear OVR_multiview2 WEBGL_clip_cull_distance WEBGL_compr"
+    },
+    {
+      "type": "log",
+      "text": "ression_rgtc GL_EXT_texture_filter_anisotropic GL_EXT_texture_mirror_clamp_to_edge GL_NV_shader_noperspective_interpolation GL_OES_draw_buffers_indexed GL_OES_sample_variables GL_OES_shader_multisample_interpolation GL_OES_texture_float_linear GL_OVR_multiview2 GL_WEBGL_clip_cull_distance GL_WEBGL_compressed_texture_astc GL_WEBGL_compressed_texture_etc GL_WEBGL_compressed_texture_etc1 GL_WEBGL_compressed_texture_s3tc GL_WEBGL_compressed_texture_s3tc_srgb GL_WEBGL_debug_renderer_info GL_WEBGL_deb"
+    },
+    {
+      "type": "log",
+      "text": "OPENGL LOG: Creating OpenGL ES 3.0 graphics device ; Context level  <OpenGL ES 3.0> ; Context handle 1\n"
+    },
+    {
+      "type": "log",
+      "text": "Input Manager initialize...\n"
+    },
+    {
+      "type": "log",
+      "text": "[PhysX] Initialized SinglethreadedTaskDispatcher.\n"
+    },
+    {
+      "type": "log",
+      "text": "UnloadTime: 5.000000 ms\n"
+    },
+    {
+      "type": "warning",
+      "text": "[WebCommandBridge] Duplicate component removed from WebCommandBridge\n"
+    },
+    {
+      "type": "log",
+      "text": "Audio context resumed after 0.596 seconds."
+    },
+    {
+      "type": "log",
+      "text": "[VirtualFleetPlatformBridge] Disabled RuntimeCollisionSafety for VIRTUAL_SIMULATION pose ownership.\n"
+    },
+    {
+      "type": "log",
+      "text": "[VirtualFleet] Applied initial scenario poses: 8/8\n"
+    },
+    {
+      "type": "log",
+      "text": "[WebDeviceObserverCamera] VirtualFleetTrails refreshed: 6 devices.\n"
+    },
+    {
+      "type": "log",
+      "text": "[VirtualFleetPoseOwnershipGuard] Restored overwritten virtual pose for PROTECTED-001 positionDrift=True rotationDrift=True\n"
+    },
+    {
+      "type": "log",
+      "text": "[VirtualFleet] Applied initial scenario poses: 8/8\n"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "text": "UNITY WEBGL ONLINE\nUnity WebGL 加载中\nUnity 桥已连接，正在初始化系统总览平台\nWAITING FOR PLATFORM\n当前设备\nUAV-01\n离线\n起飞\n悬停\n返航\n降落\n紧急降落\nUAV-USV\n协同仿真平台\n系统总览\n协同态势\n光电视觉\n雷达态势\n设备管理\np0_admin\nADMIN\nUAV-USV 协同仿真平台\n算法仿真\n系统总览\n算法仿真\n独立仿真 WebGL · ONLINE\n场景配置\nV3 PROTOCOL\n算法\n智能粒球仿真护航\nGB-SFLA-CS 协同围捕（模拟）\n\n算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。\n\n1 护航目标 · 1 敌船\n3 UAV · 3 USV · 世界 360×280 m\n规划预览 · 同时来袭 1 艘 · 实时仿真\nUAV 数量\nUSV 数量\nUAV 巡航速度 m/s\n上限 15 m/s\nUSV 巡航速度 m/s\n上限 4 m/s\n生成场景\n重置\n算法仿真\n3 UAV · 3 USV · 1 护航目标 · 1 敌船\nUNITY WEBGL ONLINE\n放大画面\n阶段\n编队护航 · THREAT-001\n综合进度\n0%\n可见目标\n2\n已捕获\n0/1\n仿真时长\n00:00\n开始\n暂停\n停止\n1\n编队护航\n2\n意图识别\n3\n分向守卫\n4\n协同拦截\n5\n追逃压制\n6\n动态围捕\n7\n稳定闭环\n8\n完成\n跟随设备\n全局视角\n语音控制\n任务态势\n协议状态\n运行日志\n语音任务控制\nVOICE / LLM · P0\n真实 API\n\n运行 1790090273190 · PREPARED · 帧 1 · 心跳正常\n\n任务状态\nPREPARED\n场景状态\nREADY\n接入设备\n8 台\n\n当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。\n\n展示绑定已建立。\n\n展示桥：Unity 展示会话已就绪\n\n开始任务\n创建并核对指令提案\n暂停任务\n状态 PREPARED 不允许此动作\n继续任务\n状态 PREPARED 不允许此动作\n停止任务\n创建并核对指令提案\n刷新上下文\n重新接管展示",
+  "messages": [
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265487,
+      "payload": {
+        "progress": 0,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265495,
+      "payload": {
+        "progress": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265518,
+      "payload": {
+        "progress": 0.08916568313428135,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265521,
+      "payload": {
+        "progress": 0.12538924190758308,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265522,
+      "payload": {
+        "progress": 0.1281756695055294,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "viewportApplied",
+      "requestId": "",
+      "timestamp": 1790090265524,
+      "payload": {
+        "width": 964,
+        "height": 671,
+        "serial": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "viewportApplied",
+      "requestId": "",
+      "timestamp": 1790090265524,
+      "payload": {
+        "width": 964,
+        "height": 671,
+        "serial": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265536,
+      "payload": {
+        "progress": 0.1616128006808849,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265537,
+      "payload": {
+        "progress": 0.1783313662685626,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265537,
+      "payload": {
+        "progress": 0.18390422146445523,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265540,
+      "payload": {
+        "progress": 0.23127349062954214,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265541,
+      "payload": {
+        "progress": 0.26192419420695134,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265543,
+      "payload": {
+        "progress": 0.26749704940284397,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265545,
+      "payload": {
+        "progress": 0.28700204258846795,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265546,
+      "payload": {
+        "progress": 0.2925748977843605,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265551,
+      "payload": {
+        "progress": 0.08927970506200954,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265554,
+      "payload": {
+        "progress": 0.306507035774092,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265583,
+      "payload": {
+        "progress": 0.3566627325371252,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265584,
+      "payload": {
+        "progress": 0.39567271890837336,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265584,
+      "payload": {
+        "progress": 0.4346827052796214,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265584,
+      "payload": {
+        "progress": 0.4458284156714066,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265584,
+      "payload": {
+        "progress": 0.4514012708672992,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265585,
+      "payload": {
+        "progress": 0.4541876984652454,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265585,
+      "payload": {
+        "progress": 0.4569741260631917,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265585,
+      "payload": {
+        "progress": 0.45976055366113794,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265589,
+      "payload": {
+        "progress": 0.5349940988056879,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265590,
+      "payload": {
+        "progress": 0.5823633679707748,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265590,
+      "payload": {
+        "progress": 0.5990819335584526,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265590,
+      "payload": {
+        "progress": 0.6074412163522913,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265590,
+      "payload": {
+        "progress": 0.613014071548184,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265592,
+      "payload": {
+        "progress": 0.6241597819399691,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265593,
+      "payload": {
+        "progress": 0.6771019063009487,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265593,
+      "payload": {
+        "progress": 0.6966068994865727,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265593,
+      "payload": {
+        "progress": 0.7049661822804116,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265593,
+      "payload": {
+        "progress": 0.7077526098783579,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265613,
+      "payload": {
+        "progress": 0.7133254650742505,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265618,
+      "payload": {
+        "progress": 0.7969182930126392,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265618,
+      "payload": {
+        "progress": 0.8024911482085317,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265625,
+      "payload": {
+        "progress": 0.8916568313428131,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265626,
+      "payload": {
+        "progress": 0.9,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265626,
+      "payload": {
+        "progress": 0.9,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265633,
+      "payload": {
+        "progress": 0.17855941012401896,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265759,
+      "payload": {
+        "progress": 0.2678391151860285,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265788,
+      "payload": {
+        "progress": 0.35711882024803804,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265792,
+      "payload": {
+        "progress": 0.3682787833807891,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265794,
+      "payload": {
+        "progress": 0.4463985253100475,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265795,
+      "payload": {
+        "progress": 0.45755848844279867,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265853,
+      "payload": {
+        "progress": 0.535678230372057,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265854,
+      "payload": {
+        "progress": 0.5747381013366861,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265854,
+      "payload": {
+        "progress": 0.5775280921198739,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265867,
+      "payload": {
+        "progress": 0.5803180829030616,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265874,
+      "payload": {
+        "progress": 0.5831080736862495,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265875,
+      "payload": {
+        "progress": 0.5858980644694373,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265903,
+      "payload": {
+        "progress": 0.5886880552526251,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265921,
+      "payload": {
+        "progress": 0.591478046035813,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090265934,
+      "payload": {
+        "progress": 0.5942680368190008,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266000,
+      "payload": {
+        "progress": 0.5998480183853763,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266002,
+      "payload": {
+        "progress": 0.6249579354340665,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266005,
+      "payload": {
+        "progress": 0.6389078893500054,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266166,
+      "payload": {
+        "progress": 0.714237640496076,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266167,
+      "payload": {
+        "progress": 0.7309775851952027,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266167,
+      "payload": {
+        "progress": 0.7644574745934563,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266168,
+      "payload": {
+        "progress": 0.7756174377262075,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266168,
+      "payload": {
+        "progress": 0.781197419292583,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266172,
+      "payload": {
+        "progress": 0.8035173455580855,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266174,
+      "payload": {
+        "progress": 0.8676871335714048,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266174,
+      "payload": {
+        "progress": 0.892797050620095,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266199,
+      "payload": {
+        "progress": 0.9,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266199,
+      "payload": {
+        "progress": 0.9,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090266938,
+      "payload": {
+        "progress": 1,
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "platformBridgeReady",
+      "requestId": "",
+      "timestamp": 1790090266939,
+      "payload": {
+        "ready": true,
+        "controlsReady": true,
+        "cameraReady": true,
+        "algorithmReady": true,
+        "visualSensorReady": false,
+        "buildId": "unity-20260809-platform-bridge",
+        "capabilities": [
+          "InitializePlatform",
+          "LoadScenario",
+          "ApplyPoseBatch",
+          "SetMissionState",
+          "SelectDevice",
+          "SetCameraMode",
+          "SetTrajectoryVisible",
+          "camera-control",
+          "vehicle-control",
+          "algorithm-scenario",
+          "visual-sensor"
+        ],
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "sceneLoaded",
+      "requestId": "",
+      "timestamp": 1790090266939,
+      "payload": {
+        "mode": "webgl",
+        "productName": "UAV_USV_WebGL",
+        "buildId": "unity-20260809-platform-bridge",
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityReady",
+      "requestId": "",
+      "timestamp": 1790090266939,
+      "payload": {
+        "mode": "webgl",
+        "productName": "UAV_USV_WebGL",
+        "buildId": "unity-20260804-175129-camera-v5",
+        "runtimeScope": "SYSTEM_OVERVIEW",
+        "runtimeInstanceId": "overview-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "unityProgress",
+      "requestId": "",
+      "timestamp": 1790090267636,
+      "payload": {
+        "progress": 1,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "platformBridgeReady",
+      "requestId": "",
+      "timestamp": 1790090267636,
+      "payload": {
+        "ready": true,
+        "controlsReady": true,
+        "cameraReady": true,
+        "algorithmReady": true,
+        "visualSensorReady": false,
+        "buildId": "unity-virtual-fleet-platform-bridge",
+        "capabilities": [
+          "InitializePlatform",
+          "LoadScenario",
+          "ApplyPoseBatch",
+          "SetMissionState",
+          "SelectDevice",
+          "SetCameraMode",
+          "SetTrajectoryVisible",
+          "camera-control",
+          "vehicle-control",
+          "algorithm-scenario",
+          "visual-sensor"
+        ],
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "sceneLoaded",
+      "requestId": "",
+      "timestamp": 1790090267639,
+      "payload": {
+        "mode": "webgl",
+        "productName": "UAV_USV_VirtualFleet_WebGL",
+        "buildId": "unity-virtual-fleet-platform-bridge",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "platformBridgeReady",
+      "requestId": "",
+      "timestamp": 1790090267722,
+      "payload": {
+        "ready": true,
+        "controlsReady": true,
+        "cameraReady": true,
+        "algorithmReady": true,
+        "visualSensorReady": false,
+        "buildId": "vue-virtual-fleet-v2-compatible",
+        "capabilities": [
+          "InitializePlatform",
+          "LoadScenario",
+          "ApplyPoseBatch",
+          "SetMissionState",
+          "SelectDevice",
+          "SetCameraMode",
+          "SetTrajectoryVisible",
+          "virtual-fleet",
+          "dynamic-generation",
+          "object-pool",
+          "pose-batch",
+          "mission-control",
+          "camera-control",
+          "vehicle-control",
+          "algorithm-scenario",
+          "visual-sensor"
+        ],
+        "runtimeMode": "VIRTUAL_SIMULATION",
+        "protocolVersion": "2.0",
+        "maxUavCount": 128,
+        "maxUsvCount": 128,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "platformBridgeReady",
+      "requestId": "initializePlatform:1790090267638",
+      "timestamp": 1790090267639,
+      "payload": {
+        "ready": true,
+        "controlsReady": true,
+        "cameraReady": true,
+        "algorithmReady": true,
+        "visualSensorReady": false,
+        "runtimeMode": "VIRTUAL_SIMULATION",
+        "protocolVersion": "2.0",
+        "buildId": "vue-virtual-fleet-v2-compatible",
+        "maxUavCount": 128,
+        "maxUsvCount": 128,
+        "capabilities": [
+          "virtual-fleet",
+          "dynamic-generation",
+          "object-pool",
+          "pose-batch",
+          "mission-control"
+        ],
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "initializePlatform:1790090267721:b1gtsd",
+      "timestamp": 1790090267726,
+      "payload": {
+        "requestId": "initializePlatform:1790090267721:b1gtsd",
+        "type": "initializePlatform",
+        "payload": {
+          "runtimeMode": "VIRTUAL_SIMULATION",
+          "protocolVersion": "2.0",
+          "buildId": "vue-virtual-fleet-v2-compatible"
+        },
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "platformBridgeReady",
+      "requestId": "",
+      "timestamp": 1790090267735,
+      "payload": {
+        "ready": true,
+        "controlsReady": true,
+        "cameraReady": true,
+        "algorithmReady": true,
+        "visualSensorReady": false,
+        "buildId": "vue-virtual-fleet-v2-compatible",
+        "capabilities": [
+          "InitializePlatform",
+          "LoadScenario",
+          "ApplyPoseBatch",
+          "SetMissionState",
+          "SelectDevice",
+          "SetCameraMode",
+          "SetTrajectoryVisible",
+          "virtual-fleet",
+          "dynamic-generation",
+          "object-pool",
+          "pose-batch",
+          "mission-control",
+          "camera-control",
+          "vehicle-control",
+          "algorithm-scenario",
+          "visual-sensor"
+        ],
+        "runtimeMode": "VIRTUAL_SIMULATION",
+        "protocolVersion": "2.0",
+        "maxUavCount": 128,
+        "maxUsvCount": 128,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "platformBridgeReady",
+      "requestId": "initializePlatform:1790090267721:b1gtsd",
+      "timestamp": 1790090267726,
+      "payload": {
+        "ready": true,
+        "controlsReady": true,
+        "cameraReady": true,
+        "algorithmReady": true,
+        "visualSensorReady": false,
+        "runtimeMode": "VIRTUAL_SIMULATION",
+        "protocolVersion": "2.0",
+        "buildId": "vue-virtual-fleet-v2-compatible",
+        "maxUavCount": 128,
+        "maxUsvCount": 128,
+        "capabilities": [
+          "virtual-fleet",
+          "dynamic-generation",
+          "object-pool",
+          "pose-batch",
+          "mission-control"
+        ],
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "loadScenario:1790090268725:fbjzfm",
+      "timestamp": 1790090268763,
+      "payload": {
+        "requestId": "loadScenario:1790090268725:fbjzfm",
+        "type": "loadScenario",
+        "payload": {
+          "runtimeMode": "VIRTUAL_SIMULATION",
+          "algorithmCode": "ESCORT_GUARD",
+          "runId": 1790090267726,
+          "uavCount": 3,
+          "usvCount": 3,
+          "targetCount": 2,
+          "layoutVersion": "ADAPTIVE_MULTI_TARGET_V2",
+          "initialPosesCoordinateFrame": "GLOBAL_ENU",
+          "initialPoses": [
+            {
+              "deviceCode": "UAV-001",
+              "deviceType": "UAV",
+              "eastM": -399,
+              "northM": -270,
+              "upM": 25,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "UAV-002",
+              "deviceType": "UAV",
+              "eastM": -384,
+              "northM": -239,
+              "upM": 27.5,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "UAV-003",
+              "deviceType": "UAV",
+              "eastM": -384,
+              "northM": -331,
+              "upM": 30,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "USV-001",
+              "deviceType": "USV",
+              "eastM": -369,
+              "northM": -300,
+              "upM": 0,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "USV-002",
+              "deviceType": "USV",
+              "eastM": -352,
+              "northM": -285,
+              "upM": 0,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "USV-003",
+              "deviceType": "USV",
+              "eastM": -416,
+              "northM": -285,
+              "upM": 0,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "PROTECTED-001",
+              "targetType": "ESCORT_TARGET",
+              "eastM": -384,
+              "northM": -285,
+              "upM": 0,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ESCORTING",
+              "valid": true,
+              "deviceType": "TARGET"
+            },
+            {
+              "deviceCode": "THREAT-001",
+              "targetType": "THREAT_TARGET",
+              "eastM": -284.2744590782485,
+              "northM": -277.5961842362149,
+              "upM": 0,
+              "headingDeg": 184.2459591402303,
+              "speedMps": 0,
+              "state": "APPROACHING",
+              "valid": true,
+              "deviceType": "TARGET"
+            }
+          ],
+          "initialSpeedMps": 3
+        },
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "scenarioReady",
+      "requestId": "loadScenario:1790090268725:fbjzfm",
+      "timestamp": 1790090268760,
+      "payload": {
+        "success": true,
+        "runtimeMode": "VIRTUAL_SIMULATION",
+        "runId": 1790090267726,
+        "algorithmCode": "ESCORT_GUARD",
+        "uavCount": 3,
+        "usvCount": 3,
+        "targetCount": 2,
+        "deviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003",
+          "PROTECTED-001",
+          "THREAT-001"
+        ],
+        "initialPosesCoordinateFrame": "GLOBAL_ENU",
+        "fleetOrigin": {
+          "eastM": -75,
+          "northM": -310,
+          "upM": 0
+        },
+        "initialPoses": [
+          {
+            "deviceCode": "UAV-001",
+            "deviceType": "UAV",
+            "eastM": -398.9999694824219,
+            "northM": -270,
+            "upM": 24.999998092651367,
+            "headingDeg": 90,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "UAV-002",
+            "deviceType": "UAV",
+            "eastM": -384,
+            "northM": -239,
+            "upM": 27.5,
+            "headingDeg": 90,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "UAV-003",
+            "deviceType": "UAV",
+            "eastM": -384,
+            "northM": -331,
+            "upM": 30,
+            "headingDeg": 90,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "USV-001",
+            "deviceType": "USV",
+            "eastM": -369.0000305175781,
+            "northM": -300,
+            "upM": 0,
+            "headingDeg": 0,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "USV-002",
+            "deviceType": "USV",
+            "eastM": -352,
+            "northM": -285,
+            "upM": 0,
+            "headingDeg": 0,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "USV-003",
+            "deviceType": "USV",
+            "eastM": -416,
+            "northM": -285,
+            "upM": 0,
+            "headingDeg": 0,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "PROTECTED-001",
+            "deviceType": "TARGET",
+            "eastM": -384,
+            "northM": -285,
+            "upM": 0,
+            "headingDeg": 0,
+            "speedMps": 0,
+            "state": "ESCORTING",
+            "valid": true
+          },
+          {
+            "deviceCode": "THREAT-001",
+            "deviceType": "TARGET",
+            "eastM": -284.2744445800781,
+            "northM": -277.59619140625,
+            "upM": 0,
+            "headingDeg": 184.24595642089844,
+            "speedMps": 0,
+            "state": "APPROACHING",
+            "valid": true
+          }
+        ],
+        "missionState": "STOPPED",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "",
+      "timestamp": 1790090268841,
+      "payload": {
+        "requestId": "",
+        "type": "PRESENTATION_HELLO",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_READY",
+      "requestId": "",
+      "timestamp": 1790090268842,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "549289b9-6765-4d42-a98b-f9ba46b30783",
+        "runtimeGeneration": "d3c01b70-e3e6-4490-ab70-a36ecb892e94",
+        "bindingId": "c780f7f2-ff7a-4020-b3c6-5fae91826eaf",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 1,
+        "scenarioReady": false,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "setCameraMode:1790090268853:3zi21i",
+      "timestamp": 1790090268855,
+      "payload": {
+        "requestId": "setCameraMode:1790090268853:3zi21i",
+        "type": "setCameraMode",
+        "payload": {
+          "mode": "overview"
+        },
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "cameraChanged",
+      "requestId": "setCameraMode:1790090268853:3zi21i",
+      "timestamp": 1790090268855,
+      "payload": {
+        "success": true,
+        "deviceCode": "",
+        "mode": "overview",
+        "profile": "overview",
+        "status": "Global overview active",
+        "source": "unity-webgl",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_HEARTBEAT",
+      "requestId": "",
+      "timestamp": 1790090271712,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "549289b9-6765-4d42-a98b-f9ba46b30783",
+        "runtimeGeneration": "d3c01b70-e3e6-4490-ab70-a36ecb892e94",
+        "bindingId": "c780f7f2-ff7a-4020-b3c6-5fae91826eaf",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 1,
+        "scenarioReady": false,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "04aaf50e-2d42-4d79-b9d3-fd88013ae58d",
+      "timestamp": 1790090271845,
+      "payload": {
+        "requestId": "04aaf50e-2d42-4d79-b9d3-fd88013ae58d",
+        "type": "PRESENTATION_PROBE",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_REPORT",
+      "requestId": "04aaf50e-2d42-4d79-b9d3-fd88013ae58d",
+      "timestamp": 1790090271845,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "549289b9-6765-4d42-a98b-f9ba46b30783",
+        "runtimeGeneration": "d3c01b70-e3e6-4490-ab70-a36ecb892e94",
+        "bindingId": "c780f7f2-ff7a-4020-b3c6-5fae91826eaf",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 1,
+        "sequence": 1,
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "frameSequence": 0,
+        "applied": true,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "",
+      "timestamp": 1790090271898,
+      "payload": {
+        "requestId": "",
+        "type": "PRESENTATION_HELLO",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_READY",
+      "requestId": "",
+      "timestamp": 1790090271898,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "549289b9-6765-4d42-a98b-f9ba46b30783",
+        "runtimeGeneration": "d3c01b70-e3e6-4490-ab70-a36ecb892e94",
+        "bindingId": "c780f7f2-ff7a-4020-b3c6-5fae91826eaf",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 1,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "",
+      "timestamp": 1790090272783,
+      "payload": {
+        "requestId": "",
+        "type": "PRESENTATION_HELLO",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_READY",
+      "requestId": "",
+      "timestamp": 1790090272784,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "549289b9-6765-4d42-a98b-f9ba46b30783",
+        "runtimeGeneration": "d3c01b70-e3e6-4490-ab70-a36ecb892e94",
+        "bindingId": "c780f7f2-ff7a-4020-b3c6-5fae91826eaf",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 1,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_HEARTBEAT",
+      "requestId": "",
+      "timestamp": 1790090273174,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "549289b9-6765-4d42-a98b-f9ba46b30783",
+        "runtimeGeneration": "d3c01b70-e3e6-4490-ab70-a36ecb892e94",
+        "bindingId": "c780f7f2-ff7a-4020-b3c6-5fae91826eaf",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 1,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "loadScenario:1790090274296:lokun0",
+      "timestamp": 1790090274307,
+      "payload": {
+        "requestId": "loadScenario:1790090274296:lokun0",
+        "type": "loadScenario",
+        "payload": {
+          "runtimeMode": "VIRTUAL_SIMULATION",
+          "algorithmCode": "ESCORT_GUARD",
+          "runId": 1790090273190,
+          "uavCount": 3,
+          "usvCount": 3,
+          "targetCount": 2,
+          "layoutVersion": "ADAPTIVE_MULTI_TARGET_V2",
+          "initialPosesCoordinateFrame": "GLOBAL_ENU",
+          "initialPoses": [
+            {
+              "deviceCode": "UAV-001",
+              "deviceType": "UAV",
+              "eastM": -399,
+              "northM": -270,
+              "upM": 25,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "UAV-002",
+              "deviceType": "UAV",
+              "eastM": -384,
+              "northM": -239,
+              "upM": 27.5,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "UAV-003",
+              "deviceType": "UAV",
+              "eastM": -384,
+              "northM": -331,
+              "upM": 30,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "USV-001",
+              "deviceType": "USV",
+              "eastM": -369,
+              "northM": -300,
+              "upM": 0,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "USV-002",
+              "deviceType": "USV",
+              "eastM": -352,
+              "northM": -285,
+              "upM": 0,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "USV-003",
+              "deviceType": "USV",
+              "eastM": -416,
+              "northM": -285,
+              "upM": 0,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ACTIVE",
+              "valid": true
+            },
+            {
+              "deviceCode": "PROTECTED-001",
+              "targetType": "ESCORT_TARGET",
+              "eastM": -384,
+              "northM": -285,
+              "upM": 0,
+              "headingDeg": 0,
+              "speedMps": 0,
+              "state": "ESCORTING",
+              "valid": true,
+              "deviceType": "TARGET"
+            },
+            {
+              "deviceCode": "THREAT-001",
+              "targetType": "THREAT_TARGET",
+              "eastM": -284.2744590782485,
+              "northM": -277.5961842362149,
+              "upM": 0,
+              "headingDeg": 184.2459591402303,
+              "speedMps": 0,
+              "state": "APPROACHING",
+              "valid": true,
+              "deviceType": "TARGET"
+            }
+          ],
+          "initialSpeedMps": 3
+        },
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "scenarioReady",
+      "requestId": "loadScenario:1790090274296:lokun0",
+      "timestamp": 1790090274307,
+      "payload": {
+        "success": true,
+        "runtimeMode": "VIRTUAL_SIMULATION",
+        "runId": 1790090273190,
+        "algorithmCode": "ESCORT_GUARD",
+        "uavCount": 3,
+        "usvCount": 3,
+        "targetCount": 2,
+        "deviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003",
+          "PROTECTED-001",
+          "THREAT-001"
+        ],
+        "initialPosesCoordinateFrame": "GLOBAL_ENU",
+        "fleetOrigin": {
+          "eastM": -75,
+          "northM": -310,
+          "upM": 0
+        },
+        "initialPoses": [
+          {
+            "deviceCode": "UAV-001",
+            "deviceType": "UAV",
+            "eastM": -398.9999694824219,
+            "northM": -270,
+            "upM": 24.999998092651367,
+            "headingDeg": 90,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "UAV-002",
+            "deviceType": "UAV",
+            "eastM": -384,
+            "northM": -239,
+            "upM": 27.5,
+            "headingDeg": 90,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "UAV-003",
+            "deviceType": "UAV",
+            "eastM": -384,
+            "northM": -331,
+            "upM": 30,
+            "headingDeg": 90,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "USV-001",
+            "deviceType": "USV",
+            "eastM": -369.0000305175781,
+            "northM": -300,
+            "upM": 0,
+            "headingDeg": 0,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "USV-002",
+            "deviceType": "USV",
+            "eastM": -352,
+            "northM": -285,
+            "upM": 0,
+            "headingDeg": 0,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "USV-003",
+            "deviceType": "USV",
+            "eastM": -416,
+            "northM": -285,
+            "upM": 0,
+            "headingDeg": 0,
+            "speedMps": 0,
+            "state": "ACTIVE",
+            "valid": true
+          },
+          {
+            "deviceCode": "PROTECTED-001",
+            "deviceType": "TARGET",
+            "eastM": -384,
+            "northM": -285,
+            "upM": 0,
+            "headingDeg": 0,
+            "speedMps": 0,
+            "state": "ESCORTING",
+            "valid": true
+          },
+          {
+            "deviceCode": "THREAT-001",
+            "deviceType": "TARGET",
+            "eastM": -284.2744445800781,
+            "northM": -277.59619140625,
+            "upM": 0,
+            "headingDeg": 184.24595642089844,
+            "speedMps": 0,
+            "state": "APPROACHING",
+            "valid": true
+          }
+        ],
+        "missionState": "STOPPED",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "setCameraMode:1790090274394:byxj6p",
+      "timestamp": 1790090274394,
+      "payload": {
+        "requestId": "setCameraMode:1790090274394:byxj6p",
+        "type": "setCameraMode",
+        "payload": {
+          "mode": "overview"
+        },
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "cameraChanged",
+      "requestId": "setCameraMode:1790090274394:byxj6p",
+      "timestamp": 1790090274394,
+      "payload": {
+        "success": true,
+        "deviceCode": "",
+        "mode": "overview",
+        "profile": "overview",
+        "status": "Global overview active",
+        "source": "unity-webgl",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_HEARTBEAT",
+      "requestId": "",
+      "timestamp": 1790090275406,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "549289b9-6765-4d42-a98b-f9ba46b30783",
+        "runtimeGeneration": "d3c01b70-e3e6-4490-ab70-a36ecb892e94",
+        "bindingId": "c780f7f2-ff7a-4020-b3c6-5fae91826eaf",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 1,
+        "scenarioReady": false,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "",
+      "timestamp": 1790090275835,
+      "payload": {
+        "requestId": "",
+        "type": "PRESENTATION_HELLO",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_READY",
+      "requestId": "",
+      "timestamp": 1790090275835,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "scenarioReady": false,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "5f1f9ee4-e58b-494d-b193-60a9969a191e",
+      "timestamp": 1790090276855,
+      "payload": {
+        "requestId": "5f1f9ee4-e58b-494d-b193-60a9969a191e",
+        "type": "PRESENTATION_PROBE",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_REPORT",
+      "requestId": "5f1f9ee4-e58b-494d-b193-60a9969a191e",
+      "timestamp": 1790090276855,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "sequence": 1,
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "frameSequence": 0,
+        "applied": true,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "",
+      "timestamp": 1790090276894,
+      "payload": {
+        "requestId": "",
+        "type": "PRESENTATION_HELLO",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_READY",
+      "requestId": "",
+      "timestamp": 1790090276894,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_REPORT",
+      "requestId": "04aaf50e-2d42-4d79-b9d3-fd88013ae58d",
+      "timestamp": 1790090271845,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "549289b9-6765-4d42-a98b-f9ba46b30783",
+        "runtimeGeneration": "d3c01b70-e3e6-4490-ab70-a36ecb892e94",
+        "bindingId": "c780f7f2-ff7a-4020-b3c6-5fae91826eaf",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 1,
+        "sequence": 1,
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "frameSequence": 0,
+        "applied": true,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_HEARTBEAT",
+      "requestId": "",
+      "timestamp": 1790090277648,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "",
+      "timestamp": 1790090278805,
+      "payload": {
+        "requestId": "",
+        "type": "PRESENTATION_HELLO",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_READY",
+      "requestId": "",
+      "timestamp": 1790090278805,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_HEARTBEAT",
+      "requestId": "",
+      "timestamp": 1790090280655,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "90a7368b-c5cc-4593-b7b2-31460bc7d1ab",
+      "timestamp": 1790090280883,
+      "payload": {
+        "requestId": "90a7368b-c5cc-4593-b7b2-31460bc7d1ab",
+        "type": "PRESENTATION_PROBE",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_REPORT",
+      "requestId": "90a7368b-c5cc-4593-b7b2-31460bc7d1ab",
+      "timestamp": 1790090280884,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "sequence": 2,
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "frameSequence": 0,
+        "applied": true,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "",
+      "timestamp": 1790090280947,
+      "payload": {
+        "requestId": "",
+        "type": "PRESENTATION_HELLO",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_READY",
+      "requestId": "",
+      "timestamp": 1790090280947,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "vueCommandReceived",
+      "requestId": "",
+      "timestamp": 1790090281783,
+      "payload": {
+        "requestId": "",
+        "type": "PRESENTATION_HELLO",
+        "payload": {},
+        "bridgeSent": true,
+        "queued": false,
+        "fallback": "",
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_READY",
+      "requestId": "",
+      "timestamp": 1790090281783,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    },
+    {
+      "type": "PRESENTATION_HEARTBEAT",
+      "requestId": "",
+      "timestamp": 1790090285033,
+      "payload": {
+        "protocolVersion": "unity.presentation.v1",
+        "runtimeRef": "6a41b3bb-ce32-4e7b-bfca-b10ed0ec5caf",
+        "runtimeGeneration": "30263325-f7e7-4dac-aabb-0a83f68c1a49",
+        "bindingId": "93f99ed0-2434-4063-bf71-bdd4c0b9ef6b",
+        "unityInstanceId": "cbedad6c-9b43-4f82-82fd-022b463013a2",
+        "sceneRevision": 2,
+        "scenarioReady": true,
+        "lastAppliedFrameSequence": 0,
+        "runtimeScope": "VIRTUAL_FLEET",
+        "runtimeInstanceId": "virtual-fleet-unity-01",
+        "missionId": "",
+        "runId": ""
+      }
+    }
+  ],
+  "frames": [
+    "http://127.0.0.1:15174/?workspace=simulation",
+    "http://127.0.0.1:15174/unity-overview/index.html?embedded=1&v=1790090264115&scope=SYSTEM_OVERVIEW&instanceId=overview-unity-01",
+    "http://127.0.0.1:15174/unity-virtual-fleet/index.html?embedded=1&build=20260825-v8&v=1790090264146&scope=VIRTUAL_FLEET&instanceId=virtual-fleet-unity-01"
+  ]
+}

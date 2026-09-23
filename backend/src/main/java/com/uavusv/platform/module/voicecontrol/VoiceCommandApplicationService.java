@@ -10,6 +10,7 @@ import java.util.*;
 
 @Service
 public class VoiceCommandApplicationService {
+    static final String POLICY_VERSION = "voice-p0.v1";
     private final VoiceStore s;
     private final VoiceJson j;
     private final VoiceTime t;
@@ -126,7 +127,8 @@ public class VoiceCommandApplicationService {
                         invalidate(p);
                         throw VoiceFailure.conflict("GENERATION_MISMATCH");
                     }
-                    if (plan.path("contextVersion").asLong() != c.path("contextVersion").asLong()
+                    if (!POLICY_VERSION.equals(plan.path("policyVersion").asText())
+                            || plan.path("contextVersion").asLong() != c.path("contextVersion").asLong()
                             || !plan.path("explicitDeviceCodes").equals(c.path("_members"))) {
                         invalidate(p);
                         throw VoiceFailure.conflict("CONTEXT_CHANGED");
@@ -198,7 +200,7 @@ public class VoiceCommandApplicationService {
         plan.set("stateVersion", c.path("stateVersion"));
         plan.put("action", action);
         plan.set("explicitDeviceCodes", c.path("_members").deepCopy());
-        plan.put("policyVersion", "voice-p0.v1");
+        plan.put("policyVersion", POLICY_VERSION);
         var p = j.object();
         String id = VoiceJson.uuid();
         p.put("_id", id)

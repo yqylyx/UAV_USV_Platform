@@ -38,7 +38,7 @@ function hasOnlyKeys(value: object, expected: string[]) {
 }
 
 function boundedString(value: unknown, min: number, max: number): value is string {
-  return typeof value === 'string' && value.length >= min && value.length <= max
+  return typeof value === 'string' && [...value].length >= min && [...value].length <= max
 }
 
 function audioType(blob: Blob) {
@@ -66,7 +66,7 @@ function isTranscript(value: unknown): value is VoiceTranscript {
   return hasOnlyKeys(item, ['requestId', 'text', 'locale', 'durationMs', 'provider', 'model'])
     && typeof item.requestId === 'string' && uuidPattern.test(item.requestId)
     && boundedString(item.text, 1, 500) && item.locale === 'zh-CN'
-    && (item.durationMs === null || (Number.isInteger(item.durationMs) && (item.durationMs as number) >= 0 && (item.durationMs as number) <= 120000))
+    && Number.isInteger(item.durationMs) && (item.durationMs as number) >= 1 && (item.durationMs as number) <= 60000
     && boundedString(item.provider, 1, 64) && boundedString(item.model, 1, 96)
 }
 
@@ -99,7 +99,7 @@ function mapRequestError(error: unknown, operation: 'transcription' | 'parse'): 
     }
     if (['ECONNABORTED', 'ETIMEDOUT'].includes(error.code ?? '')) {
       throw new VoiceIntelligenceError(
-        operation === 'transcription' ? '语音识别超时，请稍后重试。' : '意图解析超时，请稍后重试。',
+        '浏览器等待超时，后端可能仍在处理；请使用原请求恢复查询。',
         operation === 'transcription' ? 'VOICE_TRANSCRIPTION_TIMEOUT' : 'VOICE_PARSE_TIMEOUT',
       )
     }
@@ -151,11 +151,11 @@ export async function transcribeVoiceAudio(input: VoiceAudioInput): Promise<Voic
 
 export async function interpretVoiceText(input: VoiceParseRequest): Promise<VoiceParseResult> {
   assertRequestActive(input.signal)
-  const text = input.text.trim()
-  if (!uuidPattern.test(input.requestId) || input.locale !== 'zh-CN' || !text) {
+  const text = input.text
+  if (!uuidPattern.test(input.requestId) || input.locale !== 'zh-CN' || !text.trim()) {
     throw new VoiceIntelligenceError('意图解析请求标识、区域或文本无效。', 'VOICE_INVALID_REQUEST')
   }
-  if (text.length > 200) throw new VoiceIntelligenceError('指令文字不能超过 200 个字符。', 'VOICE_TEXT_TOO_LONG')
+  if ([...text].length > 200) throw new VoiceIntelligenceError('指令文字不能超过 200 个字符，请编辑后再解析。', 'VOICE_TEXT_TOO_LONG')
   try {
     const headers = await writeHeaders(input.requestId)
     assertRequestActive(input.signal)

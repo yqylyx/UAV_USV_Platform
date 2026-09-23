@@ -4,133 +4,533 @@
       "id": "TREQ-01",
       "definition": "TranscriptionRequestMetadata",
       "valid": true,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "locale": "zh-CN", "audioContentType": "audio/webm", "audioSizeBytes": 4096 }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "locale": "zh-CN",
+        "audioContentType": "audio/webm",
+        "audioSizeBytes": 4096
+      }
     },
     {
       "id": "TREQ-02",
       "definition": "TranscriptionRequestMetadata",
       "valid": true,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "locale": "zh-CN", "audioContentType": "audio/wav", "audioSizeBytes": 5242880 }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "locale": "zh-CN",
+        "audioContentType": "audio/wav",
+        "audioSizeBytes": 5242880
+      }
     },
     {
       "id": "TREQ-03",
       "definition": "TranscriptionRequestMetadata",
       "valid": false,
-      "data": { "requestId": "not-a-uuid", "locale": "zh-CN", "audioContentType": "audio/webm", "audioSizeBytes": 4096 }
+      "data": {
+        "requestId": "not-a-uuid",
+        "locale": "zh-CN",
+        "audioContentType": "audio/webm",
+        "audioSizeBytes": 4096
+      }
     },
     {
       "id": "TREQ-04",
       "definition": "TranscriptionRequestMetadata",
       "valid": false,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "locale": "zh-CN", "audioContentType": "audio/flac", "audioSizeBytes": 4096 }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "locale": "zh-CN",
+        "audioContentType": "audio/flac",
+        "audioSizeBytes": 4096
+      }
     },
     {
       "id": "TREQ-05",
       "definition": "TranscriptionRequestMetadata",
       "valid": false,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "locale": "zh-CN", "audioContentType": "audio/webm", "audioSizeBytes": 5242881 }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "locale": "zh-CN",
+        "audioContentType": "audio/webm",
+        "audioSizeBytes": 5242881
+      }
     },
     {
       "id": "TRES-01",
       "definition": "Transcript",
       "valid": true,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "text": "暂停任务", "locale": "zh-CN", "durationMs": 1800, "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "durationMs": 1800,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "TRES-02",
       "definition": "Transcript",
       "valid": false,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "text": "", "locale": "zh-CN", "durationMs": null, "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "",
+        "locale": "zh-CN",
+        "durationMs": null,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "IREQ-01",
       "definition": "InterpretationRequest",
       "valid": true,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "text": "暂停任务", "locale": "zh-CN", "allowedActions": ["START", "PAUSE", "RESUME", "STOP"], "availableDeviceCodes": ["UAV-001", "USV-001"], "runtimeContext": null }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "allowedActions": [
+          "START",
+          "PAUSE",
+          "RESUME",
+          "STOP"
+        ],
+        "availableDeviceCodes": [
+          "UAV-001",
+          "USV-001"
+        ],
+        "runtimeContext": null
+      }
     },
     {
       "id": "IREQ-02",
       "definition": "InterpretationRequest",
       "valid": true,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "text": "暂停任务", "locale": "zh-CN", "allowedActions": ["PAUSE"], "availableDeviceCodes": ["UAV-001"], "runtimeContext": { "runtimeRef": "22222222-2222-4222-8222-222222222222", "runtimeGeneration": "33333333-3333-4333-8333-333333333333", "contextVersion": 4 } }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "allowedActions": [
+          "PAUSE"
+        ],
+        "availableDeviceCodes": [
+          "UAV-001"
+        ],
+        "runtimeContext": {
+          "runtimeRef": "22222222-2222-4222-8222-222222222222",
+          "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+          "contextVersion": 4
+        }
+      }
     },
     {
       "id": "IREQ-03",
       "definition": "InterpretationRequest",
       "valid": true,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "text": "暂停任务", "locale": "zh-CN", "allowedActions": [], "availableDeviceCodes": [], "runtimeContext": null }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "allowedActions": [],
+        "availableDeviceCodes": [],
+        "runtimeContext": null
+      }
     },
     {
       "id": "IREQ-04",
       "definition": "InterpretationRequest",
       "valid": false,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "text": "暂停任务", "locale": "zh-CN", "allowedActions": ["PAUSE", "PAUSE"], "availableDeviceCodes": [], "runtimeContext": null }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "allowedActions": [
+          "PAUSE",
+          "PAUSE"
+        ],
+        "availableDeviceCodes": [],
+        "runtimeContext": null
+      }
     },
     {
       "id": "IREQ-05",
       "definition": "InterpretationRequest",
       "valid": false,
-      "data": { "requestId": "11111111-1111-4111-8111-111111111111", "text": "暂停任务", "locale": "zh-CN", "allowedActions": ["PAUSE"], "availableDeviceCodes": ["UAV 001"], "runtimeContext": null }
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "allowedActions": [
+          "PAUSE"
+        ],
+        "availableDeviceCodes": [
+          "UAV 001"
+        ],
+        "runtimeContext": null
+      }
     },
     {
       "id": "IRES-01",
       "definition": "InterpretationResult",
       "valid": true,
-      "data": { "status": "CANDIDATE", "requestId": "11111111-1111-4111-8111-111111111111", "intent": "MISSION_PAUSE", "action": "PAUSE", "normalizedText": "暂停任务", "confidence": 0.96, "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "status": "CANDIDATE",
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "intent": "MISSION_PAUSE",
+        "action": "PAUSE",
+        "normalizedText": "暂停任务",
+        "confidence": 0.96,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "IRES-02",
       "definition": "InterpretationResult",
       "valid": true,
-      "data": { "status": "NOT_ACTIONABLE", "requestId": "11111111-1111-4111-8111-111111111111", "reason": "NEGATED_ACTION", "message": "检测到否定表达", "normalizedText": "不要停止任务", "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "status": "NOT_ACTIONABLE",
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "reason": "NEGATED_ACTION",
+        "message": "检测到否定表达",
+        "normalizedText": "不要停止任务",
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "IRES-03",
       "definition": "InterpretationResult",
       "valid": true,
-      "data": { "status": "NEEDS_CLARIFICATION", "requestId": "11111111-1111-4111-8111-111111111111", "reason": "AMBIGUOUS_ACTION", "message": "请一次说明一个动作", "normalizedText": "暂停然后继续", "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "status": "NEEDS_CLARIFICATION",
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "reason": "AMBIGUOUS_ACTION",
+        "message": "请一次说明一个动作",
+        "normalizedText": "暂停然后继续",
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "IRES-04",
       "definition": "InterpretationResult",
       "valid": true,
-      "data": { "status": "UNSUPPORTED", "requestId": "11111111-1111-4111-8111-111111111111", "reason": "UNSUPPORTED_TARGETING", "message": "暂不支持单设备控制", "normalizedText": "暂停一号无人艇", "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "status": "UNSUPPORTED",
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "reason": "UNSUPPORTED_TARGETING",
+        "message": "暂不支持单设备控制",
+        "normalizedText": "暂停一号无人艇",
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "IRES-05",
       "definition": "InterpretationResult",
       "valid": false,
-      "data": { "status": "CANDIDATE", "requestId": "11111111-1111-4111-8111-111111111111", "intent": "MISSION_ATTACK", "action": "ATTACK", "normalizedText": "攻击", "confidence": 0.9, "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "status": "CANDIDATE",
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "intent": "MISSION_ATTACK",
+        "action": "ATTACK",
+        "normalizedText": "攻击",
+        "confidence": 0.9,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "IRES-06",
       "definition": "InterpretationResult",
       "valid": false,
-      "data": { "status": "CANDIDATE", "requestId": "11111111-1111-4111-8111-111111111111", "intent": "MISSION_PAUSE", "action": "PAUSE", "normalizedText": "暂停", "confidence": 1.1, "provider": "configured-backend", "model": "active-revision", "vendorPayload": {} }
+      "data": {
+        "status": "CANDIDATE",
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "intent": "MISSION_PAUSE",
+        "action": "PAUSE",
+        "normalizedText": "暂停",
+        "confidence": 1.1,
+        "provider": "configured-backend",
+        "model": "active-revision",
+        "vendorPayload": {}
+      }
     },
     {
       "id": "IRES-07",
       "definition": "InterpretationResult",
       "valid": false,
-      "data": { "status": "CANDIDATE", "requestId": "11111111-1111-4111-8111-111111111111", "intent": "MISSION_STOP", "action": "PAUSE", "normalizedText": "暂停", "confidence": 0.9, "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "status": "CANDIDATE",
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "intent": "MISSION_STOP",
+        "action": "PAUSE",
+        "normalizedText": "暂停",
+        "confidence": 0.9,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "IRES-08",
       "definition": "InterpretationResult",
       "valid": false,
-      "data": { "status": "NOT_ACTIONABLE", "requestId": "11111111-1111-4111-8111-111111111111", "reason": "UNSUPPORTED_CAPABILITY", "message": "错误组合", "normalizedText": "不要停止", "provider": "configured-backend", "model": "active-revision" }
+      "data": {
+        "status": "NOT_ACTIONABLE",
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "reason": "UNSUPPORTED_CAPABILITY",
+        "message": "错误组合",
+        "normalizedText": "不要停止",
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
     },
     {
       "id": "ERR-01",
       "definition": "ErrorResponse",
       "valid": true,
-      "data": { "code": "VOICE_RATE_LIMITED", "message": "请求过于频繁", "data": null, "timestamp": "2026-09-22T13:00:00Z" }
+      "data": {
+        "code": "VOICE_RATE_LIMITED",
+        "message": "请求过于频繁",
+        "data": null,
+        "timestamp": "2026-09-22T13:00:00Z"
+      }
     },
     {
       "id": "ERR-02",
       "definition": "ErrorResponse",
       "valid": false,
-      "data": { "code": "VENDOR_SECRET_ERROR", "message": "raw vendor error", "data": null, "timestamp": "2026-09-22T13:00:00Z" }
+      "data": {
+        "code": "VENDOR_SECRET_ERROR",
+        "message": "raw vendor error",
+        "data": null,
+        "timestamp": "2026-09-22T13:00:00Z"
+      }
+    },
+    {
+      "id": "V11-DURATION-0",
+      "definition": "Transcript",
+      "valid": true,
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "durationMs": 1,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
+    },
+    {
+      "id": "V11-DURATION-1",
+      "definition": "Transcript",
+      "valid": true,
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "durationMs": 60000,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
+    },
+    {
+      "id": "V11-DURATION-2",
+      "definition": "Transcript",
+      "valid": false,
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "durationMs": 60001,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
+    },
+    {
+      "id": "V11-DURATION-3",
+      "definition": "Transcript",
+      "valid": false,
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "durationMs": null,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
+    },
+    {
+      "id": "V11-DURATION-4",
+      "definition": "Transcript",
+      "valid": false,
+      "data": {
+        "requestId": "11111111-1111-4111-8111-111111111111",
+        "text": "暂停任务",
+        "locale": "zh-CN",
+        "durationMs": 0,
+        "provider": "configured-backend",
+        "model": "active-revision"
+      }
+    },
+    {
+      "id": "V11-ERROR-UNAUTHORIZED",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "UNAUTHORIZED",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-FORBIDDEN",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "FORBIDDEN",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-CSRF_INVALID",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "CSRF_INVALID",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_INTELLIGENCE_DISABLED",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_INTELLIGENCE_DISABLED",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_AUDIO_TOO_LONG",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_AUDIO_TOO_LONG",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_NO_SPEECH",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_NO_SPEECH",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_UPLOAD_TIMEOUT",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_UPLOAD_TIMEOUT",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_REQUEST_IN_PROGRESS",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_REQUEST_IN_PROGRESS",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_REQUEST_EXPIRED",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_REQUEST_EXPIRED",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_REQUEST_OUTCOME_UNKNOWN",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_REQUEST_OUTCOME_UNKNOWN",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_PROVIDER_INVALID_RESPONSE",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_PROVIDER_INVALID_RESPONSE",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_INTERPRETATION_INVALID",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_INTERPRETATION_INVALID",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-ERROR-VOICE_BUDGET_EXCEEDED",
+      "definition": "ErrorResponse",
+      "valid": true,
+      "data": {
+        "code": "VOICE_BUDGET_EXCEEDED",
+        "message": "Test error",
+        "data": null,
+        "timestamp": "2026-09-23T00:00:00Z"
+      }
+    },
+    {
+      "id": "V11-SOURCE-0",
+      "definition": "InterpretationSourceHeaders",
+      "valid": true,
+      "data": {
+        "X-Voice-Interpretation-ID": "11111111-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "id": "V11-SOURCE-1",
+      "definition": "InterpretationSourceHeaders",
+      "valid": false,
+      "data": {
+        "X-Voice-Interpretation-ID": "invalid"
+      }
     }
   ]
 }

@@ -1,0 +1,28 @@
+[
+  {
+    "runtimeRef": "f116bb18-65f8-4bc5-9363-b003dda602d0",
+    "runtimeGeneration": "55ce0c7a-538a-4832-98ef-66685e830efb",
+    "proposalId": "e60609cc-c2ce-432a-bc68-6191036e4f17",
+    "executionId": "38cd0c74-1389-47d7-b1ad-c29a0b81f0f7",
+    "commandId": "5f597bff-d11e-47a4-aab4-63a08c1c2b68",
+    "state": "SUCCEEDED",
+    "outcome": "SUCCESS",
+    "presentationStatus": "STALE",
+    "bindingId": "959b7a91-163b-4338-8b76-f81a7b5c0dc2",
+    "sceneRequestId": "f998367e-97dc-45c3-8ce6-7c543a8d7283",
+    "sceneReportedAt": "2026-09-22T13:28:01.758Z"
+  },
+  {
+    "runtimeRef": "09dc7a8e-b598-4022-944a-5f4b5c2f918f",
+    "runtimeGeneration": "52f00cd6-98ec-4911-96a8-948555947445",
+    "proposalId": "c1b22448-0189-42a5-b72b-45dd7f13bc28",
+    "executionId": "e5957cde-15b1-4371-a9e0-092b99fde58f",
+    "commandId": "0e0cf3ca-ab08-4ee7-ba85-e7e0e1ceb30c",
+    "state": "SUCCEEDED",
+    "outcome": "SUCCESS",
+    "presentationStatus": "STALE",
+    "bindingId": "742e7513-a840-49f8-a773-c4122e2c250f",
+    "sceneRequestId": "5c679cb3-d53b-4da1-ab03-18f6e8beee51",
+    "sceneReportedAt": "2026-09-22T13:29:59.006Z"
+  }
+]

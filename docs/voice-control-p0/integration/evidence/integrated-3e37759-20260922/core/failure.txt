@@ -1,0 +1,3 @@
+TimeoutError: locator.click: Timeout 20000ms exceeded.
+Call log:
+[2m  - waiting for getByRole('button', { name: '语音控制', exact: true })[22m

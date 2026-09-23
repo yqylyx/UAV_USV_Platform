@@ -1,0 +1,414 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.5.15)
+
+2026-09-22T19:05:08.675+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] c.uavusv.platform.PlatformApplication    : Starting PlatformApplication v0.1.0-SNAPSHOT using Java 21 with PID 26568 (C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759\backend\target\platform-backend-0.1.0-SNAPSHOT.jar started by hp-pc in C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759)
+2026-09-22T19:05:08.683+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] c.uavusv.platform.PlatformApplication    : The following 1 profile is active: "p0-integration"
+2026-09-22T19:05:11.812+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-09-22T19:05:12.070+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 228 ms. Found 14 JPA repository interfaces.
+2026-09-22T19:05:13.924+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 18081 (http)
+2026-09-22T19:05:13.965+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-09-22T19:05:13.967+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.55]
+2026-09-22T19:05:14.059+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-09-22T19:05:14.061+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 5270 ms
+2026-09-22T19:05:14.931+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-09-22T19:05:15.129+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-09-22T19:05:15.209+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] org.flywaydb.core.FlywayExecutor         : Database: jdbc:mysql://127.0.0.1:3306/uav_usv_p0_integration?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true (MySQL 8.0)
+2026-09-22T19:05:15.761+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.f.core.internal.command.DbValidate     : Successfully validated 19 migrations (execution time 00:00.066s)
+2026-09-22T19:05:15.780+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema `uav_usv_p0_integration`: 19
+2026-09-22T19:05:15.784+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.f.core.internal.command.DbMigrate      : Schema `uav_usv_p0_integration` is up to date. No migration necessary.
+2026-09-22T19:05:15.903+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-09-22T19:05:15.983+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.6.53.Final
+2026-09-22T19:05:16.041+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2026-09-22T19:05:16.378+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-09-22T19:05:16.553+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 8.0.31
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-09-22T19:05:17.789+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-09-22T19:05:17.849+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-09-22T19:05:18.337+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name customUserDetailsService
+2026-09-22T19:05:18.583+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.s.d.j.r.query.QueryEnhancerFactory     : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-09-22T19:05:20.132+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoints beneath base path '/actuator'
+2026-09-22T19:05:20.748+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 18081 (http) with context path '/'
+2026-09-22T19:05:20.777+08:00  INFO 26568 --- [uav-usv-p0-integration] [           main] c.uavusv.platform.PlatformApplication    : Started PlatformApplication in 12.947 seconds (process running for 13.823)
+2026-09-22T19:07:18.301+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-09-22T19:07:18.301+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-09-22T19:07:18.302+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+2026-09-22T19:07:23.209+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-9] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm prepare entered: runId=1790075243168 algorithmCode=ESCORT_GUARD runnerPath=C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759\algorithm-service\runner.py pythonCommand=D:/soteware/anaconda/python.exe
+2026-09-22T19:07:23.300+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-9] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python executable: runId=1790075243168 executable=D:\soteware\anaconda\python.exe
+2026-09-22T19:07:23.303+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-9] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process started: runId=1790075243168 algorithmCode=ESCORT_GUARD pid=17808
+2026-09-22T19:07:23.316+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-9] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle stored: runId=1790075243168 pid=17808 handlesSize=1
+2026-09-22T19:07:23.390+08:00  INFO 26568 --- [uav-usv-p0-integration] [n-1790075243168] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python version: runId=1790075243168 executable=D:\soteware\anaconda\python.exe version=Python 3.9.13
+2026-09-22T19:07:24.822+08:00  INFO 26568 --- [uav-usv-p0-integration] [t-1790075243168] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm first frame received: runId=1790075243168 pid=17808 sequence=1
+2026-09-22T19:10:55.204+08:00  INFO 26568 --- [uav-usv-p0-integration] [onPool-worker-1] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process exited: runId=1790075243168 pid=17808 exitCode=0
+2026-09-22T19:11:00.833+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-7] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm prepare entered: runId=1790075460800 algorithmCode=ESCORT_GUARD runnerPath=C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759\algorithm-service\runner.py pythonCommand=D:/soteware/anaconda/python.exe
+2026-09-22T19:11:00.842+08:00  WARN 26568 --- [uav-usv-p0-integration] [.1-18081-exec-7] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle removed: runId=1790075243168 pid=17808 reason=replaced by standalone simulation 1790075460800 state=PREPARED error=null stderrTail=
+2026-09-22T19:11:00.981+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-7] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python executable: runId=1790075460800 executable=D:\soteware\anaconda\python.exe
+2026-09-22T19:11:00.982+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-7] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process started: runId=1790075460800 algorithmCode=ESCORT_GUARD pid=8948
+2026-09-22T19:11:00.983+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-7] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle stored: runId=1790075460800 pid=8948 handlesSize=1
+2026-09-22T19:11:01.052+08:00  INFO 26568 --- [uav-usv-p0-integration] [n-1790075460800] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python version: runId=1790075460800 executable=D:\soteware\anaconda\python.exe version=Python 3.9.13
+2026-09-22T19:11:01.982+08:00  INFO 26568 --- [uav-usv-p0-integration] [t-1790075460800] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm first frame received: runId=1790075460800 pid=8948 sequence=1
+2026-09-22T19:13:19.718+08:00 ERROR 26568 --- [uav-usv-p0-integration] [1-18081-exec-10] c.u.p.c.e.GlobalExceptionHandler         : Unhandled server exception
+
+java.io.IOException: 你的主机中的软件中止了一个已建立的连接。
+	at java.base/sun.nio.ch.SocketDispatcher.write0(Native Method) ~[na:na]
+	at java.base/sun.nio.ch.SocketDispatcher.write(SocketDispatcher.java:54) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.writeFromNativeBuffer(IOUtil.java:137) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.write(IOUtil.java:102) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.write(IOUtil.java:58) ~[na:na]
+	at java.base/sun.nio.ch.SocketChannelImpl.write(SocketChannelImpl.java:542) ~[na:na]
+	at org.apache.tomcat.util.net.NioChannel.write(NioChannel.java:129) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper.doWrite(NioEndpoint.java:1436) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.doWrite(SocketWrapperBase.java:748) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.flushBlocking(SocketWrapperBase.java:714) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.flush(SocketWrapperBase.java:699) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11OutputBuffer$SocketOutputBuffer.flush(Http11OutputBuffer.java:574) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.filters.ChunkedOutputFilter.flush(ChunkedOutputFilter.java:132) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11OutputBuffer.flush(Http11OutputBuffer.java:216) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11Processor.flush(Http11Processor.java:1283) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.AbstractProcessor.action(AbstractProcessor.java:408) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.Response.action(Response.java:201) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.OutputBuffer.doFlush(OutputBuffer.java:298) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.OutputBuffer.flush(OutputBuffer.java:264) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.CoyoteOutputStream.flush(CoyoteOutputStream.java:130) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.security.web.util.OnCommittedResponseWrapper$SaveContextServletOutputStream.flush(OnCommittedResponseWrapper.java:552) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.context.request.async.StandardServletAsyncWebRequest$LifecycleServletOutputStream.flush(StandardServletAsyncWebRequest.java:415) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.util.StreamUtils.copy(StreamUtils.java:137) ~[spring-core-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.StringHttpMessageConverter.writeInternal(StringHttpMessageConverter.java:128) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.StringHttpMessageConverter.writeInternal(StringHttpMessageConverter.java:44) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.AbstractHttpMessageConverter.write(AbstractHttpMessageConverter.java:234) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$DefaultSseEmitterHandler.sendInternal(ResponseBodyEmitterReturnValueHandler.java:315) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$DefaultSseEmitterHandler.send(ResponseBodyEmitterReturnValueHandler.java:302) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.sendInternal(ResponseBodyEmitter.java:256) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.send(ResponseBodyEmitter.java:243) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.SseEmitter.send(SseEmitter.java:130) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at com.uavusv.platform.module.monitoring.service.RuntimeEventPublisher.send(RuntimeEventPublisher.java:42) ~[!/:0.1.0-SNAPSHOT]
+	at com.uavusv.platform.module.monitoring.service.RuntimeEventPublisher.publishRuntimeChange(RuntimeEventPublisher.java:29) ~[!/:0.1.0-SNAPSHOT]
+	at com.uavusv.platform.module.monitoring.service.RuntimeStateService$1.afterCommit(RuntimeStateService.java:428) ~[!/:0.1.0-SNAPSHOT]
+	at org.springframework.transaction.support.TransactionSynchronizationUtils.invokeAfterCommit(TransactionSynchronizationUtils.java:165) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.TransactionSynchronizationUtils.triggerAfterCommit(TransactionSynchronizationUtils.java:153) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.triggerAfterCommit(AbstractPlatformTransactionManager.java:1006) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.processCommit(AbstractPlatformTransactionManager.java:836) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.commit(AbstractPlatformTransactionManager.java:758) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.commitTransactionAfterReturning(TransactionAspectSupport.java:698) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:416) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184) ~[spring-aop-6.2.19.jar!/:6.2.19]
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:728) ~[spring-aop-6.2.19.jar!/:6.2.19]
+	at com.uavusv.platform.module.monitoring.service.RuntimeStateService$$SpringCGLIB$$0.reconcileRuntimeState(<generated>) ~[!/:0.1.0-SNAPSHOT]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.runInternal(ScheduledMethodRunnable.java:130) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.lambda$run$2(ScheduledMethodRunnable.java:124) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at io.micrometer.observation.Observation.observe(Observation.java:498) ~[micrometer-observation-1.15.12.jar!/:1.15.12]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.run(ScheduledMethodRunnable.java:124) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.config.Task$OutcomeTrackingRunnable.run(Task.java:87) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.support.DelegatingErrorHandlingRunnable.run(DelegatingErrorHandlingRunnable.java:54) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572) ~[na:na]
+	at java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:358) ~[na:na]
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:1583) ~[na:na]
+
+2026-09-22T19:13:19.738+08:00  WARN 26568 --- [uav-usv-p0-integration] [1-18081-exec-10] .m.m.a.ExceptionHandlerExceptionResolver : Failure in @ExceptionHandler com.uavusv.platform.common.exception.GlobalExceptionHandler#handleUnexpectedException(Exception)
+
+org.springframework.http.converter.HttpMessageNotWritableException: No converter for [class com.uavusv.platform.common.api.ApiResponse] with preset Content-Type 'text/event-stream'
+	at org.springframework.web.servlet.mvc.method.annotation.AbstractMessageConverterMethodProcessor.writeWithMessageConverters(AbstractMessageConverterMethodProcessor.java:364) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.HttpEntityMethodProcessor.handleReturnValue(HttpEntityMethodProcessor.java:263) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.method.support.HandlerMethodReturnValueHandlerComposite.handleReturnValue(HandlerMethodReturnValueHandlerComposite.java:78) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:136) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver.doResolveHandlerMethodException(ExceptionHandlerExceptionResolver.java:471) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.handler.AbstractHandlerMethodExceptionResolver.doResolveException(AbstractHandlerMethodExceptionResolver.java:73) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.handler.AbstractHandlerExceptionResolver.resolveException(AbstractHandlerExceptionResolver.java:182) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.handler.HandlerExceptionResolverComposite.resolveException(HandlerExceptionResolverComposite.java:80) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.DispatcherServlet.processHandlerException(DispatcherServlet.java:1360) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.DispatcherServlet.processDispatchResult(DispatcherServlet.java:1161) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1106) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:979) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1014) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.FrameworkServlet.doGet(FrameworkServlet.java:903) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:564) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:885) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:193) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:138) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:101) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:162) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:138) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.web.filter.CompositeFilter$VirtualFilterChain.doFilter(CompositeFilter.java:108) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.CompositeFilter$VirtualFilterChain.doFilter(CompositeFilter.java:108) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.security.web.FilterChainProxy.lambda$doFilterInternal$3(FilterChainProxy.java:231) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$FilterObservation$SimpleFilterObservation.lambda$wrap$1(ObservationFilterChainDecorator.java:490) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$AroundFilterObservation$SimpleAroundFilterObservation.lambda$wrap$1(ObservationFilterChainDecorator.java:351) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator.lambda$wrapSecured$0(ObservationFilterChainDecorator.java:83) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:129) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.access.intercept.AuthorizationFilter.doFilter(AuthorizationFilter.java:101) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.access.ExceptionTranslationFilter.doFilter(ExceptionTranslationFilter.java:125) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.access.ExceptionTranslationFilter.doFilter(ExceptionTranslationFilter.java:119) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.authentication.AnonymousAuthenticationFilter.doFilter(AnonymousAuthenticationFilter.java:100) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter.doFilter(SecurityContextHolderAwareRequestFilter.java:179) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.savedrequest.RequestCacheAwareFilter.doFilter(RequestCacheAwareFilter.java:63) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:101) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:101) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.context.SecurityContextHolderFilter.doFilter(SecurityContextHolderFilter.java:82) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.context.SecurityContextHolderFilter.doFilter(SecurityContextHolderFilter.java:69) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:101) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:228) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:101) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.wrapFilter(ObservationFilterChainDecorator.java:241) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$AroundFilterObservation$SimpleAroundFilterObservation.lambda$wrap$0(ObservationFilterChainDecorator.java:334) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$ObservationFilter.doFilter(ObservationFilterChainDecorator.java:225) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.ObservationFilterChainDecorator$VirtualFilterChain.doFilter(ObservationFilterChainDecorator.java:138) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.FilterChainProxy.doFilterInternal(FilterChainProxy.java:233) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.security.web.FilterChainProxy.doFilter(FilterChainProxy.java:191) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.filter.CompositeFilter$VirtualFilterChain.doFilter(CompositeFilter.java:113) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.ServletRequestPathFilter.doFilter(ServletRequestPathFilter.java:52) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.CompositeFilter$VirtualFilterChain.doFilter(CompositeFilter.java:113) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.CompositeFilter.doFilter(CompositeFilter.java:74) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.security.config.annotation.web.configuration.WebSecurityConfiguration$CompositeFilterChainProxy.doFilter(WebSecurityConfiguration.java:319) ~[spring-security-config-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.filter.CompositeFilter$VirtualFilterChain.doFilter(CompositeFilter.java:113) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.handler.HandlerMappingIntrospector.lambda$createCacheFilter$4(HandlerMappingIntrospector.java:267) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.CompositeFilter$VirtualFilterChain.doFilter(CompositeFilter.java:113) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.CompositeFilter.doFilter(CompositeFilter.java:74) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.security.config.annotation.web.configuration.WebMvcSecurityConfiguration$CompositeFilterChainProxy.doFilter(WebMvcSecurityConfiguration.java:240) ~[spring-security-config-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.filter.DelegatingFilterProxy.invokeDelegate(DelegatingFilterProxy.java:362) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.DelegatingFilterProxy.doFilter(DelegatingFilterProxy.java:278) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:162) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:138) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:162) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:138) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:101) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:162) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:138) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.web.filter.ServerHttpObservationFilter.doFilterInternal(ServerHttpObservationFilter.java:110) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:162) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:138) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:101) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:162) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:138) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:101) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:162) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:138) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationDispatcher.invoke(ApplicationDispatcher.java:610) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationDispatcher.doDispatch(ApplicationDispatcher.java:538) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.ApplicationDispatcher.dispatch(ApplicationDispatcher.java:509) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.AsyncContextImpl$AsyncRunnable.run(AsyncContextImpl.java:599) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.AsyncContextImpl.doInternalDispatch(AsyncContextImpl.java:342) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:163) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:88) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:492) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:113) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:83) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:72) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.CoyoteAdapter.asyncDispatch(CoyoteAdapter.java:237) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.AbstractProcessor.dispatch(AbstractProcessor.java:243) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:57) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:1272) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1797) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:973) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:491) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at java.base/java.lang.Thread.run(Thread.java:1583) ~[na:na]
+
+2026-09-22T19:13:19.742+08:00 ERROR 26568 --- [uav-usv-p0-integration] [1-18081-exec-10] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] threw exception
+
+java.io.IOException: 你的主机中的软件中止了一个已建立的连接。
+	at java.base/sun.nio.ch.SocketDispatcher.write0(Native Method) ~[na:na]
+	at java.base/sun.nio.ch.SocketDispatcher.write(SocketDispatcher.java:54) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.writeFromNativeBuffer(IOUtil.java:137) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.write(IOUtil.java:102) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.write(IOUtil.java:58) ~[na:na]
+	at java.base/sun.nio.ch.SocketChannelImpl.write(SocketChannelImpl.java:542) ~[na:na]
+	at org.apache.tomcat.util.net.NioChannel.write(NioChannel.java:129) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper.doWrite(NioEndpoint.java:1436) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.doWrite(SocketWrapperBase.java:748) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.flushBlocking(SocketWrapperBase.java:714) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.flush(SocketWrapperBase.java:699) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11OutputBuffer$SocketOutputBuffer.flush(Http11OutputBuffer.java:574) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.filters.ChunkedOutputFilter.flush(ChunkedOutputFilter.java:132) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11OutputBuffer.flush(Http11OutputBuffer.java:216) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11Processor.flush(Http11Processor.java:1283) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.AbstractProcessor.action(AbstractProcessor.java:408) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.Response.action(Response.java:201) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.OutputBuffer.doFlush(OutputBuffer.java:298) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.OutputBuffer.flush(OutputBuffer.java:264) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.CoyoteOutputStream.flush(CoyoteOutputStream.java:130) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.security.web.util.OnCommittedResponseWrapper$SaveContextServletOutputStream.flush(OnCommittedResponseWrapper.java:552) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.context.request.async.StandardServletAsyncWebRequest$LifecycleServletOutputStream.flush(StandardServletAsyncWebRequest.java:415) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.util.StreamUtils.copy(StreamUtils.java:137) ~[spring-core-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.StringHttpMessageConverter.writeInternal(StringHttpMessageConverter.java:128) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.StringHttpMessageConverter.writeInternal(StringHttpMessageConverter.java:44) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.AbstractHttpMessageConverter.write(AbstractHttpMessageConverter.java:234) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$DefaultSseEmitterHandler.sendInternal(ResponseBodyEmitterReturnValueHandler.java:315) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$DefaultSseEmitterHandler.send(ResponseBodyEmitterReturnValueHandler.java:302) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.sendInternal(ResponseBodyEmitter.java:256) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.send(ResponseBodyEmitter.java:243) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.SseEmitter.send(SseEmitter.java:130) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at com.uavusv.platform.module.monitoring.service.RuntimeEventPublisher.send(RuntimeEventPublisher.java:42) ~[!/:0.1.0-SNAPSHOT]
+	at com.uavusv.platform.module.monitoring.service.RuntimeEventPublisher.publishRuntimeChange(RuntimeEventPublisher.java:29) ~[!/:0.1.0-SNAPSHOT]
+	at com.uavusv.platform.module.monitoring.service.RuntimeStateService$1.afterCommit(RuntimeStateService.java:428) ~[!/:0.1.0-SNAPSHOT]
+	at org.springframework.transaction.support.TransactionSynchronizationUtils.invokeAfterCommit(TransactionSynchronizationUtils.java:165) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.TransactionSynchronizationUtils.triggerAfterCommit(TransactionSynchronizationUtils.java:153) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.triggerAfterCommit(AbstractPlatformTransactionManager.java:1006) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.processCommit(AbstractPlatformTransactionManager.java:836) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.commit(AbstractPlatformTransactionManager.java:758) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.commitTransactionAfterReturning(TransactionAspectSupport.java:698) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:416) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184) ~[spring-aop-6.2.19.jar!/:6.2.19]
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:728) ~[spring-aop-6.2.19.jar!/:6.2.19]
+	at com.uavusv.platform.module.monitoring.service.RuntimeStateService$$SpringCGLIB$$0.reconcileRuntimeState(<generated>) ~[!/:0.1.0-SNAPSHOT]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.runInternal(ScheduledMethodRunnable.java:130) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.lambda$run$2(ScheduledMethodRunnable.java:124) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at io.micrometer.observation.Observation.observe(Observation.java:498) ~[micrometer-observation-1.15.12.jar!/:1.15.12]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.run(ScheduledMethodRunnable.java:124) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.config.Task$OutcomeTrackingRunnable.run(Task.java:87) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.support.DelegatingErrorHandlingRunnable.run(DelegatingErrorHandlingRunnable.java:54) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572) ~[na:na]
+	at java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:358) ~[na:na]
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:1583) ~[na:na]
+
+2026-09-22T19:13:19.744+08:00 ERROR 26568 --- [uav-usv-p0-integration] [1-18081-exec-10] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception
+
+java.io.IOException: 你的主机中的软件中止了一个已建立的连接。
+	at java.base/sun.nio.ch.SocketDispatcher.write0(Native Method) ~[na:na]
+	at java.base/sun.nio.ch.SocketDispatcher.write(SocketDispatcher.java:54) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.writeFromNativeBuffer(IOUtil.java:137) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.write(IOUtil.java:102) ~[na:na]
+	at java.base/sun.nio.ch.IOUtil.write(IOUtil.java:58) ~[na:na]
+	at java.base/sun.nio.ch.SocketChannelImpl.write(SocketChannelImpl.java:542) ~[na:na]
+	at org.apache.tomcat.util.net.NioChannel.write(NioChannel.java:129) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.NioEndpoint$NioSocketWrapper.doWrite(NioEndpoint.java:1436) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.doWrite(SocketWrapperBase.java:748) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.flushBlocking(SocketWrapperBase.java:714) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.tomcat.util.net.SocketWrapperBase.flush(SocketWrapperBase.java:699) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11OutputBuffer$SocketOutputBuffer.flush(Http11OutputBuffer.java:574) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.filters.ChunkedOutputFilter.flush(ChunkedOutputFilter.java:132) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11OutputBuffer.flush(Http11OutputBuffer.java:216) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.http11.Http11Processor.flush(Http11Processor.java:1283) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.AbstractProcessor.action(AbstractProcessor.java:408) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.coyote.Response.action(Response.java:201) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.OutputBuffer.doFlush(OutputBuffer.java:298) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.OutputBuffer.flush(OutputBuffer.java:264) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.apache.catalina.connector.CoyoteOutputStream.flush(CoyoteOutputStream.java:130) ~[tomcat-embed-core-10.1.55.jar!/:na]
+	at org.springframework.security.web.util.OnCommittedResponseWrapper$SaveContextServletOutputStream.flush(OnCommittedResponseWrapper.java:552) ~[spring-security-web-6.5.11.jar!/:6.5.11]
+	at org.springframework.web.context.request.async.StandardServletAsyncWebRequest$LifecycleServletOutputStream.flush(StandardServletAsyncWebRequest.java:415) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.util.StreamUtils.copy(StreamUtils.java:137) ~[spring-core-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.StringHttpMessageConverter.writeInternal(StringHttpMessageConverter.java:128) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.StringHttpMessageConverter.writeInternal(StringHttpMessageConverter.java:44) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.http.converter.AbstractHttpMessageConverter.write(AbstractHttpMessageConverter.java:234) ~[spring-web-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$DefaultSseEmitterHandler.sendInternal(ResponseBodyEmitterReturnValueHandler.java:315) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$DefaultSseEmitterHandler.send(ResponseBodyEmitterReturnValueHandler.java:302) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.sendInternal(ResponseBodyEmitter.java:256) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.send(ResponseBodyEmitter.java:243) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at org.springframework.web.servlet.mvc.method.annotation.SseEmitter.send(SseEmitter.java:130) ~[spring-webmvc-6.2.19.jar!/:6.2.19]
+	at com.uavusv.platform.module.monitoring.service.RuntimeEventPublisher.send(RuntimeEventPublisher.java:42) ~[!/:0.1.0-SNAPSHOT]
+	at com.uavusv.platform.module.monitoring.service.RuntimeEventPublisher.publishRuntimeChange(RuntimeEventPublisher.java:29) ~[!/:0.1.0-SNAPSHOT]
+	at com.uavusv.platform.module.monitoring.service.RuntimeStateService$1.afterCommit(RuntimeStateService.java:428) ~[!/:0.1.0-SNAPSHOT]
+	at org.springframework.transaction.support.TransactionSynchronizationUtils.invokeAfterCommit(TransactionSynchronizationUtils.java:165) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.TransactionSynchronizationUtils.triggerAfterCommit(TransactionSynchronizationUtils.java:153) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.triggerAfterCommit(AbstractPlatformTransactionManager.java:1006) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.processCommit(AbstractPlatformTransactionManager.java:836) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.support.AbstractPlatformTransactionManager.commit(AbstractPlatformTransactionManager.java:758) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.commitTransactionAfterReturning(TransactionAspectSupport.java:698) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:416) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119) ~[spring-tx-6.2.19.jar!/:6.2.19]
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184) ~[spring-aop-6.2.19.jar!/:6.2.19]
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:728) ~[spring-aop-6.2.19.jar!/:6.2.19]
+	at com.uavusv.platform.module.monitoring.service.RuntimeStateService$$SpringCGLIB$$0.reconcileRuntimeState(<generated>) ~[!/:0.1.0-SNAPSHOT]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.runInternal(ScheduledMethodRunnable.java:130) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.lambda$run$2(ScheduledMethodRunnable.java:124) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at io.micrometer.observation.Observation.observe(Observation.java:498) ~[micrometer-observation-1.15.12.jar!/:1.15.12]
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.run(ScheduledMethodRunnable.java:124) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.config.Task$OutcomeTrackingRunnable.run(Task.java:87) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at org.springframework.scheduling.support.DelegatingErrorHandlingRunnable.run(DelegatingErrorHandlingRunnable.java:54) ~[spring-context-6.2.19.jar!/:6.2.19]
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572) ~[na:na]
+	at java.base/java.util.concurrent.FutureTask.runAndReset(FutureTask.java:358) ~[na:na]
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:305) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144) ~[na:na]
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:1583) ~[na:na]
+
+2026-09-22T19:13:29.818+08:00  INFO 26568 --- [uav-usv-p0-integration] [onPool-worker-2] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process exited: runId=1790075460800 pid=8948 exitCode=0
+2026-09-22T19:14:11.433+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-2] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm prepare entered: runId=1790075649788 algorithmCode=ESCORT_GUARD runnerPath=C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759\algorithm-service\runner.py pythonCommand=D:/soteware/anaconda/python.exe
+2026-09-22T19:14:11.437+08:00  WARN 26568 --- [uav-usv-p0-integration] [.1-18081-exec-2] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle removed: runId=1790075460800 pid=8948 reason=replaced by standalone simulation 1790075649788 state=PREPARED error=null stderrTail=
+2026-09-22T19:14:11.517+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-2] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python executable: runId=1790075649788 executable=D:\soteware\anaconda\python.exe
+2026-09-22T19:14:11.518+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-2] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process started: runId=1790075649788 algorithmCode=ESCORT_GUARD pid=23644
+2026-09-22T19:14:11.524+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-2] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle stored: runId=1790075649788 pid=23644 handlesSize=1
+2026-09-22T19:14:11.614+08:00  INFO 26568 --- [uav-usv-p0-integration] [n-1790075649788] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python version: runId=1790075649788 executable=D:\soteware\anaconda\python.exe version=Python 3.9.13
+2026-09-22T19:14:12.533+08:00  INFO 26568 --- [uav-usv-p0-integration] [t-1790075649788] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm first frame received: runId=1790075649788 pid=23644 sequence=1
+2026-09-22T19:14:55.194+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm prepare entered: runId=1790075695174 algorithmCode=ESCORT_GUARD runnerPath=C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759\algorithm-service\runner.py pythonCommand=D:/soteware/anaconda/python.exe
+2026-09-22T19:18:19.082+08:00  INFO 26568 --- [uav-usv-p0-integration] [onPool-worker-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process exited: runId=1790075649788 pid=23644 exitCode=0
+2026-09-22T19:18:24.934+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-8] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm prepare entered: runId=1790075904910 algorithmCode=ESCORT_GUARD runnerPath=C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759\algorithm-service\runner.py pythonCommand=D:/soteware/anaconda/python.exe
+2026-09-22T19:18:24.940+08:00  WARN 26568 --- [uav-usv-p0-integration] [.1-18081-exec-8] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle removed: runId=1790075649788 pid=23644 reason=replaced by standalone simulation 1790075904910 state=PREPARED error=null stderrTail=
+2026-09-22T19:18:25.020+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-8] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python executable: runId=1790075904910 executable=D:\soteware\anaconda\python.exe
+2026-09-22T19:18:25.022+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-8] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process started: runId=1790075904910 algorithmCode=ESCORT_GUARD pid=30916
+2026-09-22T19:18:25.023+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-8] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle stored: runId=1790075904910 pid=30916 handlesSize=1
+2026-09-22T19:18:25.079+08:00  INFO 26568 --- [uav-usv-p0-integration] [n-1790075904910] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python version: runId=1790075904910 executable=D:\soteware\anaconda\python.exe version=Python 3.9.13
+2026-09-22T19:18:25.924+08:00  INFO 26568 --- [uav-usv-p0-integration] [t-1790075904910] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm first frame received: runId=1790075904910 pid=30916 sequence=1
+2026-09-22T19:18:35.277+08:00  INFO 26568 --- [uav-usv-p0-integration] [onPool-worker-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process exited: runId=1790075904910 pid=30916 exitCode=0
+2026-09-22T19:18:51.617+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm prepare entered: runId=1790075931593 algorithmCode=ESCORT_GUARD runnerPath=C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759\algorithm-service\runner.py pythonCommand=D:/soteware/anaconda/python.exe
+2026-09-22T19:18:51.619+08:00  WARN 26568 --- [uav-usv-p0-integration] [.1-18081-exec-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle removed: runId=1790075904910 pid=30916 reason=replaced by standalone simulation 1790075931593 state=PREPARED error=null stderrTail=
+2026-09-22T19:18:51.701+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python executable: runId=1790075931593 executable=D:\soteware\anaconda\python.exe
+2026-09-22T19:18:51.703+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process started: runId=1790075931593 algorithmCode=ESCORT_GUARD pid=20408
+2026-09-22T19:18:51.705+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle stored: runId=1790075931593 pid=20408 handlesSize=1
+2026-09-22T19:18:51.791+08:00  INFO 26568 --- [uav-usv-p0-integration] [n-1790075931593] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python version: runId=1790075931593 executable=D:\soteware\anaconda\python.exe version=Python 3.9.13
+2026-09-22T19:18:52.840+08:00  INFO 26568 --- [uav-usv-p0-integration] [t-1790075931593] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm first frame received: runId=1790075931593 pid=20408 sequence=1
+2026-09-22T19:19:06.962+08:00  INFO 26568 --- [uav-usv-p0-integration] [onPool-worker-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process exited: runId=1790075931593 pid=20408 exitCode=0
+2026-09-22T19:19:22.442+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-6] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm prepare entered: runId=1790075962418 algorithmCode=ESCORT_GUARD runnerPath=C:\Users\hp-pc\Desktop\Project4\p0-acceptance-3e37759\algorithm-service\runner.py pythonCommand=D:/soteware/anaconda/python.exe
+2026-09-22T19:19:22.455+08:00  WARN 26568 --- [uav-usv-p0-integration] [.1-18081-exec-6] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle removed: runId=1790075931593 pid=20408 reason=replaced by standalone simulation 1790075962418 state=PREPARED error=null stderrTail=
+2026-09-22T19:19:22.539+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-6] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python executable: runId=1790075962418 executable=D:\soteware\anaconda\python.exe
+2026-09-22T19:19:22.541+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-6] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process started: runId=1790075962418 algorithmCode=ESCORT_GUARD pid=27156
+2026-09-22T19:19:22.541+08:00  INFO 26568 --- [uav-usv-p0-integration] [.1-18081-exec-6] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm handle stored: runId=1790075962418 pid=27156 handlesSize=1
+2026-09-22T19:19:22.634+08:00  INFO 26568 --- [uav-usv-p0-integration] [n-1790075962418] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm Python version: runId=1790075962418 executable=D:\soteware\anaconda\python.exe version=Python 3.9.13
+2026-09-22T19:19:23.577+08:00  INFO 26568 --- [uav-usv-p0-integration] [t-1790075962418] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm first frame received: runId=1790075962418 pid=27156 sequence=1
+2026-09-22T19:19:34.484+08:00  INFO 26568 --- [uav-usv-p0-integration] [onPool-worker-3] c.u.p.m.m.s.AlgorithmRuntimeManager      : Algorithm process exited: runId=1790075962418 pid=27156 exitCode=0

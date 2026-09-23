@@ -1,0 +1,23 @@
+{
+  "docs/voice-control-p0/interface-contract.md": "bb7d385af039f4967ebcb2358e55c7f4046fbcddf2a1c8a4ec67eb211a6c7130",
+  "docs/voice-control-p0/test-design.md": "9c2f97875aff76e17c9f4adbccbefd51a83ee6eb36f43a73fee0ee64d8ce2363",
+  "docs/voice-control-p0/i05-http-fixtures.json": "d6818e0c648797b9b946e27b3428f7fc956332079c24f01a64e047b52c3ad5e5",
+  "docs/voice-control-p0/integration/P0-CASE-COVERAGE-20260922.csv": "c7158d6126ccfa4a144fa40d6446b994718f85168c4b3478fabffbe0fa3f08fb",
+  "docs/voice-control-p0/integration/REMAINING-CASE-ACCEPTANCE-20260922.md": "8bc01ff6bebee038a3c5a93128d1e0089ad7d17f8ae5455344117b8e4202fa37",
+  "docs/voice-control-p0/integration/I05-CONTRACT-FIX-20260922.md": "b500b16678655f72a60fc2260cf246997f2547ae72bad4eb15530e2e37e485cd",
+  "backend/src/test/java/com/uavusv/platform/module/voicecontrol/VoiceHttpTests.java": "9f4a05f4b85a969a2b40e981574fb88bee2ea1c155ed1b8050968945d61e0bad",
+  "backend/src/test/java/com/uavusv/platform/module/voicecontrol/VoiceCoverageGapTests.java": "c06460340e6e842d2dd15a7de488d267dcc149cef361ede12c0ee7e4ef13ae38",
+  "frontend/src/api/voiceControl.ts": "8657dadc98b761e4709aa30fa812dde060e681098cc3ec8d0e3e538c9dad9517",
+  "frontend/src/components/voice/VoiceP0ControlPanel.vue": "7c613bbae5250f10fccb305fb269e88dc3aa47315dabf389ea1af91e4fbf8bd7",
+  "frontend/src/api/__tests__/voiceControlI05.spec.ts": "31787a709d25b8e3cbe9c1faf07af44c59cad6c3bc87bb39c8c53678af3120ff",
+  "frontend/src/components/voice/__tests__/VoiceP0ControlPanel.spec.ts": "4698ff6cbec3403e3a6501e4418ac42187d96fed1e7ec415488e102c9f9b2253",
+  "frontend/src/stores/__tests__/voiceControl.spec.ts": "2ec241ab74b86e1e0862d9b1b87db65c9b662a98d2e3f7479e2415b40315e7f5",
+  "docs/voice-control-p0/integration/evidence/i05-contract-20260922/.gitattributes": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992",
+  "docs/voice-control-p0/integration/evidence/i05-contract-20260922/contracts.log": "7921decd649e9b22ba0e216fa8b5a4f0c6347fdeab5250859f73f0ab52819af8",
+  "docs/voice-control-p0/integration/evidence/i05-contract-20260922/coverage-summary.json": "929350b2ff3413d39e952c7e34686e9f43b28cf5e819b06f51d92882cbfa9d57",
+  "docs/voice-control-p0/integration/evidence/i05-contract-20260922/frontend-build.log": "07e081d595d885fb91bd26811b993941bd5bfa326085cc9f1c304da44f33a4cc",
+  "docs/voice-control-p0/integration/evidence/i05-contract-20260922/frontend-tests.log": "703f0a4b32d9ac53ce1509297287f96bfd8f241166284d63757eac4205fe49a7",
+  "docs/voice-control-p0/integration/evidence/i05-contract-20260922/java-tests.log": "9d4d6027209aa9cdcd1bfc56de787d30dd80d30d047b18b8df2db9452f1be9a4",
+  "docs/voice-control-p0/integration/evidence/i05-contract-20260922/TEST-VoiceCoverageGapTests.xml": "e855728d65886fd1238c6ce7b2556898720d759c240508b31f7fd4c3b99c2bbf",
+  "docs/voice-control-p0/integration/evidence/i05-contract-20260922/TEST-VoiceHttpTests.xml": "787296beee1be56a994a9986d67cb78db9ae2949b8ea672a2dcaba4dbd535de0"
+}

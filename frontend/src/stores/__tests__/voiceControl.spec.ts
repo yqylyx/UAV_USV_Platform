@@ -1,3 +1,4 @@
+import { ApiClientError } from '@/api/http'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
@@ -93,6 +94,20 @@ function setupStore() {
 }
 
 describe('voiceControl store polling and recovery', () => {
+  it('persists interpretation source and preserves it during recovery', async () => {
+    localStorage.clear()
+    const store = setupStore()
+    const source = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    voiceApi.createVoiceProposal.mockRejectedValueOnce(new ApiClientError('lost'))
+    await store.propose('MISSION_START', source)
+    const first = voiceApi.createVoiceProposal.mock.calls[0]!
+    const journal = store.loadJournal()!
+    expect(journal.interpretationId).toBe(source)
+    voiceApi.createVoiceProposal.mockResolvedValueOnce(proposal)
+    await store.replayJournal(journal)
+    expect(voiceApi.createVoiceProposal).toHaveBeenLastCalledWith(first[0], first[1], source)
+    localStorage.clear()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     voiceApi.fetchVoiceContexts.mockResolvedValue([context])
@@ -265,4 +280,21 @@ describe('voiceControl store polling and recovery', () => {
     expect(await pending).toBe(false)
     expect(store.contexts).toEqual([])
   })
+})
+
+it.each([[400, 'INVALID_REQUEST'], [409, 'PLAN_MISMATCH']] as const)('I05 %s confirmation rejection is not automatically replayed', async (status, code) => {
+  vi.clearAllMocks()
+  localStorage.clear()
+  const store = setupStore()
+  store.proposal = { ...proposal, expiresAt: new Date(Date.now() + 30000).toISOString() }
+  voiceApi.fetchVoiceContexts.mockResolvedValue([context])
+  voiceApi.confirmVoiceProposal.mockRejectedValue(new ApiClientError('request rejected', status, code))
+  await store.confirm()
+  expect(store.errorCode).toBe(code)
+  expect(store.responseUnknown).toBe(false)
+  expect(store.execution).toBeNull()
+  const journal = JSON.parse(localStorage.getItem('voice-p0.operation-journal.v1:admin')!)
+  expect(journal.phase).toBe('BUSINESS_REJECTED')
+  await store.recover()
+  expect(voiceApi.confirmVoiceProposal).toHaveBeenCalledTimes(1)
 })

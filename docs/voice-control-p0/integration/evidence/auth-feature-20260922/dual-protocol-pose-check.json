@@ -1,0 +1,13 @@
+{
+  "result": "PASS",
+  "source": "paused-resume-browser/diagnostics.json",
+  "legacyAppliedFrames": 85,
+  "presentationFrameReports": 3,
+  "matchedFrameSequences": [
+    19,
+    28,
+    37
+  ],
+  "missingOrUnknownDevices": 0,
+  "transformMatchesAppliedPosition": true
+}

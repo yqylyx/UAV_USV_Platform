@@ -1,0 +1,14 @@
+{
+  "caseCount": 96,
+  "counts": {
+    "PARTIAL": 51,
+    "PASS": 32,
+    "NOT_VERIFIED": 12,
+    "FAIL": 1
+  },
+  "I05": "PASS",
+  "javaTests": 14,
+  "frontendTests": 28,
+  "frontendBuild": "PASS",
+  "scope": "MockMvc + service + frontend unit/component tests; no new real browser acceptance"
+}

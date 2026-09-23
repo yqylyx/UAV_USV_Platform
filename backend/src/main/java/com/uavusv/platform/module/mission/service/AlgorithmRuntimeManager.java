@@ -425,9 +425,13 @@ public class AlgorithmRuntimeManager {
         log.warn("Algorithm handle removed: runId={} pid={} reason={} state={} error={} stderrTail={}",
                 runId, previous.process.pid(), reason, previous.state.get(), previous.error.get(), stderrTail(previous));
         try { previous.writer.close(); } catch (IOException ignored) {}
-        previous.process.destroy();
         try {
-            if (!previous.process.waitFor(2, TimeUnit.SECONDS)) previous.process.destroyForcibly();
+            // Closing stdin lets the owning Runner finish its final receipt and exit.
+            // Do not kill it during normal teardown immediately after a successful STOP.
+            if (!previous.process.waitFor(2, TimeUnit.SECONDS)) {
+                previous.process.destroy();
+                if (!previous.process.waitFor(2, TimeUnit.SECONDS)) previous.process.destroyForcibly();
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             previous.process.destroyForcibly();

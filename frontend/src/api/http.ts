@@ -9,6 +9,7 @@ export class ApiClientError extends Error {
     message: string,
     public readonly status?: number,
     public readonly code?: string,
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message)
     this.name = 'ApiClientError'
@@ -38,6 +39,7 @@ http.interceptors.response.use(
     return response
   },
   async (error: AxiosError<ApiErrorResponse>) => {
+    if (error.code === 'ERR_CANCELED') return Promise.reject(new ApiClientError('请求已取消', undefined, 'ERR_CANCELED'))
     const connectivity = useConnectivityStore()
     const config = error.config as (typeof error.config & { __safeRetryCount?: number })
     const safeMethod = (config?.method ?? 'get').toLowerCase() === 'get'
@@ -64,7 +66,9 @@ http.interceptors.response.use(
       connectivity.markFailure('OFFLINE', message)
     }
     return Promise.reject(
-      new ApiClientError(message, error.response?.status, error.response?.data?.code ?? error.code),
+      new ApiClientError(message, error.response?.status, error.response?.data?.code ?? error.code,
+        /^\d+$/.test(String(error.response?.headers?.['retry-after'] ?? ''))
+          ? Number(error.response?.headers?.['retry-after']) : undefined),
     )
   },
 )

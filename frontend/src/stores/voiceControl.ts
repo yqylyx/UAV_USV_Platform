@@ -43,6 +43,7 @@ type JournalKind = 'CREATE_PROPOSAL' | 'CONFIRM' | 'CANCEL' | 'REPLACE_BINDING' 
 const presentationJournalKinds = new Set<JournalKind>(['REPLACE_BINDING', 'PRESENTATION_CHALLENGE', 'PRESENTATION_REPORT'])
 type JournalBody = VoiceProposalRequest | VoicePlanGuardRequest | VoicePresentationBindingRequest | VoicePresentationChallengeRequest | VoicePresentationReportRequest
 interface OperationJournal {
+  interpretationId?: string
   userScope: string
   runtimeRef: string
   runtimeGeneration: string
@@ -242,7 +243,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
     async replayJournal(journal: OperationJournal) {
       const presentation = presentationJournalKinds.has(journal.kind)
       if (journal.kind === 'CREATE_PROPOSAL') {
-        this.proposal = await createVoiceProposal(journal.body as VoiceProposalRequest, journal.idempotencyKey)
+        this.proposal = await createVoiceProposal(journal.body as VoiceProposalRequest, journal.idempotencyKey, journal.interpretationId)
         this.execution = null
         this.updateJournal({ resourceId: this.proposal.proposalId, phase: 'RESOURCE_RECEIVED' }, presentation)
       } else if (journal.kind === 'CONFIRM') {
@@ -286,7 +287,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
       }
       this.persist()
     },
-    beginJournal(kind: JournalKind, path: string, body: JournalBody, resourceId: string | null = null) {
+    beginJournal(kind: JournalKind, path: string, body: JournalBody, resourceId: string | null = null, interpretationId?: string) {
       if (!this.context || !this.userScope()) return null
       const presentation = presentationJournalKinds.has(kind)
       let previous = this.loadJournal(presentation)
@@ -308,10 +309,11 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         userScope: this.userScope(), runtimeRef: this.context.runtimeRef,
         runtimeGeneration: this.context.runtimeGeneration, kind, method: 'POST', path,
         idempotencyKey: newKey(), body, resourceId, phase: 'PREPARED', updatedAt: new Date().toISOString(),
+        ...(interpretationId ? { interpretationId } : {}),
       }
       return this.saveJournal(journal) ? journal : null
     },
-    async propose(intent: VoiceIntent) {
+    async propose(intent: VoiceIntent, interpretationId?: string) {
       this.loading = true
       this.error = ''
       try {
@@ -321,9 +323,9 @@ export const useVoiceControlStore = defineStore('voiceControl', {
           runtimeRef: this.context.runtimeRef, runtimeGeneration: this.context.runtimeGeneration,
           expectedContextVersion: this.context.contextVersion, intent,
         }
-        const journal = this.beginJournal('CREATE_PROPOSAL', '/api/voice/commands/proposals', body)
+        const journal = this.beginJournal('CREATE_PROPOSAL', '/api/voice/commands/proposals', body, null, interpretationId)
         if (!journal) return
-        try { this.proposal = await createVoiceProposal(body, journal.idempotencyKey) }
+        try { this.proposal = await createVoiceProposal(body, journal.idempotencyKey, journal.interpretationId) }
         catch (error) {
           this.responseUnknown = isUnknownResult(error)
           this.updateJournal({ phase: this.responseUnknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' })
@@ -435,6 +437,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         this.errorCode = ''
         if (body.kind === 'FRAME_APPLIED' && this.execution) {
           this.execution = await fetchVoiceExecution(this.execution.executionId)
+          if (terminalStates.has(this.execution.state)) await this.refreshContexts()
           this.persist()
         }
         return true
@@ -453,6 +456,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
           // REPORTED_APPLIED or STALE.
           if (!executionNeedsPolling(this.execution)) return
           this.execution = await fetchVoiceExecution(this.execution.executionId)
+          if (terminalStates.has(this.execution.state)) await this.refreshContexts()
           this.persist()
         } else if (this.proposal?.status === 'AWAITING_CONFIRMATION') {
           this.proposal = await fetchVoiceProposal(this.proposal.proposalId)

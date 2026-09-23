@@ -30,7 +30,7 @@ export interface VoiceTranscript {
   requestId: string
   text: string
   locale: string
-  durationMs: number | null
+  durationMs: number
   provider: string
   model: string
 }

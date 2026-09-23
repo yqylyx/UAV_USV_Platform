@@ -49,7 +49,7 @@
 | ID | 前提 / 操作 | 预期结果与关键断言 |
 | --- | --- | --- |
 | R01 | prepare 绑定 A，重复 prepare 同存活进程 | 同一 runtimeRef/G1；不会新建代次或关闭进程 |
-| R02 | 替换/重建进程得到 G2，确认 G1 提案 | 409 GENERATION_MISMATCH；旧提案失效；0 G2 写入 |
+| R02 | 替换/重建进程得到 G2，确认 G1 提案 | 待确认提案遇代次变化：409 GENERATION_MISMATCH；进程结束已使提案 INVALIDATED：409 PROPOSAL_INVALIDATED；两者均禁止向 G2 写入 |
 | R03 | B 尝试占用 A 的独立槽位 | RUNTIME_BUSY；A 进程不被结束 |
 | R04 | 旧实例没有 owner 元数据 | 不认领；写入拒绝，提示重新准备 |
 | R05 | 普通 frame sequence 从 25 到 26 | contextVersion 不变，正常确认不被误判过期 |
@@ -71,7 +71,7 @@
 | I02 | 同用户/operation/键/内容重复创建 | 200；仍为同一 proposalId，不延长 expiresAt |
 | I03 | 同键不同 body 或动作 | 409 IDEMPOTENCY_CONFLICT；原计划不变 |
 | I04 | 同键不同用户或不同资源 operation | 不串资源；分别按权限及作用域处理 |
-| I05 | 确认 expectedPlanVersion/hash 错误 | 409 PLAN_MISMATCH；0 execution；原提案不被篡改 |
+| I05 | I05-a：expectedPlanVersion=2；I05-b：版本为1且哈希格式合法但不匹配 | a：400 INVALID_REQUEST；b：409 PLAN_MISMATCH。两者均 0 execution/outbox/管道写入，原提案不变；取消使用相同规则 |
 | I06 | now 比 expiresAt 小1ms、恰好相等、超过1ms | 前者可确认；后两者 EXPIRED；边界使用固定时钟 |
 | I07 | 10个并发确认同提案，使用不同键 | 1 execution、1 outbox；有效写入/apply 各至多1次；均关联同执行 |
 | I08 | 同一个确认响应丢失，再确认已 CONFIRMED 提案 | 返回原执行最新状态；不按已过的提案窗口生成第二次动作 |

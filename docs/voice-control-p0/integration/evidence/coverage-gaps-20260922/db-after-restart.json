@@ -1,0 +1,213 @@
+{
+  "voice_runtime_context": [
+    {
+      "_id": "3a16cf26-495c-4872-85c0-a602ab60990c",
+      "_owner": 2,
+      "_configHash": "73c52a313bb789d13765380e25e3f409dd3120b159521834a6b731f525120c68",
+      "_nextSequence": 1,
+      "runtimeRef": "3a16cf26-495c-4872-85c0-a602ab60990c",
+      "runtimeGeneration": "4641b793-5e8f-4c06-bdf6-954197568ed4",
+      "contextVersion": 5,
+      "stateVersion": 1,
+      "runtimeScope": "MISSION_CENTER",
+      "runtimeKind": "STANDALONE_ALGORITHM",
+      "executionBackend": "PYTHON_SIMULATION",
+      "algorithmRunId": "1790077613146",
+      "missionId": null,
+      "missionRunId": null,
+      "state": "LOST",
+      "protocolVersion": "algorithm.command.v1",
+      "lastHeartbeatReceivedAt": "2026-09-22T11:46:58.313403Z",
+      "latestFrameSequence": 30,
+      "sceneReady": false,
+      "capabilities": [
+        "START",
+        "PAUSE",
+        "RESUME",
+        "STOP"
+      ],
+      "_members": [
+        "UAV-001",
+        "UAV-002",
+        "UAV-003",
+        "USV-001",
+        "USV-002",
+        "USV-003"
+      ],
+      "_protocolViolations": 0,
+      "_ready": true,
+      "_heartbeatSequence": 4,
+      "_binding": "f716b286-c245-4c35-b8b0-632caa8f921e",
+      "_sceneSequence": 0,
+      "_challengeUsed": false
+    }
+  ],
+  "voice_proposal": [
+    {
+      "_id": "aad0fca4-3db5-4878-866c-d0a673808cc8",
+      "_owner": 2,
+      "proposalId": "aad0fca4-3db5-4878-866c-d0a673808cc8",
+      "status": "INVALIDATED",
+      "planVersion": 1,
+      "planHash": "d57200cdd48dfffd956a42229acab32280df192c737ece2a17fe7a54938fd2ec",
+      "plan": {
+        "runtimeRef": "3a16cf26-495c-4872-85c0-a602ab60990c",
+        "runtimeGeneration": "4641b793-5e8f-4c06-bdf6-954197568ed4",
+        "contextVersion": 4,
+        "stateVersion": 1,
+        "action": "PAUSE",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "requiresConfirmation": true,
+      "createdAt": "2026-09-22T11:46:56.356932Z",
+      "expiresAt": "2026-09-22T11:47:26.356932Z",
+      "executionId": null
+    },
+    {
+      "_id": "e09ef8dd-ec5f-428f-aa09-d3ff7c207ab3",
+      "_owner": 2,
+      "proposalId": "e09ef8dd-ec5f-428f-aa09-d3ff7c207ab3",
+      "status": "INVALIDATED",
+      "planVersion": 1,
+      "planHash": "d57200cdd48dfffd956a42229acab32280df192c737ece2a17fe7a54938fd2ec",
+      "plan": {
+        "runtimeRef": "3a16cf26-495c-4872-85c0-a602ab60990c",
+        "runtimeGeneration": "4641b793-5e8f-4c06-bdf6-954197568ed4",
+        "contextVersion": 4,
+        "stateVersion": 1,
+        "action": "PAUSE",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "requiresConfirmation": true,
+      "createdAt": "2026-09-22T11:46:55.660088Z",
+      "expiresAt": "2026-09-22T11:47:25.660088Z",
+      "executionId": null
+    },
+    {
+      "_id": "fab7339b-64f0-4e5e-a2ac-a329b19b5414",
+      "_owner": 2,
+      "proposalId": "fab7339b-64f0-4e5e-a2ac-a329b19b5414",
+      "status": "CONFIRMED",
+      "planVersion": 1,
+      "planHash": "52841e3a960bd0a9a673e520ce9dbe0172385d676c5cf789020af38458f0f232",
+      "plan": {
+        "runtimeRef": "3a16cf26-495c-4872-85c0-a602ab60990c",
+        "runtimeGeneration": "4641b793-5e8f-4c06-bdf6-954197568ed4",
+        "contextVersion": 3,
+        "stateVersion": 0,
+        "action": "START",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "requiresConfirmation": true,
+      "createdAt": "2026-09-22T11:46:55.198135Z",
+      "expiresAt": "2026-09-22T11:47:25.198135Z",
+      "executionId": "558c3951-984e-4262-bf0e-fcc3fea01a6b",
+      "_source": "MANUAL"
+    }
+  ],
+  "voice_execution": [
+    {
+      "_id": "558c3951-984e-4262-bf0e-fcc3fea01a6b",
+      "_owner": 2,
+      "_manual": true,
+      "_eventSequence": 2,
+      "_queryCount": 0,
+      "_plan": {
+        "runtimeRef": "3a16cf26-495c-4872-85c0-a602ab60990c",
+        "runtimeGeneration": "4641b793-5e8f-4c06-bdf6-954197568ed4",
+        "contextVersion": 3,
+        "stateVersion": 0,
+        "action": "START",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "executionId": "558c3951-984e-4262-bf0e-fcc3fea01a6b",
+      "proposalId": "fab7339b-64f0-4e5e-a2ac-a329b19b5414",
+      "commandId": "160596ce-b305-407e-8ab4-fc445494dc3b",
+      "runtimeRef": "3a16cf26-495c-4872-85c0-a602ab60990c",
+      "runtimeGeneration": "4641b793-5e8f-4c06-bdf6-954197568ed4",
+      "action": "START",
+      "state": "SUCCEEDED",
+      "outcome": "SUCCESS",
+      "errorCode": null,
+      "timedOutAt": null,
+      "presentationStatus": "PENDING",
+      "createdAt": "2026-09-22T11:46:55.212636Z",
+      "updatedAt": "2026-09-22T11:46:55.538759Z",
+      "_commandSequence": 1,
+      "_sendStartedAt": "2026-09-22T11:46:55.426583Z",
+      "_flushedAt": "2026-09-22T11:46:55.475492Z",
+      "_resultFrame": 1,
+      "_presentationStartedAt": "2026-09-22T11:46:55.538759Z",
+      "_presentationDeadlineAt": "2026-09-22T11:47:25.538759Z"
+    }
+  ],
+  "voice_command_event": [
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "3a16cf26-495c-4872-85c0-a602ab60990c",
+      "runtimeGeneration": "4641b793-5e8f-4c06-bdf6-954197568ed4",
+      "kind": "COMMAND_RESULT",
+      "commandId": "160596ce-b305-407e-8ab4-fc445494dc3b",
+      "eventSequence": 1,
+      "status": "ACCEPTED",
+      "runtimeState": "PREPARED",
+      "stateVersion": 0,
+      "lastFrameSequence": 1,
+      "errorCode": null,
+      "affectedDeviceCodes": []
+    },
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "3a16cf26-495c-4872-85c0-a602ab60990c",
+      "runtimeGeneration": "4641b793-5e8f-4c06-bdf6-954197568ed4",
+      "kind": "COMMAND_RESULT",
+      "commandId": "160596ce-b305-407e-8ab4-fc445494dc3b",
+      "eventSequence": 2,
+      "status": "SUCCEEDED",
+      "runtimeState": "RUNNING",
+      "stateVersion": 1,
+      "lastFrameSequence": 1,
+      "errorCode": null,
+      "affectedDeviceCodes": [
+        "UAV-001",
+        "UAV-002",
+        "UAV-003",
+        "USV-001",
+        "USV-002",
+        "USV-003"
+      ]
+    }
+  ]
+}

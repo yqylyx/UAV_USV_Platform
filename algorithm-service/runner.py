@@ -238,21 +238,35 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
                         result(command, "REJECTED", "STATE_VERSION_MISMATCH")
                     else:
                         result(command, "ACCEPTED")
-                        if action in {"START", "RESUME"}:
-                            adapter.set_mission_active(True)
-                            state = "RUNNING"
-                        elif action == "PAUSE":
-                            adapter.set_mission_active(False)
-                            state = "PAUSED"
+                        try:
+                            if action in {"START", "RESUME"}:
+                                adapter.set_mission_active(True)
+                                state = "RUNNING"
+                            elif action == "PAUSE":
+                                adapter.set_mission_active(False)
+                                state = "PAUSED"
+                            else:
+                                state = "STOPPED"
+                        except ValueError:
+                            # Adapter business rejection is a failed command, not
+                            # process death. Do not expose exception details or
+                            # invent a successful state/version transition.
+                            result(command, "FAILED", "ADAPTER_ERROR")
                         else:
-                            state = "STOPPED"
-                        result(command, "SUCCEEDED")
+                            result(command, "SUCCEEDED")
         if input_closed.is_set() and commands.empty():
             return 0
         if state == "RUNNING":
             frame = _normalize_frame_device_codes(adapter.step().to_dict())
             last_frame_sequence = int(frame.get("sequence", last_frame_sequence))
             emit({"event": "frame", "payload": frame})
+            terminal_state = frame.get("terminalStatus")
+            if terminal_state in {"COMPLETED", "FAILED"}:
+                # Natural completion is a runtime transition, not a new command
+                # result. Keep cached command receipts immutable for replay.
+                state = terminal_state
+                state_version += 1
+                next_heartbeat = 0.0
         now = time.monotonic()
         if now >= next_heartbeat:
             heartbeat_sequence += 1

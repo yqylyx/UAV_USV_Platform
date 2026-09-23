@@ -1,0 +1,15 @@
+{
+  "executionId" : "4eebe9aa-cd84-4364-b43e-5bef9d178311",
+  "proposalId" : "a415e9aa-73e2-4479-9c7b-beaa935c594b",
+  "commandId" : "1be94a20-75f2-4e73-9d33-1299971dbf0e",
+  "runtimeRef" : "627387f7-b045-4046-94ad-69e92a93d7f7",
+  "runtimeGeneration" : "5bb4047d-f8fc-41a1-92c7-642adf2b3953",
+  "action" : "START",
+  "state" : "SUCCEEDED",
+  "outcome" : "SUCCESS",
+  "errorCode" : null,
+  "timedOutAt" : "2026-09-19T08:00:00Z",
+  "presentationStatus" : "PENDING",
+  "createdAt" : "2026-09-19T08:00:00Z",
+  "updatedAt" : "2026-09-19T08:01:04Z"
+}

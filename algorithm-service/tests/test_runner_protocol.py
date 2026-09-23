@@ -91,6 +91,31 @@ class RunnerProtocolTest(unittest.TestCase):
             and all(event.get(key) == value for key, value in matches.items())
         )
 
+    def test_unknown_query_preserves_first_command_sequence(self):
+        ready=self.read_protocol_event("RUNTIME_READY")
+        self.assertEqual("algorithm.command.v1",ready["protocolVersion"])
+        self.assertEqual("PREPARED",ready["state"])
+        self.assertNotIn("runtimeState",ready)
+        query=self.status_query(str(uuid.uuid4()))
+        self.send(query)
+        reply=self.read_protocol_event("STATUS_REPLY",queryId=query["queryId"])
+        self.assertFalse(reply["known"])
+        command_id=str(uuid.uuid4())
+        self.send(self.command(command_id,1,0,"START"))
+        result=self.read_protocol_event("COMMAND_RESULT",commandId=command_id,status="SUCCEEDED")
+        self.assertEqual(1,result["stateVersion"])
+        stop=str(uuid.uuid4())
+        self.send(self.command(stop,2,1,"STOP"))
+        self.read_protocol_event("COMMAND_RESULT",commandId=stop,status="SUCCEEDED")
+        self.assertEqual(0,self.process.wait(timeout=10))
+
+    def test_long_json_protocol_is_not_a_cli_option(self):
+        root=Path(__file__).resolve().parents[1]
+        result=subprocess.run([sys.executable,str(root/"runner.py"),"--algorithm","GB_SFLA_CS","--run-id","991003","--command-protocol","algorithm.command.v1"],capture_output=True,text=True,encoding="utf-8",timeout=10)
+        self.assertNotEqual(0,result.returncode)
+        self.assertNotIn('"kind": "RUNTIME_READY"',result.stdout)
+        self.assertIn("invalid choice",result.stderr)
+
     def test_known_status_reply_embeds_protocol_version(self):
         self.read_event(lambda event: event.get("kind") == "RUNTIME_READY")
         frame = self.read_event(lambda event: event.get("event") == "frame")
@@ -194,6 +219,82 @@ class RunnerProtocolTest(unittest.TestCase):
         valid_id = str(uuid.uuid4())
         self.send(self.command(valid_id, 2, 0, "START"))
         self.read_protocol_event("COMMAND_RESULT", commandId=valid_id, status="SUCCEEDED")
+
+
+    def test_business_rejection_consumes_sequence_and_next_command_succeeds(self):
+        self.read_protocol_event("RUNTIME_READY")
+        rejected_id = str(uuid.uuid4())
+        command = self.command(rejected_id, 1, 0, "PAUSE")
+        self.send(command)
+        rejected = self.read_protocol_event("COMMAND_RESULT", commandId=rejected_id, status="REJECTED")
+        self.assertEqual("INVALID_STATE", rejected["errorCode"])
+        self.assertEqual(0, rejected["stateVersion"])
+        self.assertEqual("PREPARED", rejected["runtimeState"])
+        self.send(command)
+        self.assertEqual(rejected, self.read_protocol_event("COMMAND_RESULT", commandId=rejected_id, status="REJECTED"))
+        self.send(self.command(str(uuid.uuid4()), 1, 0, "START"))
+        self.assertEqual("SEQUENCE_MISMATCH", self.read_protocol_event("PROTOCOL_ERROR")["errorCode"])
+        valid_id = str(uuid.uuid4())
+        self.send(self.command(valid_id, 2, 0, "START"))
+        succeeded = self.read_protocol_event("COMMAND_RESULT", commandId=valid_id, status="SUCCEEDED")
+        self.assertEqual(1, succeeded["stateVersion"])
+        self.assertEqual("RUNNING", succeeded["runtimeState"])
+
+
+    def test_old_and_skipped_sequences_do_not_advance_command_sequence(self):
+        self.read_protocol_event("RUNTIME_READY")
+        initial = str(uuid.uuid4())
+        self.send(self.command(initial, 1, 0, "START"))
+        self.read_protocol_event("COMMAND_RESULT", commandId=initial, status="SUCCEEDED")
+        for sequence in (1, 3):
+            invalid = str(uuid.uuid4())
+            self.send(self.command(invalid, sequence, 1, "PAUSE"))
+            error = self.read_protocol_event("PROTOCOL_ERROR")
+            self.assertEqual("SEQUENCE_MISMATCH", error["errorCode"])
+            self.assertEqual(invalid, error["relatedCommandId"])
+        valid = str(uuid.uuid4())
+        self.send(self.command(valid, 2, 1, "PAUSE"))
+        result = self.read_protocol_event("COMMAND_RESULT", commandId=valid, status="SUCCEEDED")
+        self.assertEqual(2, result["stateVersion"])
+        self.assertEqual("PAUSED", result["runtimeState"])
+
+    def test_behind_state_version_rejects_action_and_preserves_current_state(self):
+        self.read_protocol_event("RUNTIME_READY")
+        initial = str(uuid.uuid4())
+        self.send(self.command(initial, 1, 0, "START"))
+        self.read_protocol_event("COMMAND_RESULT", commandId=initial, status="SUCCEEDED")
+        stale = str(uuid.uuid4())
+        self.send(self.command(stale, 2, 0, "PAUSE"))
+        rejected = self.read_protocol_event("COMMAND_RESULT", commandId=stale, status="REJECTED")
+        self.assertEqual("STATE_VERSION_MISMATCH", rejected["errorCode"])
+        self.assertEqual("RUNNING", rejected["runtimeState"])
+        self.assertEqual(1, rejected["stateVersion"])
+        valid = str(uuid.uuid4())
+        self.send(self.command(valid, 3, 1, "PAUSE"))
+        result = self.read_protocol_event("COMMAND_RESULT", commandId=valid, status="SUCCEEDED")
+        self.assertEqual("PAUSED", result["runtimeState"])
+        self.assertEqual(2, result["stateVersion"])
+
+    def test_pause_has_six_heartbeats_and_no_new_pose_frames(self):
+        self.read_protocol_event("RUNTIME_READY")
+        start=str(uuid.uuid4());self.send(self.command(start,1,0,"START"))
+        self.read_protocol_event("COMMAND_RESULT",commandId=start,status="SUCCEEDED")
+        pause=str(uuid.uuid4());self.send(self.command(pause,2,1,"PAUSE"))
+        paused=self.read_protocol_event("COMMAND_RESULT",commandId=pause,status="SUCCEEDED")
+        observed=[]
+        for _ in range(6):
+            def heartbeat(event):
+                observed.append(event)
+                return event.get("kind")=="HEARTBEAT"
+            self.read_event(heartbeat)
+        beats=[e for e in observed if e.get("kind")=="HEARTBEAT"]
+        self.assertEqual(6,len(beats))
+        self.assertFalse(any(e.get("event")=="frame" for e in observed))
+        self.assertTrue(all(e["runtimeState"]=="PAUSED" and e["stateVersion"]==2 and e["lastFrameSequence"]==paused["lastFrameSequence"] for e in beats))
+        self.assertEqual(sorted(set(e["heartbeatSequence"] for e in beats)),[e["heartbeatSequence"] for e in beats])
+        stop=str(uuid.uuid4());self.send(self.command(stop,3,2,"STOP"))
+        self.read_protocol_event("COMMAND_RESULT",commandId=stop,status="SUCCEEDED")
+        self.assertEqual(0,self.process.wait(timeout=10))
 
 
 if __name__ == "__main__":

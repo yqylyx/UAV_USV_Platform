@@ -3,6 +3,7 @@ import argparse
 import json
 import sys
 import threading
+import time
 
 p = argparse.ArgumentParser()
 p.add_argument('--algorithm')
@@ -34,8 +35,10 @@ def heartbeat():
         emit(dict(identity, kind='HEARTBEAT', heartbeatSequence=heartbeat_sequence,
                   runtimeState=state, stateVersion=version, lastFrameSequence=1))
 
+time.sleep(float(config.get('testReadyDelaySeconds',0)))
 emit(dict(identity, kind='RUNTIME_READY', adapterId='backend-test-only',
           capabilities=config.get('testCapabilities', ['START', 'PAUSE', 'RESUME', 'STOP']), state=state, stateVersion=version))
+time.sleep(float(config.get('testFrameDelaySeconds',0)))
 emit({'event': 'frame', 'payload': {'sequence': 1, 'agents': [
     {'deviceCode': 'UAV-001'}, {'deviceCode': 'USV-001'}]}})
 heartbeat()

@@ -28,6 +28,13 @@ import { ApiClientError } from '@/api/http'
 const requestId = '11111111-1111-4111-8111-111111111111'
 
 describe('voice intelligence backend API adapter', () => {
+  it.each([null, 0, 60001, 1.5])('rejects invalid durationMs %s', async durationMs => {
+    mocks.post.mockResolvedValue({ data: { data: {
+      requestId, text: '暂停', locale: 'zh-CN', durationMs, provider: 'test-fixture', model: 'fixed-v1',
+    } } })
+    await expect(transcribeVoiceAudio({ requestId, locale: 'zh-CN', audio: new Blob(['x'], { type: 'audio/webm' }) }))
+      .rejects.toMatchObject({ code: 'VOICE_MALFORMED_RESPONSE' })
+  })
   beforeEach(() => {
     mocks.post.mockReset()
     mocks.fetchCsrfToken.mockReset()
@@ -83,7 +90,7 @@ describe('voice intelligence backend API adapter', () => {
 
     expect(result).toMatchObject({ status: 'CANDIDATE', action: 'PAUSE' })
     expect(mocks.post).toHaveBeenCalledWith('/voice/intelligence/interpretations', {
-      requestId, text: '暂停任务', locale: 'zh-CN', allowedActions: ['PAUSE'],
+      requestId, text: ' 暂停任务 ', locale: 'zh-CN', allowedActions: ['PAUSE'],
       availableDeviceCodes: ['UAV-001'], runtimeContext,
     }, expect.objectContaining({ timeout: VOICE_PARSE_TIMEOUT_MS }))
   })

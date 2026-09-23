@@ -1,0 +1,8 @@
+{
+  "contracts.log": "7921decd649e9b22ba0e216fa8b5a4f0c6347fdeab5250859f73f0ab52819af8",
+  "coverage-summary.json": "c407f7b0a33bd95d1d6a1ddf0e8ca874937e67322b9cf999178915d99fa8a9db",
+  "java-final.log": "a92a5cfca97307be13b3b0f276ff6c8fbc5e1d86e398a3b7a7563effc52a35a5",
+  "java.log": "42daafc827386c9eecbe683423d932d50180f0badd6eeb057e459ac6228798a7",
+  "TEST-com.uavusv.platform.module.voicecontrol.VoiceControlTests.xml": "70556473386620a1ea1f8a932d0001d8ad2b82ec8570e09dc6ecd12c0c6e0be0",
+  "TEST-com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests.xml": "696a908b76718fa33664067dabf9f54ae571086ed62df9547c80f9a2447d4667"
+}

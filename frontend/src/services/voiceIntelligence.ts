@@ -88,7 +88,7 @@ export function createMockVoiceIntelligenceAdapter(mockTranscript = '暂停任�
       if (input.signal?.aborted) throw new VoiceIntelligenceError('请求已取消。', 'VOICE_REQUEST_CANCELLED')
       if (input.audio.size === 0) throw new Error('没有录制到有效音频，请检查麦克风权限后重试。')
       return {
-        requestId: input.requestId, text: mockTranscript, locale: input.locale, durationMs: null,
+        requestId: input.requestId, text: mockTranscript, locale: input.locale, durationMs: 1000,
         provider: 'local-mock', model: 'fixed-transcript-v1',
       }
     },

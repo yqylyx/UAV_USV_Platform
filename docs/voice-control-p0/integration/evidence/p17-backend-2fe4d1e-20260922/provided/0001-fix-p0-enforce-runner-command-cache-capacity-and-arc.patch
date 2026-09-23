@@ -1,0 +1,415 @@
+From 2fe4d1ed1573837c054a337bb634c5c22a0d997f Mon Sep 17 00:00:00 2001
+From: yqylyx <129809515+yqylyx@users.noreply.github.com>
+Date: Tue, 22 Sep 2026 20:37:00 +0800
+Subject: [PATCH] fix(p0): enforce runner command cache capacity and archive
+ P17 retest
+
+---
+ algorithm-service/runner.py                   |  5 ++
+ .../tests/test_runner_capacity.py             | 82 +++++++++++++++++++
+ .../evidence/p17-retest-20260922/RETEST.md    | 43 ++++++++++
+ .../evidence/p17-retest-20260922/console.txt  |  6 ++
+ .../p17-retest-20260922/exit-code.txt         |  1 +
+ .../p17-retest-20260922/package/README.md     | 49 +++++++++++
+ .../p17-retest-20260922/package/SHA256.json   |  4 +
+ .../package/test-runner-capacity.py           | 40 +++++++++
+ .../p17-retest-20260922/runner-capacity.json  | 45 ++++++++++
+ .../p17-retest-20260922/runner-sha256.txt     |  5 ++
+ .../evidence/p17-retest-20260922/tests-8.txt  | 13 +++
+ .../p17-retest-20260922/tests-exit-code.txt   |  1 +
+ 12 files changed, 294 insertions(+)
+ create mode 100644 algorithm-service/tests/test_runner_capacity.py
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/RETEST.md
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/console.txt
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/exit-code.txt
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/README.md
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/SHA256.json
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/test-runner-capacity.py
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/runner-capacity.json
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/runner-sha256.txt
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/tests-8.txt
+ create mode 100644 docs/voice-control-p0/integration/evidence/p17-retest-20260922/tests-exit-code.txt
+
+diff --git a/algorithm-service/runner.py b/algorithm-service/runner.py
+index 1c15dcf..baff907 100644
+--- a/algorithm-service/runner.py
++++ b/algorithm-service/runner.py
+@@ -18,6 +18,7 @@ from app.adapters import AdaptiveCaptureAdapter, AdaptiveEscortAdapter, CaptureA
+ 
+ 
+ PROTOCOL_VERSION = "algorithm.command.v1"
++COMMAND_CACHE_LIMIT = 10000
+ UUID_PATTERN = re.compile(
+     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+ )
+@@ -221,6 +222,10 @@ def v1_main(args: argparse.Namespace, adapter, config: dict) -> int:
+                     protocol_error("IDENTITY_MISMATCH", "runtime identity mismatch", cid)
+                 elif command["commandSequence"] != command_sequence + 1:
+                     protocol_error("SEQUENCE_MISMATCH", "command sequence is not contiguous", cid)
++                elif len(result_cache) >= COMMAND_CACHE_LIMIT:
++                    # Retain every prior result (including business rejections).
++                    # Overflow must not consume ordering or mutate the adapter.
++                    protocol_error("CAPACITY_EXCEEDED", "command cache limit reached", cid)
+                 else:
+                     command_bodies[cid] = json.dumps(command, sort_keys=True, separators=(",", ":"))
+                     command_sequence += 1
+diff --git a/algorithm-service/tests/test_runner_capacity.py b/algorithm-service/tests/test_runner_capacity.py
+new file mode 100644
+index 0000000..559014d
+--- /dev/null
++++ b/algorithm-service/tests/test_runner_capacity.py
+@@ -0,0 +1,82 @@
++"""P17: exercise the real v1 loop at its production 10,000-command limit.
++
++Only the adapter, input thread and clock sleep are replaced for a fast,
++deterministic test; this is not the external evidence-pack subprocess test.
++"""
++import argparse
++import sys
++import unittest
++from pathlib import Path
++from unittest.mock import Mock, patch
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++import runner
++
++
++class RunnerCapacityTest(unittest.TestCase):
++    def test_capacity_preserves_replay_queries_order_and_state(self):
++        ref = "00000000-0000-0000-0000-000000000001"
++        generation = "00000000-0000-0000-0000-000000000002"
++
++        def command(number, sequence, action="PAUSE", **overrides):
++            return dict(protocolVersion=runner.PROTOCOL_VERSION, runtimeRef=ref,
++                        runtimeGeneration=generation, kind="COMMAND",
++                        commandId=f"10000000-0000-0000-0000-{number:012d}",
++                        commandSequence=sequence, expectedStateVersion=0,
++                        action=action, parameters={}, **overrides)
++
++        # PAUSE in PREPARED is a cached business rejection, not a protocol error.
++        inputs = [command(i, i) for i in range(1, 10001)]
++        first = inputs[0].copy()
++        overflow = command(10001, 10001, "START")
++        inputs += [overflow, overflow.copy(), first,
++                   {**first, "action": "STOP"},
++                   command(10002, 10002, "START"),
++                   {**overflow, "runtimeGeneration": ref},
++                   {**overflow, "parameters": {"invalid": True}}]
++        for item in (first, command(10000, 10000), overflow):
++            inputs.append(dict(protocolVersion=runner.PROTOCOL_VERSION,
++                               runtimeRef=ref, runtimeGeneration=generation,
++                               kind="STATUS_QUERY", queryId=ref,
++                               commandId=item["commandId"]))
++
++        def feed(commands, closed):
++            for item in inputs:
++                commands.put(item)
++            closed.set()
++
++        def thread_factory(*, target, args, **kwargs):
++            return Mock(start=lambda: feed(*args))
++
++        adapter = Mock(code="test-adapter")
++        adapter.step.return_value.to_dict.return_value = {"sequence": 0, "agents": []}
++        events = []
++        args = argparse.Namespace(runtime_ref=ref, runtime_generation=generation, fps=20)
++        with patch.object(runner.threading, "Thread", side_effect=thread_factory), \
++                patch.object(runner.time, "sleep"), \
++                patch.object(runner, "emit", side_effect=events.append):
++            self.assertEqual(0, runner.v1_main(args, adapter, {}))
++
++        self.assertEqual(10000, runner.COMMAND_CACHE_LIMIT)
++        results = [e for e in events if e.get("kind") == "COMMAND_RESULT"]
++        self.assertEqual(10001, len(results))  # 10,000 originals + one replay
++        self.assertEqual(results[0], results[-1])
++        self.assertTrue(all(e["status"] == "REJECTED" and
++                            e["errorCode"] == "INVALID_STATE" and
++                            e["stateVersion"] == 0 and
++                            e["runtimeState"] == "PREPARED" for e in results))
++        errors = [e["errorCode"] for e in events if e.get("kind") == "PROTOCOL_ERROR"]
++        self.assertEqual(["CAPACITY_EXCEEDED", "CAPACITY_EXCEEDED",
++                          "COMMAND_ID_CONFLICT", "SEQUENCE_MISMATCH",
++                          "IDENTITY_MISMATCH", "MALFORMED_MESSAGE"], errors)
++        replies = [e for e in events if e.get("kind") == "STATUS_REPLY"]
++        self.assertEqual([True, True, False], [e["known"] for e in replies])
++        self.assertEqual(results[0], replies[0]["result"])
++        self.assertEqual(results[9999], replies[1]["result"])
++        self.assertIsNone(replies[2]["result"])
++        adapter.set_mission_active.assert_called_once_with(False)
++        adapter.step.assert_called_once()
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/RETEST.md b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/RETEST.md
+new file mode 100644
+index 0000000..5c8d21e
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/RETEST.md
+@@ -0,0 +1,43 @@
++# P17 Runner 容量修复复测
++
++日期：2026-09-22，时区 Asia/Shanghai（UTC+08:00）。
++
++## 结果
++
++- 原交接包指定脚本未修改，SHA256 为 `a240d34f0696413982fb8187d7f27660bcf2fe0745d511254cad8212172ccc5b`。
++- 指定脚本真实 Python 子进程复测 PASS，退出码 0：10000 条业务拒绝被缓存，第 10001 条返回 `PROTOCOL_ERROR / CAPACITY_EXCEEDED`，旧命令原回执稳定重放。
++- 新增容量测试 1 项与原协议子进程测试 7 项，共 8 项全部通过，退出码 0。完整输出见 tests-8.txt。
++- 受测工作区 Runner SHA256：`b3db7e3dba77f9e219ce302ad24f5d9e598975e97e9806da3a947fd6608b21bd`，与结果 JSON 内记录一致。
++
++## 实现及补充断言
++
++Runner 在原有重复命令处理之后，对新命令完成格式、身份、序号检查，再检查缓存容量；容量达到 10000 时直接报告协议错误，不进入命令缓存写入、序号递增或动作执行分支。
++
++新增 test_runner_capacity.py 使用真实 v1_main 和生产上限 10000，仅替换输入线程、sleep 与算法适配器，验证：
++
++- 业务拒绝计入容量，溢出请求重复投递均被容量拒绝。
++- 溢出之后下一序号仍被 SEQUENCE_MISMATCH 拒绝，原应接收序号未被消耗。
++- 没有 ACCEPTED/SUCCEEDED，所有缓存结果保持 PREPARED / stateVersion=0。
++- 第一条、第一万条缓存仍可查询；溢出命令查询 unknown。
++- 原命令稳定重放，不同内容返回 COMMAND_ID_CONFLICT。
++- 满容量时格式、身份、序号校验仍先于容量拒绝。
++- adapter 只有初始化的 step 与 set_mission_active(False)，未执行新算法动作。
++
++## 复现
++
++在仓库根目录执行（输出目录须存在）：
++
++```powershell
++python docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/test-runner-capacity.py --runner algorithm-service/runner.py --output runner-capacity-recheck.json
++python -m unittest discover -s algorithm-service/tests -p 'test_runner*.py' -v
++```
++
++## 证据边界与后端交接
++
++本轮不连接 Java、MySQL 或 Unity，不修改 Java，不替代后端真实 Runner 回归及 CAPACITY_EXCEEDED 通道保护测试；96 条总清单和 P0 总体验收仍由测试同学维护。I05 不在本修复范围内。
++
++指定脚本未单独序列化溢出请求体，但接收谓词要求响应 commandId 或 relatedCommandId 等于该请求 ID；结果 JSON 保留了实际 relatedCommandId，可核对响应身份与本轮 runtimeRef/generation 一致。
++
++本机 core.autocrlf=true；Git checkout 的换行转换可能使文件字节 SHA256 不同。回传 ZIP 附带实际受测 Runner 字节副本，以该副本及 runner-sha256.txt 核验；不要把不同换行导致的 hash 差异直接判为逻辑差异。
++
++回传 ZIP 另附提交信息、修复 patch 与两份测试源码；仓库中的原始控制台、JSON、退出码及脚本保留可审计记录。没有附带密码、Cookie 或数据库配置。
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/console.txt b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/console.txt
+new file mode 100644
+index 0000000..414d9c6
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/console.txt
+@@ -0,0 +1,6 @@
++Cached rejected commands 2000
++Cached rejected commands 4000
++Cached rejected commands 6000
++Cached rejected commands 8000
++Cached rejected commands 10000
++P17 PASS CAPACITY_EXCEEDED
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/exit-code.txt b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/exit-code.txt
+new file mode 100644
+index 0000000..77a949d
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/exit-code.txt
+@@ -0,0 +1 @@
++exitCode=0
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/README.md b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/README.md
+new file mode 100644
+index 0000000..ebef76f
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/README.md
+@@ -0,0 +1,49 @@
++# P17 指定脚本复测交接包
++
++本包的 test-runner-capacity.py 与后端原证据包中的脚本逐字节一致，没有修改通过条件。脚本 SHA256：
++
++`a240d34f0696413982fb8187d7f27660bcf2fe0745d511254cad8212172ccc5b`
++
++请在 Python 同学已修复的 Platform 仓库内，使用能够运行该 Runner 的 Python 环境执行。这里测试的是新的独立子进程，不连接 Java、MySQL 或 Unity，不需要提供数据库密码。
++
++## 复测步骤（PowerShell）
++
++把本包解压至任意位置，先进入已修复仓库根目录，再将下面的脚本路径替换为实际解压路径。若 python 不是算法依赖所在环境，请换成那个环境的 python.exe 完整路径。
++
++```powershell
++$evidenceDir = Join-Path (Get-Location) ('p17-evidence-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
++New-Item -ItemType Directory -Path $evidenceDir | Out-Null
++$runnerPath = (Resolve-Path './algorithm-service/runner.py').Path
++Get-FileHash -LiteralPath $runnerPath -Algorithm SHA256 | Format-List | Out-File "$evidenceDir/runner-sha256.txt"
++python 'C:/path/to/P17-retest/test-runner-capacity.py' --runner $runnerPath --output "$evidenceDir/runner-capacity.json" 2>&1 | Tee-Object "$evidenceDir/console.txt"
++$testExitCode = $LASTEXITCODE
++"exitCode=$testExitCode" | Set-Content "$evidenceDir/exit-code.txt"
++```
++
++脚本逐条投递 10000 条业务拒绝命令，因此需要等待；每 2000 条输出一次进度。不要用缩小容量或改脚本通过条件替代这轮指定脚本复测。输出目录必须先建立。
++
++## 预期与证据边界
++
++- 正常结束时控制台出现 P17 PASS CAPACITY_EXCEEDED，退出码 0。
++- runner-capacity.json：result=PASS、cachedCommands=10000、overflow.errorCode=CAPACITY_EXCEEDED、oldReplayStable=true。
++- 同时人工核对 overflow.kind=PROTOCOL_ERROR、relatedCommandId 对应溢出命令，运行身份与本轮一致。
++- 此原脚本直接覆盖“10000 条被缓存的业务拒绝、满容量拒绝新命令、旧命令原回执稳定重放”。它不直接完整证明“状态/序号不推进、无缓存增删、旧命令查询与内容冲突、apply 调用次数”，这些仍需提供同学新增容量测试和既有 7 项协议测试的具体断言与输出。不能把原脚本 PASS 扩大成所有边界已验收。
++
++## 请回传
++
++1. runner-capacity.json、console.txt、exit-code.txt、runner-sha256.txt。
++2. 新增容量测试及原 7 项协议测试的代码与完整测试输出。
++3. 修复所在分支、commit 和涉及文件；若尚未提交，请明确有未提交修改，Runner 的 SHA256 必须与复测对象一致。
++4. 请把修复推送到自己的 Python 分支并提供远端 commit，或提供可应用的代码补丁；只有文字说明与 PASS 截图，后端无法复现同一版本。
++
++不需要发送数据库配置、密码、Cookie 或整个本机环境。
++
++## 后端接续操作（由后端同学执行）
++
++收到可取得的修复代码后，先核对 diff 和 SHA256，再用相同 Runner 重跑指定脚本。随后调用后端已有 test-real-runner.ps1，通过 -Runner 指向该文件，核验 Java 真实启动参数、Ready、心跳、设备列表、四动作及正常 STOP 退出。
++
++再执行 VoiceRealRunnerFaultTests 的故障场景：崩溃、心跳丢失、查询恢复、旧代次消息、STOP ACK 前 EOF、STOP 最终回执丢失。故障类依赖本地最新测试代理与后端测试基线；Python 同学不需要复制修改 Java 代码。测试使用独立 H2 和子进程，不需要启动隔离 Web 服务。
++
++注意：现有 Java 故障测试并不直接验证收到 CAPACITY_EXCEEDED 时的行为，需补一个针对该 PROTOCOL_ERROR 的关联/通道保护检查，确认不被当作成功且不自动重发。
++
++最后把 P17 的脚本结果、Runner commit/hash、Java 回归结果关联到覆盖清单。当前后端本机 Runner 仍是旧版本，SHA256 为 C5A202692006B38506817C9C56B8F897BD99A74EF75F384147CB6DE119CA597B；因此现在保留 P17 FAIL，备注“同学本地已修，指定脚本与后端复验待完成”，不能先改 PASS。
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/SHA256.json b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/SHA256.json
+new file mode 100644
+index 0000000..f6dd975
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/SHA256.json
+@@ -0,0 +1,4 @@
++{
++  "test-runner-capacity.py": "a240d34f0696413982fb8187d7f27660bcf2fe0745d511254cad8212172ccc5b",
++  "README.md": "e25325c6095517d7217f3735c8e6e82a3852f19460331ec97d37e9b7b64cf4b2"
++}
+\ No newline at end of file
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/test-runner-capacity.py b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/test-runner-capacity.py
+new file mode 100644
+index 0000000..080e969
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/package/test-runner-capacity.py
+@@ -0,0 +1,40 @@
++"""P17 acceptance probe against the unmodified real Runner; exits nonzero on contract failure."""
++import argparse, hashlib, json, pathlib, queue, subprocess, sys, threading, time, uuid
++p=argparse.ArgumentParser();p.add_argument('--runner',required=True);p.add_argument('--output',required=True);a=p.parse_args()
++ref=str(uuid.uuid4());gen=str(uuid.uuid4());events=queue.Queue();report={'caseId':'P17','runtimeRef':ref,'runtimeGeneration':gen,'runnerSha256':hashlib.sha256(pathlib.Path(a.runner).read_bytes()).hexdigest()}
++child=subprocess.Popen([sys.executable,a.runner,'--algorithm','GB_SFLA_CS','--run-id',str(int(time.time()*1000)),'--config',json.dumps({'uavCount':1,'usvCount':1,'targetCount':1,'seed':42}),'--fps','200','--command-protocol','v1','--runtime-ref',ref,'--runtime-generation',gen],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,encoding='utf-8')
++def reader():
++ for line in child.stdout:
++  try:events.put(json.loads(line))
++  except ValueError:pass
++threading.Thread(target=reader,daemon=True).start()
++def receive(predicate):
++ deadline=time.monotonic()+20
++ while time.monotonic()<deadline:
++  e=events.get(timeout=max(.01,deadline-time.monotonic()))
++  if predicate(e):return e
++ raise AssertionError('Runner response timeout')
++def send(body):child.stdin.write(json.dumps(body)+'\n');child.stdin.flush()
++def command(n):return {'protocolVersion':'algorithm.command.v1','runtimeRef':ref,'runtimeGeneration':gen,'kind':'COMMAND','commandId':str(uuid.uuid4()),'commandSequence':n,'expectedStateVersion':0,'action':'PAUSE','parameters':{}}
++try:
++ receive(lambda e:e.get('kind')=='RUNTIME_READY')
++ digest=hashlib.sha256();first=None;first_result=None
++ for n in range(1,10001):
++  c=command(n);send(c);e=receive(lambda e:e.get('commandId')==c['commandId'])
++  assert e['status']=='REJECTED' and e['errorCode']=='INVALID_STATE' and e['stateVersion']==0
++  digest.update((json.dumps(c,sort_keys=True)+json.dumps(e,sort_keys=True)).encode())
++  if n==1:first=c;first_result=e
++  if n%2000==0:print('Cached rejected commands',n,flush=True)
++ report.update(cachedCommands=10000,commandsAndResponsesSha256=digest.hexdigest(),firstCommand=first,firstResult=first_result)
++ extra=command(10001);send(extra)
++ overflow=receive(lambda e:e.get('commandId')==extra['commandId'] or e.get('relatedCommandId')==extra['commandId'])
++ report['overflow']=overflow
++ send(first);replayed=receive(lambda e:e.get('commandId')==first['commandId']);report['oldReplayStable']=replayed==first_result
++ report['result']='PASS' if overflow.get('errorCode')=='CAPACITY_EXCEEDED' and report['oldReplayStable'] else 'FAIL'
++ report['expected']='New command rejected with CAPACITY_EXCEEDED; old cached command remains replayable'
++ print('P17',report['result'],overflow.get('errorCode'),flush=True)
++finally:
++ if child.poll() is None:child.terminate()
++ child.wait(timeout=10)
++ pathlib.Path(a.output).write_text(json.dumps(report,indent=2),encoding='utf-8')
++sys.exit(0 if report.get('result')=='PASS' else 1)
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/runner-capacity.json b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/runner-capacity.json
+new file mode 100644
+index 0000000..a3ea7d5
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/runner-capacity.json
+@@ -0,0 +1,45 @@
++{
++  "caseId": "P17",
++  "runtimeRef": "19ed7ce3-b034-4ce1-8f6e-dcd8d93ee202",
++  "runtimeGeneration": "99d0b527-765b-49b6-8ac3-0aa8ccb6ce2f",
++  "runnerSha256": "b3db7e3dba77f9e219ce302ad24f5d9e598975e97e9806da3a947fd6608b21bd",
++  "cachedCommands": 10000,
++  "commandsAndResponsesSha256": "51fdf6f859fa0681f22dbdefc5056829e4f623178a5ceebcdcf3a23515278d64",
++  "firstCommand": {
++    "protocolVersion": "algorithm.command.v1",
++    "runtimeRef": "19ed7ce3-b034-4ce1-8f6e-dcd8d93ee202",
++    "runtimeGeneration": "99d0b527-765b-49b6-8ac3-0aa8ccb6ce2f",
++    "kind": "COMMAND",
++    "commandId": "a2e298a3-c728-46dc-9194-c97e43a3a48f",
++    "commandSequence": 1,
++    "expectedStateVersion": 0,
++    "action": "PAUSE",
++    "parameters": {}
++  },
++  "firstResult": {
++    "protocolVersion": "algorithm.command.v1",
++    "runtimeRef": "19ed7ce3-b034-4ce1-8f6e-dcd8d93ee202",
++    "runtimeGeneration": "99d0b527-765b-49b6-8ac3-0aa8ccb6ce2f",
++    "kind": "COMMAND_RESULT",
++    "commandId": "a2e298a3-c728-46dc-9194-c97e43a3a48f",
++    "eventSequence": 1,
++    "status": "REJECTED",
++    "runtimeState": "PREPARED",
++    "stateVersion": 0,
++    "lastFrameSequence": 1,
++    "errorCode": "INVALID_STATE",
++    "affectedDeviceCodes": []
++  },
++  "overflow": {
++    "protocolVersion": "algorithm.command.v1",
++    "runtimeRef": "19ed7ce3-b034-4ce1-8f6e-dcd8d93ee202",
++    "runtimeGeneration": "99d0b527-765b-49b6-8ac3-0aa8ccb6ce2f",
++    "kind": "PROTOCOL_ERROR",
++    "relatedCommandId": "9c0becbe-92db-4673-af9c-ac1d4e017ee0",
++    "errorCode": "CAPACITY_EXCEEDED",
++    "detail": "command cache limit reached"
++  },
++  "oldReplayStable": true,
++  "result": "PASS",
++  "expected": "New command rejected with CAPACITY_EXCEEDED; old cached command remains replayable"
++}
+\ No newline at end of file
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/runner-sha256.txt b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/runner-sha256.txt
+new file mode 100644
+index 0000000..69efc61
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/runner-sha256.txt
+@@ -0,0 +1,5 @@
++
++Algorithm : SHA256
++Hash      : B3DB7E3DBA77F9E219CE302AD24F5D9E598975E97E9806DA3A947FD6608B21BD
++Path      : F:\UVA_USV\UAV_USV_Platform\algorithm-service\runner.py
++
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/tests-8.txt b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/tests-8.txt
+new file mode 100644
+index 0000000..542c3f4
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/tests-8.txt
+@@ -0,0 +1,13 @@
++test_capacity_preserves_replay_queries_order_and_state (test_runner_capacity.RunnerCapacityTest.test_capacity_preserves_replay_queries_order_and_state) ... ok
++test_duplicate_replay_is_stable_and_changed_body_conflicts (test_runner_protocol.RunnerProtocolTest.test_duplicate_replay_is_stable_and_changed_body_conflicts) ... ok
++test_invalid_numeric_field_returns_error_without_consuming_sequence (test_runner_protocol.RunnerProtocolTest.test_invalid_numeric_field_returns_error_without_consuming_sequence) ... ok
++test_known_status_reply_embeds_protocol_version (test_runner_protocol.RunnerProtocolTest.test_known_status_reply_embeds_protocol_version) ... ok
++test_malformed_json_returns_protocol_error_without_killing_runner (test_runner_protocol.RunnerProtocolTest.test_malformed_json_returns_protocol_error_without_killing_runner) ... ok
++test_sequence_and_state_version_rejections_preserve_contract (test_runner_protocol.RunnerProtocolTest.test_sequence_and_state_version_rejections_preserve_contract) ... ok
++test_wrong_identity_status_query_is_rejected_and_does_not_mutate_state (test_runner_protocol.RunnerProtocolTest.test_wrong_identity_status_query_is_rejected_and_does_not_mutate_state) ... ok
++test_wrong_protocol_version_is_rejected (test_runner_protocol.RunnerProtocolTest.test_wrong_protocol_version_is_rejected) ... ok
++
++----------------------------------------------------------------------
++Ran 8 tests in 18.216s
++
++OK
+diff --git a/docs/voice-control-p0/integration/evidence/p17-retest-20260922/tests-exit-code.txt b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/tests-exit-code.txt
+new file mode 100644
+index 0000000..77a949d
+--- /dev/null
++++ b/docs/voice-control-p0/integration/evidence/p17-retest-20260922/tests-exit-code.txt
+@@ -0,0 +1 @@
++exitCode=0
+-- 
+2.45.1.windows.1
+
