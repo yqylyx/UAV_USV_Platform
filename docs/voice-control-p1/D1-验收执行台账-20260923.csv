@@ -1,10 +1,10 @@
 ﻿case_id,status,evidence_or_gap
-D01,BLOCKED,HTTP链已测试；缺nly真实ASR服务及ASR-only前端
-D02,BLOCKED,需nly浏览器麦克风拒绝验证
+D01,PARTIAL,nly已交付真实ASR及独立页面；待合入并在mxy机浏览器验收
+D02,PARTIAL,nly已交付麦克风页面；待mxy机真实拒绝权限验证
 D03,PARTIAL,ASR_NO_SPEECH映射及缓存通过；真实静音待ASR服务
 D04,PARTIAL,503/关闭/不可达适配已测；真实ready/busy待交接
 D05,PARTIAL,后端同键/容量1000/30分钟/活跃不清理通过；前端10分钟与真实调用次数待联调
-D06,PARTIAL,服务端撤权/缓存复核通过；页面生命周期及真实人工重启待联调
+D06,PARTIAL,V20墓碑及Java实例重建防重复推理自动化通过；真实进程重启和页面生命周期待联调
 D07,PARTIAL,转写代码无P0调用；真实说停止任务和DB零新增待浏览器
 D08,PASS_BACKEND,真实安全链401/403/CSRF及数据库当前权限测试通过；合并部署后需复核
 D09,PARTIAL,字节/表单限制与响应范围通过；codec/真实时长/尾帧由nly服务和浏览器验证

@@ -31,6 +31,7 @@ class AsrServiceTests {
     VoiceAccess access;
     AsrSettings settings;
     SpeechProvider provider;
+    AsrAcceptanceStore acceptances;
     Time clock;
     AsrService service;
 
@@ -40,8 +41,11 @@ class AsrServiceTests {
         settings = new AsrSettings();
         settings.setEnabled(true);
         provider = mock(SpeechProvider.class);
+        acceptances = mock(AsrAcceptanceStore.class);
+        when(acceptances.reserve(anyLong(), anyString(), anyString(), any()))
+                .thenReturn(AsrAcceptanceStore.Reservation.NEW);
         clock = new Time();
-        service = new AsrService(access, settings, provider, clock);
+        service = new AsrService(access, settings, provider, acceptances, clock);
         when(provider.transcribe(any(), anyLong()))
                 .thenAnswer(
                         i -> {
@@ -128,7 +132,7 @@ class AsrServiceTests {
     }
 
     @Test
-    void expiresThirtyMinutesAfterCompletion() {
+    void expiredMemoryResultBecomesUnknownAndDoesNotRepeatInference() {
         String id = UUID.randomUUID().toString();
         call(1, id);
         clock.now = clock.now.plusSeconds(1799);
@@ -137,8 +141,11 @@ class AsrServiceTests {
         clock.now = clock.now.plusSeconds(1);
         service.cleanup();
         assertEquals(0, service.size());
-        call(1, id);
-        verify(provider, times(2)).transcribe(any(), anyLong());
+        when(acceptances.reserve(eq(1L), eq(id), anyString(), any()))
+                .thenReturn(AsrAcceptanceStore.Reservation.MATCH);
+        var e = assertThrows(AsrFailure.class, () -> call(1, id));
+        assertEquals("VOICE_REQUEST_OUTCOME_UNKNOWN", e.code);
+        verify(provider, times(1)).transcribe(any(), anyLong());
     }
 
     @Test
@@ -219,5 +226,42 @@ class AsrServiceTests {
             release.countDown();
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    void restartWithAcceptedKeyReturnsUnknownWithoutInference() {
+        String id = UUID.randomUUID().toString();
+        call(1, id);
+        var restarted = new AsrService(access, settings, provider, acceptances, clock);
+        when(acceptances.reserve(eq(1L), eq(id), anyString(), any()))
+                .thenReturn(AsrAcceptanceStore.Reservation.MATCH);
+        var e =
+                assertThrows(
+                        AsrFailure.class,
+                        () ->
+                                restarted.transcribe(
+                                        1,
+                                        audio(id),
+                                        System.nanoTime() + TimeUnit.SECONDS.toNanos(120)));
+        assertEquals("VOICE_REQUEST_OUTCOME_UNKNOWN", e.code);
+        verify(provider, times(1)).transcribe(any(), anyLong());
+    }
+
+    @Test
+    void persistenceFailureRejectsBeforeInference() {
+        when(acceptances.reserve(anyLong(), anyString(), anyString(), any()))
+                .thenThrow(new IllegalStateException("database unavailable"));
+        var e = assertThrows(AsrFailure.class, () -> call(1, UUID.randomUUID().toString()));
+        assertEquals(503, e.status);
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void cleanupFailureDoesNotBlockAnExistingMemoryReplay() {
+        String id = UUID.randomUUID().toString();
+        var first = call(1, id);
+        doThrow(new IllegalStateException("database unavailable")).when(acceptances).cleanup(any());
+        assertSame(first, call(1, id));
+        verify(provider, times(1)).transcribe(any(), anyLong());
     }
 }

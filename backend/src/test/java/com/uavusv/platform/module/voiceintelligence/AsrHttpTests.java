@@ -35,6 +35,7 @@ class AsrHttpTests {
         VoiceJson.class,
         VoiceTime.class,
         VoiceExceptionHandler.class,
+        AsrAcceptanceStore.class,
         AsrService.class,
         AsrController.class,
         AsrAdvice.class
@@ -53,10 +54,14 @@ class AsrHttpTests {
             var j = new JdbcTemplate(ds);
             j.execute(
                     "CREATE TABLE app_user(id BIGINT PRIMARY KEY,username VARCHAR(64),role"
-                        + " VARCHAR(32),enabled BOOLEAN)");
+                            + " VARCHAR(32),enabled BOOLEAN)");
             j.execute(
                     "INSERT INTO app_user"
-                        + " VALUES(1,'admin','ADMIN',true),(2,'viewer','VIEWER',true)");
+                            + " VALUES(1,'admin','ADMIN',true),(2,'viewer','VIEWER',true)");
+            new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
+                            new org.springframework.core.io.ClassPathResource(
+                                    "db/migration/V20__create_voice_asr_acceptance.sql"))
+                    .execute(ds);
             return j;
         }
 
@@ -178,6 +183,23 @@ class AsrHttpTests {
                         .getContentAsString();
         assertEquals(first, second);
         verify(context.getBean(SpeechProvider.class), times(1)).transcribe(any(), anyLong());
+    }
+
+    @Test
+    void persistedAcceptanceAfterRestartReturnsUnknownWithoutInference() throws Exception {
+        var audio =
+                new SpeechProvider.Audio(
+                        AudioMultipartTests.ID, "zh-CN", "audio/mpeg", new byte[] {1, 2, 3});
+        context.getBean(AsrAcceptanceStore.class)
+                .reserve(
+                        1,
+                        AudioMultipartTests.ID,
+                        AsrService.fingerprint(audio),
+                        java.time.Instant.now());
+        mvc.perform(request().with(user("admin").roles("ADMIN")).with(csrf().asHeader()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VOICE_REQUEST_OUTCOME_UNKNOWN"));
+        verifyNoInteractions(context.getBean(SpeechProvider.class));
     }
 
     @Test

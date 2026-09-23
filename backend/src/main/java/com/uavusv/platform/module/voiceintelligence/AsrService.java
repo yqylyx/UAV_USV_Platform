@@ -32,18 +32,20 @@ public class AsrService {
     private final VoiceAccess access;
     private final AsrSettings settings;
     private final SpeechProvider provider;
+    private final AsrAcceptanceStore acceptances;
     private final Clock clock;
     private boolean occupied = false, quarantined = false;
 
     @org.springframework.beans.factory.annotation.Autowired
-    public AsrService(VoiceAccess a, AsrSettings s, SpeechProvider p) {
-        this(a, s, p, Clock.systemUTC());
+    public AsrService(VoiceAccess a, AsrSettings s, SpeechProvider p, AsrAcceptanceStore store) {
+        this(a, s, p, store, Clock.systemUTC());
     }
 
-    AsrService(VoiceAccess a, AsrSettings s, SpeechProvider p, Clock c) {
+    AsrService(VoiceAccess a, AsrSettings s, SpeechProvider p, AsrAcceptanceStore store, Clock c) {
         access = a;
         settings = s;
         provider = p;
+        acceptances = store;
         clock = c;
     }
 
@@ -86,6 +88,16 @@ public class AsrService {
                                                         .toSeconds()
                                         + 1),
                         false);
+            AsrAcceptanceStore.Reservation reservation;
+            try {
+                reservation = acceptances.reserve(user, audio.requestId(), hash, now);
+            } catch (RuntimeException e) {
+                throw new AsrFailure(503, "VOICE_PROVIDER_UNAVAILABLE");
+            }
+            if (reservation == AsrAcceptanceStore.Reservation.CONFLICT)
+                throw new AsrFailure(409, "IDEMPOTENCY_CONFLICT");
+            if (reservation == AsrAcceptanceStore.Reservation.MATCH)
+                throw new AsrFailure(409, "VOICE_REQUEST_OUTCOME_UNKNOWN");
             q.add(now);
             entry = new Entry(hash);
             entries.put(key, entry);
@@ -148,6 +160,11 @@ public class AsrService {
         entries.values()
                 .removeIf(e -> e.completed != null && !e.completed.plusSeconds(1800).isAfter(now));
         rates.values().removeIf(q -> q.isEmpty() || !q.peekLast().isAfter(now.minusSeconds(60)));
+        try {
+            acceptances.cleanup(now);
+        } catch (RuntimeException e) {
+            LOG.warn("ASR acceptance cleanup deferred because persistence is unavailable");
+        }
     }
 
     static String fingerprint(SpeechProvider.Audio a) {
