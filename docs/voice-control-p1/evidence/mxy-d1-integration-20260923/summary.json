@@ -10,7 +10,7 @@
     "mysqlFlyway": "PASS V1-V20 on random temporary database",
     "contracts": "PASS 54/54",
     "python": "PASS 19/19; invalid deadline repeated 10/10",
-    "frontend": "PASS 86/86",
+    "frontend": "PASS 88/88 after microphone device error mapping",
     "frontendBuild": "PASS"
   },
   "realModel": {
@@ -33,9 +33,17 @@
     "pythonCallsBeforeAfterRestartChecks": "1 -> 1"
   },
   "environmentBoundary": {
-    "mxyPython": "3.9.13 existing diagnostic environment",
+    "mxyPython": "3.13.15 project .venv",
     "lockedTarget": "3.13.15",
-    "lockedEnvironmentReproduction": "NOT_RUN",
-    "realBrowser": "NOT_RUN"
+    "lockedEnvironmentReproduction": "PASS pip check; Python 19/19; small model preload",
+    "realBrowser": "PASS real localhost/Java/Python with Edge test audio device; physical device BLOCKED because automated Edge reported NotFoundError"
+  },
+  "browserFieldCheck": {
+    "permissionDenied": "PASS; Chinese message and no empty upload",
+    "automaticStop": "PASS at 58081ms; final upload observed",
+    "manualRecovery": "PASS at 5657ms; same request/idempotency key reused within 10 minutes",
+    "logoutAndAccountSwitch": "PASS; switched to p1_switch_admin with transcript and recovery state cleared",
+    "p0ControlIsolation": "PASS; no /api control request observed",
+    "physicalMicrophone": "BLOCKED; no physical device exposed to automated Edge; UI now shows a Chinese NotFoundError message"
   }
 }

@@ -1,0 +1,16 @@
+{
+  "scope": "real localhost page + Java 18083 + Python 3.13.15 small model",
+  "browser": "Microsoft Edge controlled by Playwright",
+  "privateTranscriptAndScreenshots": "kept outside repository",
+  "results": {
+    "permissionDenied": "PASS; no empty upload",
+    "localhostSecureContext": "PASS",
+    "automaticStopAndFinalFrame": "PASS; 58081ms and upload observed",
+    "tenMinuteManualRecovery": "PASS; 5657ms and same request/idempotency key",
+    "logoutAndSecondAccountCleanup": "PASS; p1_switch_admin received no prior text or recovery state",
+    "p0ControlIsolation": "PASS; zero matching /api control requests",
+    "physicalMicrophone": "BLOCKED_NO_DEVICE; automated Edge reported NotFoundError"
+  },
+  "physicalDeviceFallbackMessage": "PASS; 未检测到可用麦克风，请连接设备后重试。",
+  "audioDeviceBoundary": "repeatable browser checks used the Edge test audio device; this is not physical microphone acceptance"
+}

@@ -171,6 +171,18 @@ describe('D1 recorder lifecycle', () => {
     expect(wrapper.text()).toContain('权限被拒绝')
     expect(transcribe).not.toHaveBeenCalled()
   })
+  it.each([
+    ['NotFoundError', '未检测到可用麦克风'],
+    ['NotReadableError', '无法读取麦克风'],
+  ])('shows a local device message for %s without uploading', async (name, expected) => {
+    media(vi.fn().mockRejectedValue(new DOMException('browser message', name)))
+    const { wrapper, transcribe } = setup()
+    await button(wrapper, '开始录音').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain(expected)
+    expect(wrapper.text()).not.toContain('browser message')
+    expect(transcribe).not.toHaveBeenCalled()
+  })
   it('stops tracks without uploading on unmount', async () => {
     const stop = media()
     const { wrapper, transcribe } = setup()
