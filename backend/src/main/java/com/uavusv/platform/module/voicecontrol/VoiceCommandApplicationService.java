@@ -1,6 +1,7 @@
 package com.uavusv.platform.module.voicecontrol;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uavusv.platform.module.voiceintelligence.IntentService;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -17,9 +18,11 @@ public class VoiceCommandApplicationService {
     private final VoiceAccess a;
     private final RuntimeContextRegistry r;
     private final VoiceSettings settings;
+    private IntentService intents;
 
     public record Reply(int status, ObjectNode data) {}
 
+    @org.springframework.beans.factory.annotation.Autowired
     public VoiceCommandApplicationService(
             VoiceStore s,
             VoiceJson j,
@@ -33,6 +36,23 @@ public class VoiceCommandApplicationService {
         this.a = a;
         this.r = r;
         this.settings = settings;
+    }
+
+    VoiceCommandApplicationService(
+            VoiceStore s,
+            VoiceJson j,
+            VoiceTime t,
+            VoiceAccess a,
+            RuntimeContextRegistry r,
+            VoiceSettings settings,
+            IntentService intents) {
+        this(s, j, t, a, r, settings);
+        this.intents = intents;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setIntentService(IntentService intents) {
+        this.intents = intents;
     }
 
     @PreAuthorize("isAuthenticated()")
@@ -75,6 +95,10 @@ public class VoiceCommandApplicationService {
 
     @PreAuthorize("hasRole('ADMIN')")
     public Reply createProposal(String key, ObjectNode body) {
+        return createProposal(key, null, body);
+    }
+
+    public Reply createProposal(String key, String interpretationId, ObjectNode body) {
         long u = a.user(true);
         settings.requireEnabled();
         VoiceJson.uuid(key);
@@ -83,7 +107,9 @@ public class VoiceCommandApplicationService {
                 () -> {
                     settings.requireEnabled();
                     var c = r.require(body.path("runtimeRef").asText(), u);
-                    String hash = j.hash(body), old = s.replay(u, "propose", key, hash);
+                    var hashed = body.deepCopy();
+                    if (interpretationId != null) hashed.put("_interpretationId", interpretationId);
+                    String hash = j.hash(hashed), old = s.replay(u, "propose", key, hash);
                     if (old != null) {
                         var p = owned("voice_proposal", old, u);
                         expire(p);
@@ -95,8 +121,17 @@ public class VoiceCommandApplicationService {
                             != body.path("expectedContextVersion").asLong())
                         throw VoiceFailure.conflict("CONTEXT_CHANGED");
                     String action = body.path("intent").asText().substring(8);
+                    if (interpretationId != null) {
+                        if (intents == null) throw VoiceFailure.conflict("VOICE_INTERPRETATION_INVALID");
+                        try {
+                            intents.requireCandidate(u, interpretationId, action, c);
+                        } catch (com.uavusv.platform.module.voiceintelligence.AsrFailure e) {
+                            throw VoiceFailure.conflict(e.code);
+                        }
+                    }
                     r.check(c, action, true);
                     var p = newProposal(c, u, action);
+                    if (interpretationId != null) p.put("interpretationId", interpretationId);
                     s.proposal(p);
                     s.remember(u, "propose", key, hash, p.path("_id").asText());
                     return new Reply(201, RuntimeContextRegistry.publicView(p));

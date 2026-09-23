@@ -1,11 +1,14 @@
-# P1 当前接口实施入口：D1本地ASR
+# P1 当前接口实施入口：D1 ASR + D2 意图候选
 
-当前规范：[规划v1.3](P1-ASR-规划调整与接口契约测试设计-v1.3.md)；分工：[v1.1](P1-ASR-阶段详细分工与联调交接-v1.1.md)。已由用户提供D1最终确认稿。
+D1 本地语音识别已验收结束。当前进入 D2，启用 `POST /api/voice/intelligence/interpretations`，详细范围和测试见 [P1-D2 意图解析接口与测试设计 v1.0](P1-D2-意图解析接口与测试设计-v1.0.md)。历史供应商无关草案见 [v1.1 历史契约](interface-contract-v1.1-history.md)。
 
-POST /api/voice/intelligence/transcriptions 是当前D1入口；POST /api/voice/intelligence/interpretations 保留但关闭，不执行模型解析或创建提案。
+当前两条公共接口为：
 
-机器Schema的转写格式已收窄到D1 WebM/Opus与MP3，新增内部成功/错误结构和VOICE_TRANSCRIPT_TOO_LONG。历史意图定义保留，仅供E1/后续阶段，不代表D1启用。原v1.1见 [历史契约](interface-contract-v1.1-history.md)，其20秒、五格式、长期幂等条款不用于D1。
+- `POST /api/voice/intelligence/transcriptions`：录音或 MP3 转文字，沿用 D1 已验收实现。
+- `POST /api/voice/intelligence/interpretations`：文字转为候选意图，只允许 `START`、`PAUSE`、`RESUME`、`STOP`。
 
-当前实现配置名为app.voiceintelligence.enabled/base-url/token/model-revision/model-alias；默认关闭。内存幂等1000条、终态30分钟、每分钟清理。模型超时/不确定传输错误导致本Java实例进入保护状态，只允许已有键重放，新请求429；mxy人工确认旧ASR进程退出并协调重启Java/ASR和页面。仅ready=200不解除此保护。
+D2 第一轮使用后端本地受限规则解析器 `local-rules/rules-v1`，用于冻结 HTTP、安全和 P0 来源关联边界。它不是大模型验收结果。以后替换成本地 LLM 时必须保持本文件定义的请求、响应、错误和人工确认边界，不允许模型直接访问 Runner 或 Unity。
 
-新增内部结构的Schema验证不能证明Java—Python真实服务已联调，关联ID一致、协议状态映射和模型revision由Java运行时另行校验。
+两个接口都要求当前启用的 ADMIN、动态 CSRF、相同的小写 UUID `X-Request-ID`/`Idempotency-Key`/正文 `requestId`，响应使用平台统一包装并返回 `Cache-Control: no-store`。解析成功只产生候选；创建 P0 提案时携带 `X-Voice-Interpretation-ID`，后端校验用户、动作和运行代次后仍进入“冻结提案 → 用户确认 → 执行”。
+
+D1 的 Python ASR 内部接口和部署方式保持不变。D2 本地规则解析在 Java 内执行，不修改算法 Runner、Python ASR 或 Unity。

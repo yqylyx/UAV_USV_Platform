@@ -23,7 +23,12 @@ public final class AsrResponses {
     }
 
     public static ResponseEntity<Map<String, Object>> response(Outcome o) {
+        return response(o, null);
+    }
+
+    public static ResponseEntity<Map<String, Object>> response(Outcome o, String requestId) {
         var r = ResponseEntity.status(o.status()).header("Cache-Control", "no-store");
+        if (requestId != null) r.header("X-Request-ID", requestId);
         if (o.retryAfter() != null) r.header("Retry-After", o.retryAfter().toString());
         return r.body(o.body());
     }
@@ -36,6 +41,8 @@ public final class AsrResponses {
             case "VOICE_TRANSCRIPTION_TIMEOUT" -> "识别等待超时，请联系管理员检查服务";
             case "VOICE_AUDIO_TOO_LONG" -> "录音超过60秒，请缩短后重录";
             case "VOICE_INTELLIGENCE_DISABLED" -> "本地语音识别尚未启用";
+            case "VOICE_CONTEXT_CHANGED" -> "运行上下文已变化，请刷新后重新解析";
+            case "VOICE_INTERPRETATION_INVALID" -> "意图候选无效或已过期，请重新解析";
             case "VOICE_RATE_LIMITED" -> "识别服务忙，请稍后再试";
             default -> "语音请求未完成，请检查输入或联系管理员";
         };

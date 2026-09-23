@@ -12,9 +12,13 @@ import java.util.concurrent.*;
 @RestController
 public class AsrController {
     private final AsrService service;
+    private final IntentService intents;
 
-    public AsrController(AsrService s) {
+    public AsrController(
+            AsrService s,
+            org.springframework.beans.factory.ObjectProvider<IntentService> intentProvider) {
         service = s;
+        this.intents = intentProvider.getIfAvailable();
     }
 
     @PostMapping(AsrIngressFilter.PATH)
@@ -39,8 +43,16 @@ public class AsrController {
     }
 
     @PostMapping("/api/voice/intelligence/interpretations")
-    public ResponseEntity<Map<String, Object>> disabled() {
-        service.authorize();
-        throw new AsrFailure(503, "VOICE_INTELLIGENCE_DISABLED");
+    public ResponseEntity<Map<String, Object>> interpret(
+            HttpServletRequest request, @RequestBody com.fasterxml.jackson.databind.JsonNode body) {
+        long user = service.authorize();
+        if (intents == null) throw new AsrFailure(503, "VOICE_INTELLIGENCE_DISABLED");
+        String id = request.getHeader("X-Request-ID");
+        if (id == null
+                || !id.equals(request.getHeader("Idempotency-Key"))
+                || Collections.list(request.getHeaders("X-Request-ID")).size() != 1
+                || Collections.list(request.getHeaders("Idempotency-Key")).size() != 1
+                || request.getQueryString() != null) throw AsrFailure.invalid();
+        return AsrResponses.response(intents.interpret(user, id, body), id);
     }
 }
