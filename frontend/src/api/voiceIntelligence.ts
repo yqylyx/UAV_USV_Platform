@@ -13,6 +13,7 @@ import { VoiceIntelligenceError } from '@/types/voiceIntelligence'
 
 export const VOICE_AUDIO_MAX_BYTES = 5 * 1024 * 1024
 export const VOICE_TRANSCRIPTION_TIMEOUT_MS = 20_000
+export const LOCAL_ASR_TIMEOUT_MS = 140_000
 export const VOICE_PARSE_TIMEOUT_MS = 12_000
 const supportedAudioTypes = new Set(['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/wav', 'audio/mpeg'])
 const actions = new Set(['START', 'PAUSE', 'RESUME', 'STOP'])
@@ -117,7 +118,7 @@ async function writeHeaders(requestId: string) {
   }
 }
 
-export async function transcribeVoiceAudio(input: VoiceAudioInput): Promise<VoiceTranscript> {
+export async function transcribeVoiceAudio(input: VoiceAudioInput, timeoutMs = VOICE_TRANSCRIPTION_TIMEOUT_MS): Promise<VoiceTranscript> {
   assertRequestActive(input.signal)
   if (!uuidPattern.test(input.requestId) || input.locale !== 'zh-CN') {
     throw new VoiceIntelligenceError('语音识别请求标识或区域无效。', 'VOICE_INVALID_REQUEST')
@@ -138,8 +139,11 @@ export async function transcribeVoiceAudio(input: VoiceAudioInput): Promise<Voic
     form.append('locale', input.locale)
     form.append('audio', input.audio, `voice-command.${contentType.split('/')[1]}`)
     const response = await http.post<ApiResponse<VoiceTranscript>>('/voice/intelligence/transcriptions', form, {
-      headers, signal: input.signal, timeout: VOICE_TRANSCRIPTION_TIMEOUT_MS,
+      headers, signal: input.signal, timeout: timeoutMs,
     })
+    if (timeoutMs === LOCAL_ASR_TIMEOUT_MS && response.data.code !== 'SUCCESS') {
+      throw new VoiceIntelligenceError('本地识别未返回成功响应。', 'VOICE_MALFORMED_RESPONSE')
+    }
     if (!isTranscript(response.data.data) || response.data.data.requestId !== input.requestId) {
       throw new VoiceIntelligenceError('语音识别响应格式或请求标识无效。', 'VOICE_MALFORMED_RESPONSE')
     }
@@ -147,6 +151,14 @@ export async function transcribeVoiceAudio(input: VoiceAudioInput): Promise<Voic
   } catch (error) {
     return mapRequestError(error, 'transcription')
   }
+}
+
+/** D1 uses the Java endpoint, never a mock fallback or direct Python call. */
+export function transcribeLocalAudio(input: VoiceAudioInput) {
+  if (!['audio/webm', 'audio/mpeg'].includes(audioType(input.audio))) {
+    return Promise.reject(new VoiceIntelligenceError('D1仅支持WebM/Opus和MP3。', 'VOICE_AUDIO_FORMAT_UNSUPPORTED'))
+  }
+  return transcribeVoiceAudio(input, LOCAL_ASR_TIMEOUT_MS)
 }
 
 export async function interpretVoiceText(input: VoiceParseRequest): Promise<VoiceParseResult> {

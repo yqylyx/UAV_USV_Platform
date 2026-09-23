@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterView } from 'vue-router'
 import { useRoute } from 'vue-router'
 import UnityRuntimeHost from '@/components/unity/UnityRuntimeHost.vue'
@@ -16,7 +16,13 @@ const realtimeStore = useRealtimeStore()
 const unityBridgeStore = useUnityBridgeStore()
 const unityViewportStore = useUnityViewportStore()
 
-const mountSystemOverviewUnity = computed(() => Boolean(route.meta.requiresAuth))
+// ASR first visit must not initialize Unity; preserve an already-loaded P0 session.
+const overviewUnityRequested = ref(false)
+watch(() => [route.name, route.meta.requiresAuth], () => {
+  if (!route.meta.requiresAuth) overviewUnityRequested.value = false
+  else if (route.name !== 'local-asr') overviewUnityRequested.value = true
+}, { immediate: true })
+const mountSystemOverviewUnity = computed(() => Boolean(route.meta.requiresAuth) && overviewUnityRequested.value)
 const systemOverviewUnityActive = computed(() =>
   (route.name === 'dashboard' && route.query.workspace !== 'simulation')
   || route.name === 'optical-vision',

@@ -19,6 +19,8 @@ vi.mock('@/api/http', () => ({
 import {
   interpretVoiceText,
   transcribeVoiceAudio,
+  transcribeLocalAudio,
+  LOCAL_ASR_TIMEOUT_MS,
   VOICE_PARSE_TIMEOUT_MS,
   VOICE_TRANSCRIPTION_TIMEOUT_MS,
 } from '@/api/voiceIntelligence'
@@ -28,6 +30,28 @@ import { ApiClientError } from '@/api/http'
 const requestId = '11111111-1111-4111-8111-111111111111'
 
 describe('voice intelligence backend API adapter', () => {
+  it('D1 uses the existing Java endpoint with 140 seconds and no interpretation call', async () => {
+    mocks.post.mockResolvedValue({ data: { code: 'SUCCESS', data: {
+      requestId, text: '停止任务', locale: 'zh-CN', durationMs: 5784, provider: 'local-asr', model: 'small-r1',
+    } } })
+    await transcribeLocalAudio({ requestId, locale: 'zh-CN', audio: new Blob(['audio'], { type: 'audio/mpeg' }) })
+    expect(LOCAL_ASR_TIMEOUT_MS).toBe(140000)
+    expect(mocks.post).toHaveBeenCalledOnce()
+    expect(mocks.post.mock.calls[0]![0]).toBe('/voice/intelligence/transcriptions')
+    expect(mocks.post.mock.calls[0]![2].timeout).toBe(140000)
+  })
+  it('D1 rejects unapproved audio formats before HTTP', async () => {
+    await expect(transcribeLocalAudio({ requestId, locale: 'zh-CN', audio: new Blob(['audio'], { type: 'audio/wav' }) }))
+      .rejects.toMatchObject({ code: 'VOICE_AUDIO_FORMAT_UNSUPPORTED' })
+    expect(mocks.post).not.toHaveBeenCalled()
+  })
+  it('D1 does not treat a failed envelope as success', async () => {
+    mocks.post.mockResolvedValue({ data: { code: 'FAILURE', data: {
+      requestId, text: '停止任务', locale: 'zh-CN', durationMs: 1000, provider: 'local-asr', model: 'small-r1',
+    } } })
+    await expect(transcribeLocalAudio({ requestId, locale: 'zh-CN', audio: new Blob(['audio'], { type: 'audio/mpeg' }) }))
+      .rejects.toMatchObject({ code: 'VOICE_MALFORMED_RESPONSE' })
+  })
   it.each([null, 0, 60001, 1.5])('rejects invalid durationMs %s', async durationMs => {
     mocks.post.mockResolvedValue({ data: { data: {
       requestId, text: '暂停', locale: 'zh-CN', durationMs, provider: 'test-fixture', model: 'fixed-v1',

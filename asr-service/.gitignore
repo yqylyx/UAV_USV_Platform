@@ -1,0 +1,8 @@
+.venv/
+models/
+*.mp3
+*.wav
+*.webm
+.env
+*.pid
+results/

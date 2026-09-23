@@ -1,0 +1,27 @@
+{
+  "date": "2026-09-23",
+  "scope": "nly Windows i7-12700 development verification, not mxy browser acceptance",
+  "frontend": {"command": "npm run test", "test_files_passed": 11, "passed": 86, "failed": 0},
+  "build": {"command": "npm run build", "typecheck": "PASS", "vite": "PASS", "warnings": ["existing vueuse PURE annotations", "chunk size over 500 kB"]},
+  "python": {"command": "python -m unittest -v test_asr_server", "passed": 18, "failed": 0, "pip_check": "PASS"},
+  "model_manifest": "asr-service/model-manifest.json",
+  "dependency_lock": "asr-service/requirements-lock-win-py313.txt",
+  "real_http": {
+    "model_revision": "536b0662742c02347bc0e980a01041f333bce120",
+    "cpu_threads": 4,
+    "compute_type": "int8",
+    "hub_offline_mode": true,
+    "physical_network_disconnection_tested": false,
+    "original_audio_sha256": "08859b511bc43a0e9572b75bece5602f77aaf29c38c6bf4ab5161443cdaf19c0",
+    "transcripts_omitted_for_privacy": true,
+    "cases": [
+      {"sample": "original damaged MP3", "requestId": "057f5673-63c0-4c79-8ab8-79ef954d4cfa", "status": 415, "code": "ASR_AUDIO_FORMAT_UNSUPPORTED", "seconds": 0.046304, "result": "PASS"},
+      {"sample": "explicitly normalized MP3", "requestId": "dae1d107-ff6d-4efb-8be5-df9e7ccdab12", "status": 200, "durationMs": 5784, "seconds": 1.798949, "result": "PASS"},
+      {"sample": "same recording transcoded to WebM Opus", "requestId": "468d3c21-f377-418c-a0b9-531153543a3f", "status": 200, "durationMs": 5784, "seconds": 1.728264, "result": "PASS"},
+      {"sample": "synthetic 2s silence", "requestId": "fe991fc1-255f-46f0-aa0f-57bedaa9e517", "status": 422, "code": "ASR_NO_SPEECH", "seconds": 0.017717, "result": "PASS"}
+    ],
+    "owned_asr_child_exited": true
+  },
+  "not_verified": ["mxy i5 deployment", "Java real HTTP integration", "real browser microphone", "Unity runtime compatibility", "full D01-D12", "Java restart old-key rejection"],
+  "known_backend_gap": "425a96c AsrService memory-only entries cannot prevent old-key recomputation after Java restart; mxy must implement durable receipt protection before claiming that guarantee."
+}

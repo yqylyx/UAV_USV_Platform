@@ -29,6 +29,7 @@ declare module 'vue' {
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTag: typeof import('element-plus/es')['ElTag']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
+    LocalAsrInput: typeof import('./components/voice/LocalAsrInput.vue')['default']
     MissionConfigDialog: typeof import('./components/mission/MissionConfigDialog.vue')['default']
     MissionEventDrawer: typeof import('./components/mission/MissionEventDrawer.vue')['default']
     MissionExecutionOverlay: typeof import('./components/mission/MissionExecutionOverlay.vue')['default']
