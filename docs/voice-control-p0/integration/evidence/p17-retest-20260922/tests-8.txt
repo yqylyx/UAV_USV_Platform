@@ -1,0 +1,13 @@
+test_capacity_preserves_replay_queries_order_and_state (test_runner_capacity.RunnerCapacityTest.test_capacity_preserves_replay_queries_order_and_state) ... ok
+test_duplicate_replay_is_stable_and_changed_body_conflicts (test_runner_protocol.RunnerProtocolTest.test_duplicate_replay_is_stable_and_changed_body_conflicts) ... ok
+test_invalid_numeric_field_returns_error_without_consuming_sequence (test_runner_protocol.RunnerProtocolTest.test_invalid_numeric_field_returns_error_without_consuming_sequence) ... ok
+test_known_status_reply_embeds_protocol_version (test_runner_protocol.RunnerProtocolTest.test_known_status_reply_embeds_protocol_version) ... ok
+test_malformed_json_returns_protocol_error_without_killing_runner (test_runner_protocol.RunnerProtocolTest.test_malformed_json_returns_protocol_error_without_killing_runner) ... ok
+test_sequence_and_state_version_rejections_preserve_contract (test_runner_protocol.RunnerProtocolTest.test_sequence_and_state_version_rejections_preserve_contract) ... ok
+test_wrong_identity_status_query_is_rejected_and_does_not_mutate_state (test_runner_protocol.RunnerProtocolTest.test_wrong_identity_status_query_is_rejected_and_does_not_mutate_state) ... ok
+test_wrong_protocol_version_is_rejected (test_runner_protocol.RunnerProtocolTest.test_wrong_protocol_version_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 18.216s
+
+OK
