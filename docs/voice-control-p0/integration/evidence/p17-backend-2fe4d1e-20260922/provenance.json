@@ -1,0 +1,25 @@
+{
+  "sourceCommit": "2fe4d1ed1573837c054a337bb634c5c22a0d997f",
+  "archiveSha256": "b558567f60b9b71f26c6bce4bf54d2d40778d6f09f76faea9f599275237d0f28",
+  "files": [
+    {
+      "path": "algorithm-service/runner.py",
+      "testedBytesSha256": "b3db7e3dba77f9e219ce302ad24f5d9e598975e97e9806da3a947fd6608b21bd",
+      "gitBlobBytesSha256": "bcb8dbfce4f6bb113986214a7784e3154f9d743885fd93cff35553bb9b015a86",
+      "equalAfterCRLFNormalization": true
+    },
+    {
+      "path": "algorithm-service/tests/test_runner_capacity.py",
+      "testedBytesSha256": "e8f98c6f72e082dd0d4e5e7f0c1944f0d9e9ebef5a4fea78a0fd91b44d6bbb18",
+      "gitBlobBytesSha256": "e8f98c6f72e082dd0d4e5e7f0c1944f0d9e9ebef5a4fea78a0fd91b44d6bbb18",
+      "equalAfterCRLFNormalization": true
+    },
+    {
+      "path": "algorithm-service/tests/test_runner_protocol.py",
+      "testedBytesSha256": "32299cab9e053aed2d11ebe865bb4a60f353c3511d74994e4d9220e35bd9f9e6",
+      "gitBlobBytesSha256": "893e665fad8242a16194ca342436389775504331c2e1394aa7fcc30c45a1fd75",
+      "equalAfterCRLFNormalization": true
+    }
+  ],
+  "probeIdentical": true
+}

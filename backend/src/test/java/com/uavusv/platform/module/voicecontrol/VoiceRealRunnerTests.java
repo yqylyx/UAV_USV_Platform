@@ -87,7 +87,18 @@ class VoiceRealRunnerTests extends VoiceControlTests {
                             "No heartbeat while paused");
                 }
             }
-            until(() -> !r.channel(ref).alive.getAsBoolean(), "Runner did not exit after STOP receipt");
+            var handles=(Map<?,?>)ReflectionTestUtils.getField(manager,"handles");
+            assertNotNull(handles);
+            var handle=handles.get(990031L);
+            Process process=(Process)ReflectionTestUtils.getField(handle,"process");
+            assertNotNull(process);
+            assertTrue(process.waitFor(10,java.util.concurrent.TimeUnit.SECONDS),"Runner did not exit after STOP receipt");
+            var stderrDone=(java.util.concurrent.CountDownLatch)ReflectionTestUtils.getField(handle,"stderrDone");
+            assertNotNull(stderrDone);stderrDone.await(2,java.util.concurrent.TimeUnit.SECONDS);
+            report.put("runnerPid",process.pid()).put("runnerExitCode",process.exitValue());
+            var stderrTail=ReflectionTestUtils.getField(handle,"stderrTail");
+            report.set("stderrTail",j.mapper.valueToTree(stderrTail));
+            assertEquals(0,process.exitValue(),"STOP succeeded but Runner exit was nonzero; inspect evidence stderrTail");
             report.put("result", "PASS");
         } catch (Exception | AssertionError failure) {
             report.put("result", "FAIL").put("failure", failure.toString());
@@ -98,5 +109,70 @@ class VoiceRealRunnerTests extends VoiceControlTests {
             Files.createDirectories(output.getParent());
             j.mapper.writerWithDefaultPrettyPrinter().writeValue(output.toFile(), report);
         }
+    }
+    @Test void legacyPrepareAndManualFourActionsRemainAvailableWhenFeatureOff() throws Exception {
+        settings.setEnabled(false);
+        var businessRuns=mock(MissionRunRepository.class);
+        var manager=new AlgorithmRuntimeManager(j.mapper,businessRuns,mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),System.getenv("P0_REAL_RUNNER"));
+        ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
+        try {
+            var prepared=manager.prepare(990071L,"GB_SFLA_CS",Map.of("standaloneVirtualSimulation",true,"seed",42));
+            assertNull(prepared.runtimeRef());assertNull(prepared.runtimeGeneration());assertNull(prepared.protocolVersion());assertTrue(prepared.capabilities().isEmpty());
+            var handles=(Map<?,?>)ReflectionTestUtils.getField(manager,"handles");var handle=handles.get(990071L);var process=(Process)ReflectionTestUtils.getField(handle,"process");assertNotNull(process);assertTrue(process.isAlive());
+            login("bob");error("RUNTIME_BUSY",()->manager.prepare(990072L,"GB_SFLA_CS",Map.of("standaloneVirtualSimulation",true)));
+            assertTrue(process.isAlive());assertEquals(1,handles.size());login("alice");
+            for(String action:List.of("START","PAUSE","RESUME","STOP")) {
+                manager.action(990071L,action);String expected=action.equals("PAUSE")?"PAUSED":action.equals("STOP")?"STOPPED":"RUNNING";
+                until(()->manager.status(990071L).state().equals(expected),"Legacy action failed: "+action);
+            }
+            assertTrue(process.waitFor(10,java.util.concurrent.TimeUnit.SECONDS));assertEquals(0,process.exitValue());
+            assertEquals(0,count("voice_execution"));verifyNoInteractions(businessRuns);
+        } finally {login("alice");manager.close();}
+    }
+    @Test void businessMissionRunNeverRegistersAsIndependentVoiceRuntime() throws Exception {
+        var runs=mock(MissionRunRepository.class);
+        var business=mock(com.uavusv.platform.module.mission.entity.MissionRun.class);
+        when(business.getAlgorithmCode()).thenReturn("GB_SFLA_CS");when(runs.findById(990091L)).thenReturn(Optional.of(business));
+        var manager=new AlgorithmRuntimeManager(j.mapper,runs,mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),System.getenv("P0_REAL_RUNNER"));
+        ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
+        int contexts=count("voice_runtime_context");
+        try {
+            var prepared=manager.prepare(990091L,"GB_SFLA_CS",Map.of("seed",42));
+            assertNotNull(prepared.latestFrame());assertNull(prepared.runtimeRef());assertNull(prepared.runtimeGeneration());assertNull(prepared.protocolVersion());assertTrue(prepared.capabilities().isEmpty());
+            assertEquals(contexts,count("voice_runtime_context"));
+            assertTrue(app.contexts().stream().noneMatch(x->x.path("algorithmRunId").asText().equals("990091")));
+            error("RESOURCE_NOT_FOUND",()->app.createProposal(VoiceJson.uuid(),j.object().put("runtimeRef",VoiceJson.uuid()).put("runtimeGeneration",VoiceJson.uuid()).put("expectedContextVersion",1).put("intent","MISSION_START")));
+            assertEquals(0,count("voice_execution"));verify(runs).findById(990091L);
+        } finally {manager.close();}
+    }
+    @Test void cleanupAfterFinalStopAllowsActualRunnerToExitNormally() throws Exception {
+        var manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),Path.of("src/test/resources/voicecontrol/delayed_exit_runner.py").toAbsolutePath().toString());
+        ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
+        try {
+            var prepared=manager.prepare(990092L,"GB_SFLA_CS",Map.of("standaloneVirtualSimulation",true,"seed",42));
+            String ref=prepared.runtimeRef();until(()->r.channel(ref).heartbeatNanos!=null,"heartbeat absent");
+            Object handle=((Map<?,?>)ReflectionTestUtils.getField(manager,"handles")).get(990092L);Process process=(Process)ReflectionTestUtils.getField(handle,"process");
+            var e=execution(app.manual(ref,"STOP"));worker.tick();until(()->app.execution(e.path("executionId").asText()).path("state").asText().equals("SUCCEEDED"),"STOP result absent");
+            assertTrue(process.isAlive(),"Controlled teardown window not reached");
+            manager.close();assertTrue(process.waitFor(5,java.util.concurrent.TimeUnit.SECONDS));
+            Files.writeString(Path.of("target/stop-cleanup-exit.json"),j.object().put("pid",process.pid()).put("exitCode",process.exitValue()).put("executionId",e.path("executionId").asText()).put("outcome",app.execution(e.path("executionId").asText()).path("outcome").asText()).toPrettyString());
+            assertEquals(0,process.exitValue(),"Cleanup killed a Runner after its successful final STOP receipt");
+            assertEquals("SUCCEEDED",app.execution(e.path("executionId").asText()).path("state").asText());
+        } finally {manager.close();}
+    }
+    @Test void ownerlessLegacyProcessCannotBeClaimedByPrepare() throws Exception {
+        var manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),System.getenv("P0_REAL_RUNNER"));
+        ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
+        try {
+            var config=Map.<String,Object>of("standaloneVirtualSimulation",true,"seed",42);
+            var prepared=manager.prepare(990093L,"GB_SFLA_CS",config);
+            Object handle=((Map<?,?>)ReflectionTestUtils.getField(manager,"handles")).get(990093L);Process process=(Process)ReflectionTestUtils.getField(handle,"process");
+            org.springframework.test.util.ReflectionTestUtils.setField(handle,"voiceContext",null);
+            s.locked(()->{var stored=s.get("voice_runtime_context",prepared.runtimeRef());stored.remove("_owner");s.save("voice_runtime_context",stored);return null;});
+            int contexts=count("voice_runtime_context");
+            error("RUNTIME_BUSY",()->manager.prepare(990093L,"GB_SFLA_CS",config));assertTrue(process.isAlive());assertEquals(contexts,count("voice_runtime_context"));
+            error("RESOURCE_NOT_FOUND",()->app.context(prepared.runtimeRef()));assertFalse(s.get("voice_runtime_context",prepared.runtimeRef()).has("_owner"));
+            assertNull(manager.status(990093L).runtimeRef());assertEquals(0,count("voice_execution"));
+        } finally {manager.close();}
     }
 }

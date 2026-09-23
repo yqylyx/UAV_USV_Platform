@@ -1,0 +1,2689 @@
+{
+  "schema": "p0.browser-presentation.evidence.v1",
+  "startedAt": "2026-09-22T08:11:58.819Z",
+  "appUrl": "http://127.0.0.1:15174/?workspace=simulation",
+  "platformCommit": "31a1e2b",
+  "unityCommit": "ab1f8a0",
+  "steps": [
+    {
+      "name": "login page loaded",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:01.250Z"
+    },
+    {
+      "name": "admin login",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:03.475Z"
+    },
+    {
+      "name": "Unity bridge permits scenario generation",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:11.418Z"
+    },
+    {
+      "name": "manual scenario generation requested",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:11.431Z"
+    },
+    {
+      "name": "Unity SCENE_READY and binding",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:18.133Z"
+    },
+    {
+      "name": "开始任务 button enabled",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:18.139Z"
+    },
+    {
+      "name": "开始 proposal dialog",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:18.699Z"
+    },
+    {
+      "name": "开始 reaches RUNNING/Unity 已应用",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:24.334Z"
+    },
+    {
+      "name": "暂停任务 button enabled",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:24.339Z"
+    },
+    {
+      "name": "暂停 proposal dialog",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:24.887Z"
+    },
+    {
+      "name": "暂停 reaches PAUSED/无需 Unity 同步",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:32.591Z"
+    },
+    {
+      "name": "继续任务 button enabled",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:32.594Z"
+    },
+    {
+      "name": "继续 proposal dialog",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:33.113Z"
+    },
+    {
+      "name": "block FRAME_APPLIED report for STALE test",
+      "result": "PASS",
+      "at": "2026-09-22T08:12:39.591Z"
+    },
+    {
+      "name": "继续 reaches RUNNING/Unity 展示已过期",
+      "result": "PASS",
+      "at": "2026-09-22T08:13:04.992Z"
+    },
+    {
+      "name": "STALE resync reaches REPORTED_APPLIED",
+      "result": "PASS",
+      "at": "2026-09-22T08:13:06.072Z"
+    },
+    {
+      "name": "停止任务 button enabled",
+      "result": "PASS",
+      "at": "2026-09-22T08:13:06.076Z"
+    },
+    {
+      "name": "停止 proposal dialog",
+      "result": "PASS",
+      "at": "2026-09-22T08:13:08.497Z"
+    },
+    {
+      "name": "停止 reaches STOPPED/无需 Unity 同步",
+      "result": "PASS",
+      "at": "2026-09-22T08:13:13.980Z"
+    },
+    {
+      "name": "page refresh loaded",
+      "result": "PASS",
+      "at": "2026-09-22T08:13:22.543Z"
+    },
+    {
+      "name": "page refresh restores final execution",
+      "result": "PASS",
+      "at": "2026-09-22T08:13:23.435Z"
+    }
+  ],
+  "voiceResponses": [
+    {
+      "at": "2026-09-22T08:12:03.941Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [],
+        "timestamp": "2026-09-22T08:12:03.510579Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:07.097Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 1,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PREPARED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": null,
+            "latestFrameSequence": 0,
+            "sceneReady": false,
+            "capabilities": []
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:07.089936Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:10.899Z",
+      "method": null,
+      "url": "/api/voice/contexts/75c6737a-fd40-4a01-bd5e-d51390c2bb0d/presentation/binding",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "bindingId": null,
+          "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb"
+        },
+        "timestamp": "2026-09-22T08:12:10.750151Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:11.022Z",
+      "method": null,
+      "url": "/api/voice/contexts/75c6737a-fd40-4a01-bd5e-d51390c2bb0d/presentation/bindings",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "bindingId": "1290e6a1-88f1-4c1b-808c-de4fbb665986",
+          "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb"
+        },
+        "timestamp": "2026-09-22T08:12:10.970666Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:11.066Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 3,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PREPARED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:10.360277Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:11.055205Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:11.318Z",
+      "method": null,
+      "url": "/api/voice/contexts/75c6737a-fd40-4a01-bd5e-d51390c2bb0d/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+          "bindingId": "1290e6a1-88f1-4c1b-808c-de4fbb665986",
+          "kind": "SCENE_READY",
+          "executionId": null,
+          "requestId": "7fd73817-75bd-438c-acd1-d48556812bd2",
+          "sequence": 1,
+          "expiresAt": "2026-09-22T08:12:16.068341Z"
+        },
+        "timestamp": "2026-09-22T08:12:11.145714Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:11.455Z",
+      "method": null,
+      "url": "/api/voice/contexts/75c6737a-fd40-4a01-bd5e-d51390c2bb0d/presentation/reports",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+          "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+          "contextVersion": 3,
+          "stateVersion": 0,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790064726873",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "PREPARED",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T08:12:10.360277Z",
+          "latestFrameSequence": 1,
+          "sceneReady": true,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T08:12:11.435764Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:11.497Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 3,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PREPARED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:11.488268Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:16.186Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 3,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PREPARED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:16.115230Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:16.180287Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:16.198Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/binding",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "bindingId": null,
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d"
+        },
+        "timestamp": "2026-09-22T08:12:16.189971Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:16.277Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/bindings",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d"
+        },
+        "timestamp": "2026-09-22T08:12:16.268691Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:17.733Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "SCENE_READY",
+          "executionId": null,
+          "requestId": "f8b1df6d-1b8f-4517-94ad-eb4e74c13e80",
+          "sequence": 1,
+          "expiresAt": "2026-09-22T08:12:22.620489Z"
+        },
+        "timestamp": "2026-09-22T08:12:17.720816Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:17.857Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/reports",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "contextVersion": 3,
+          "stateVersion": 0,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790064731424",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "PREPARED",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T08:12:17.130126Z",
+          "latestFrameSequence": 1,
+          "sceneReady": true,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T08:12:17.804386Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:18.188Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 3,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PREPARED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:17.130126Z",
+            "latestFrameSequence": 1,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:18.170363Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:18.318Z",
+      "method": null,
+      "url": "/api/voice/commands/proposals",
+      "status": 201,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "b1b8135c-f3d5-41fd-9316-318148049edc",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "51cf45a8021ef268e6776683d16c213f02a3634fe273e351c6bd7e8dacf56623",
+          "plan": {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 3,
+            "stateVersion": 0,
+            "action": "START",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T08:12:18.221749Z",
+          "expiresAt": "2026-09-22T08:12:48.221749Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-22T08:12:18.311083Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:18.967Z",
+      "method": null,
+      "url": "/api/voice/commands/b1b8135c-f3d5-41fd-9316-318148049edc/confirm",
+      "status": 202,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposal": {
+            "proposalId": "b1b8135c-f3d5-41fd-9316-318148049edc",
+            "status": "CONFIRMED",
+            "planVersion": 1,
+            "planHash": "51cf45a8021ef268e6776683d16c213f02a3634fe273e351c6bd7e8dacf56623",
+            "plan": {
+              "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+              "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+              "contextVersion": 3,
+              "stateVersion": 0,
+              "action": "START",
+              "explicitDeviceCodes": [
+                "UAV-001",
+                "UAV-002",
+                "UAV-003",
+                "USV-001",
+                "USV-002",
+                "USV-003"
+              ],
+              "policyVersion": "voice-p0.v1"
+            },
+            "requiresConfirmation": true,
+            "createdAt": "2026-09-22T08:12:18.221749Z",
+            "expiresAt": "2026-09-22T08:12:48.221749Z",
+            "executionId": "6776d4b0-4710-4024-99a3-9bc5703de5f1"
+          },
+          "execution": {
+            "executionId": "6776d4b0-4710-4024-99a3-9bc5703de5f1",
+            "proposalId": "b1b8135c-f3d5-41fd-9316-318148049edc",
+            "commandId": "865b6309-b506-4358-82ef-e97f8ba3d012",
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "action": "START",
+            "state": "QUEUED",
+            "outcome": "UNKNOWN",
+            "errorCode": null,
+            "timedOutAt": null,
+            "presentationStatus": "PENDING",
+            "createdAt": "2026-09-22T08:12:18.760958Z",
+            "updatedAt": "2026-09-22T08:12:18.760958Z"
+          }
+        },
+        "timestamp": "2026-09-22T08:12:18.954781Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:19.098Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 3,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PREPARED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:18.176489Z",
+            "latestFrameSequence": 1,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:19.084947Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:19.206Z",
+      "method": null,
+      "url": "/api/voice/executions/6776d4b0-4710-4024-99a3-9bc5703de5f1",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "6776d4b0-4710-4024-99a3-9bc5703de5f1",
+          "proposalId": "b1b8135c-f3d5-41fd-9316-318148049edc",
+          "commandId": "865b6309-b506-4358-82ef-e97f8ba3d012",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "START",
+          "state": "DISPATCHED",
+          "outcome": "UNKNOWN",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "PENDING",
+          "createdAt": "2026-09-22T08:12:18.760958Z",
+          "updatedAt": "2026-09-22T08:12:18.961637Z"
+        },
+        "timestamp": "2026-09-22T08:12:19.199278Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:20.157Z",
+      "method": null,
+      "url": "/api/voice/executions/6776d4b0-4710-4024-99a3-9bc5703de5f1",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "6776d4b0-4710-4024-99a3-9bc5703de5f1",
+          "proposalId": "b1b8135c-f3d5-41fd-9316-318148049edc",
+          "commandId": "865b6309-b506-4358-82ef-e97f8ba3d012",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "START",
+          "state": "SUCCEEDED",
+          "outcome": "SUCCESS",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "PENDING",
+          "createdAt": "2026-09-22T08:12:18.760958Z",
+          "updatedAt": "2026-09-22T08:12:19.273971Z"
+        },
+        "timestamp": "2026-09-22T08:12:20.149299Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:21.375Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "FRAME_APPLIED",
+          "executionId": "6776d4b0-4710-4024-99a3-9bc5703de5f1",
+          "requestId": "00f7d5eb-e048-46b7-80e2-7591bb4ef437",
+          "sequence": 2,
+          "expiresAt": "2026-09-22T08:12:26.253321Z"
+        },
+        "timestamp": "2026-09-22T08:12:21.368239Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:21.575Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/reports",
+      "status": 409,
+      "body": {
+        "code": "CONTEXT_CHANGED",
+        "message": "CONTEXT_CHANGED",
+        "data": null,
+        "timestamp": "2026-09-22T08:12:21.479764Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:22.232Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 4,
+            "stateVersion": 1,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:21.621044Z",
+            "latestFrameSequence": 22,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:22.191010Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:23.540Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "FRAME_APPLIED",
+          "executionId": "6776d4b0-4710-4024-99a3-9bc5703de5f1",
+          "requestId": "195e33c0-d125-4157-ae5e-fbe6160d9343",
+          "sequence": 2,
+          "expiresAt": "2026-09-22T08:12:28.154786Z"
+        },
+        "timestamp": "2026-09-22T08:12:23.334735Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:23.825Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/reports",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790064731424",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T08:12:22.592997Z",
+          "latestFrameSequence": 32,
+          "sceneReady": true,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T08:12:23.759567Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:23.894Z",
+      "method": null,
+      "url": "/api/voice/executions/6776d4b0-4710-4024-99a3-9bc5703de5f1",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "6776d4b0-4710-4024-99a3-9bc5703de5f1",
+          "proposalId": "b1b8135c-f3d5-41fd-9316-318148049edc",
+          "commandId": "865b6309-b506-4358-82ef-e97f8ba3d012",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "START",
+          "state": "SUCCEEDED",
+          "outcome": "SUCCESS",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "REPORTED_APPLIED",
+          "createdAt": "2026-09-22T08:12:18.760958Z",
+          "updatedAt": "2026-09-22T08:12:23.637383Z"
+        },
+        "timestamp": "2026-09-22T08:12:23.873479Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:24.332Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "SCENE_READY",
+          "executionId": null,
+          "requestId": "e8ac4442-a5e9-48e7-a09e-7bf24e5cf2cd",
+          "sequence": 3,
+          "expiresAt": "2026-09-22T08:12:29.225134Z"
+        },
+        "timestamp": "2026-09-22T08:12:24.318887Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:24.417Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 4,
+            "stateVersion": 1,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:23.635379Z",
+            "latestFrameSequence": 36,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:24.396785Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:24.481Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/reports",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "contextVersion": 4,
+          "stateVersion": 1,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790064731424",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T08:12:23.635379Z",
+          "latestFrameSequence": 36,
+          "sceneReady": true,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T08:12:24.459230Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:24.753Z",
+      "method": null,
+      "url": "/api/voice/commands/proposals",
+      "status": 201,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "b66dab64-4971-470e-875d-40d35abf7725",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "1e57333f33c80cb5cd2ee41fe73cb86ec8a0db8afc86a0dce8257c70cccd1288",
+          "plan": {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 4,
+            "stateVersion": 1,
+            "action": "PAUSE",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T08:12:24.538235Z",
+          "expiresAt": "2026-09-22T08:12:54.538235Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-22T08:12:24.724959Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:25.083Z",
+      "method": null,
+      "url": "/api/voice/commands/b66dab64-4971-470e-875d-40d35abf7725/confirm",
+      "status": 202,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposal": {
+            "proposalId": "b66dab64-4971-470e-875d-40d35abf7725",
+            "status": "CONFIRMED",
+            "planVersion": 1,
+            "planHash": "1e57333f33c80cb5cd2ee41fe73cb86ec8a0db8afc86a0dce8257c70cccd1288",
+            "plan": {
+              "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+              "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+              "contextVersion": 4,
+              "stateVersion": 1,
+              "action": "PAUSE",
+              "explicitDeviceCodes": [
+                "UAV-001",
+                "UAV-002",
+                "UAV-003",
+                "USV-001",
+                "USV-002",
+                "USV-003"
+              ],
+              "policyVersion": "voice-p0.v1"
+            },
+            "requiresConfirmation": true,
+            "createdAt": "2026-09-22T08:12:24.538235Z",
+            "expiresAt": "2026-09-22T08:12:54.538235Z",
+            "executionId": "b3198cdf-31ab-4e7f-a59c-b546f7e3f561"
+          },
+          "execution": {
+            "executionId": "b3198cdf-31ab-4e7f-a59c-b546f7e3f561",
+            "proposalId": "b66dab64-4971-470e-875d-40d35abf7725",
+            "commandId": "e899a393-ff36-4fb4-9aec-27ef53558ffe",
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "action": "PAUSE",
+            "state": "QUEUED",
+            "outcome": "UNKNOWN",
+            "errorCode": null,
+            "timedOutAt": null,
+            "presentationStatus": "NOT_REQUIRED",
+            "createdAt": "2026-09-22T08:12:25.011347Z",
+            "updatedAt": "2026-09-22T08:12:25.011347Z"
+          }
+        },
+        "timestamp": "2026-09-22T08:12:25.076464Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:25.285Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 4,
+            "stateVersion": 1,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:24.967859Z",
+            "latestFrameSequence": 39,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:25.275420Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:25.293Z",
+      "method": null,
+      "url": "/api/voice/commands/b66dab64-4971-470e-875d-40d35abf7725",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "b66dab64-4971-470e-875d-40d35abf7725",
+          "status": "CONFIRMED",
+          "planVersion": 1,
+          "planHash": "1e57333f33c80cb5cd2ee41fe73cb86ec8a0db8afc86a0dce8257c70cccd1288",
+          "plan": {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 4,
+            "stateVersion": 1,
+            "action": "PAUSE",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T08:12:24.538235Z",
+          "expiresAt": "2026-09-22T08:12:54.538235Z",
+          "executionId": "b3198cdf-31ab-4e7f-a59c-b546f7e3f561"
+        },
+        "timestamp": "2026-09-22T08:12:25.286652Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:26.230Z",
+      "method": null,
+      "url": "/api/voice/executions/b3198cdf-31ab-4e7f-a59c-b546f7e3f561",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "b3198cdf-31ab-4e7f-a59c-b546f7e3f561",
+          "proposalId": "b66dab64-4971-470e-875d-40d35abf7725",
+          "commandId": "e899a393-ff36-4fb4-9aec-27ef53558ffe",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "PAUSE",
+          "state": "SUCCEEDED",
+          "outcome": "SUCCESS",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "NOT_REQUIRED",
+          "createdAt": "2026-09-22T08:12:25.011347Z",
+          "updatedAt": "2026-09-22T08:12:25.869187Z"
+        },
+        "timestamp": "2026-09-22T08:12:26.221833Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:31.857Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 5,
+            "stateVersion": 2,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PAUSED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:28.869371Z",
+            "latestFrameSequence": 42,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:29.370934Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:31.902Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "SCENE_READY",
+          "executionId": null,
+          "requestId": "85429e59-6362-43d3-ae49-ee205414a685",
+          "sequence": 4,
+          "expiresAt": "2026-09-22T08:12:36.851156Z"
+        },
+        "timestamp": "2026-09-22T08:12:31.893151Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:32.050Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/reports",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "contextVersion": 5,
+          "stateVersion": 2,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790064731424",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "PAUSED",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T08:12:31.878856Z",
+          "latestFrameSequence": 42,
+          "sceneReady": true,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T08:12:32.043024Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:32.614Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 5,
+            "stateVersion": 2,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PAUSED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:31.878856Z",
+            "latestFrameSequence": 42,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:32.603217Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:32.684Z",
+      "method": null,
+      "url": "/api/voice/commands/proposals",
+      "status": 201,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "8cc87607-1b93-41c1-8fd8-ace1a1d38930",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "7127e9ed248d358368f7689ecdcb72f6839bcf8fab48e09226fb613fa0bb098c",
+          "plan": {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 5,
+            "stateVersion": 2,
+            "action": "RESUME",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T08:12:32.632394Z",
+          "expiresAt": "2026-09-22T08:13:02.632394Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-22T08:12:32.676556Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:33.067Z",
+      "method": null,
+      "url": "/api/voice/commands/8cc87607-1b93-41c1-8fd8-ace1a1d38930",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "8cc87607-1b93-41c1-8fd8-ace1a1d38930",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "7127e9ed248d358368f7689ecdcb72f6839bcf8fab48e09226fb613fa0bb098c",
+          "plan": {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 5,
+            "stateVersion": 2,
+            "action": "RESUME",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T08:12:32.632394Z",
+          "expiresAt": "2026-09-22T08:13:02.632394Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-22T08:12:33.058570Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:33.068Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 5,
+            "stateVersion": 2,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "PAUSED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:32.883091Z",
+            "latestFrameSequence": 42,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:33.059580Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:33.409Z",
+      "method": null,
+      "url": "/api/voice/commands/8cc87607-1b93-41c1-8fd8-ace1a1d38930/confirm",
+      "status": 202,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposal": {
+            "proposalId": "8cc87607-1b93-41c1-8fd8-ace1a1d38930",
+            "status": "CONFIRMED",
+            "planVersion": 1,
+            "planHash": "7127e9ed248d358368f7689ecdcb72f6839bcf8fab48e09226fb613fa0bb098c",
+            "plan": {
+              "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+              "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+              "contextVersion": 5,
+              "stateVersion": 2,
+              "action": "RESUME",
+              "explicitDeviceCodes": [
+                "UAV-001",
+                "UAV-002",
+                "UAV-003",
+                "USV-001",
+                "USV-002",
+                "USV-003"
+              ],
+              "policyVersion": "voice-p0.v1"
+            },
+            "requiresConfirmation": true,
+            "createdAt": "2026-09-22T08:12:32.632394Z",
+            "expiresAt": "2026-09-22T08:13:02.632394Z",
+            "executionId": "ad03fa55-17d6-4aee-bc12-f52bf9c9d961"
+          },
+          "execution": {
+            "executionId": "ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+            "proposalId": "8cc87607-1b93-41c1-8fd8-ace1a1d38930",
+            "commandId": "6dce183c-8fe7-4a5a-a557-7124300d3173",
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "action": "RESUME",
+            "state": "QUEUED",
+            "outcome": "UNKNOWN",
+            "errorCode": null,
+            "timedOutAt": null,
+            "presentationStatus": "PENDING",
+            "createdAt": "2026-09-22T08:12:33.179211Z",
+            "updatedAt": "2026-09-22T08:12:33.179211Z"
+          }
+        },
+        "timestamp": "2026-09-22T08:12:33.218238Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:34.144Z",
+      "method": null,
+      "url": "/api/voice/executions/ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+          "proposalId": "8cc87607-1b93-41c1-8fd8-ace1a1d38930",
+          "commandId": "6dce183c-8fe7-4a5a-a557-7124300d3173",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "RESUME",
+          "state": "SUCCEEDED",
+          "outcome": "SUCCESS",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "PENDING",
+          "createdAt": "2026-09-22T08:12:33.179211Z",
+          "updatedAt": "2026-09-22T08:12:33.787081Z"
+        },
+        "timestamp": "2026-09-22T08:12:34.135868Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:38.670Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "FRAME_APPLIED",
+          "executionId": "ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+          "requestId": "9700e637-c95b-4a85-a4c0-d948eebb1fda",
+          "sequence": 5,
+          "expiresAt": "2026-09-22T08:12:40.302224Z"
+        },
+        "timestamp": "2026-09-22T08:12:35.364135Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:38.711Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:37.112928Z",
+            "latestFrameSequence": 67,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:37.516486Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:39.577Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "FRAME_APPLIED",
+          "executionId": "ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+          "requestId": "3c47ae8a-885a-44da-bdc0-622c1fe5b371",
+          "sequence": 5,
+          "expiresAt": "2026-09-22T08:12:44.155950Z"
+        },
+        "timestamp": "2026-09-22T08:12:39.484322Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:40.640Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:39.605335Z",
+            "latestFrameSequence": 87,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:40.621558Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:48.360Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:46.757610Z",
+            "latestFrameSequence": 138,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:47.760845Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:50.282Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:50.000615Z",
+            "latestFrameSequence": 152,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:50.266846Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:55.853Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:55.422642Z",
+            "latestFrameSequence": 184,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:55.664341Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:12:58.312Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:57.369508Z",
+            "latestFrameSequence": 196,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:12:58.296615Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:03.480Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:13:03.150670Z",
+            "latestFrameSequence": 224,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:13:03.439267Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:04.500Z",
+      "method": null,
+      "url": "/api/voice/executions/ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+          "proposalId": "8cc87607-1b93-41c1-8fd8-ace1a1d38930",
+          "commandId": "6dce183c-8fe7-4a5a-a557-7124300d3173",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "RESUME",
+          "state": "SUCCEEDED",
+          "outcome": "SUCCESS",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "STALE",
+          "createdAt": "2026-09-22T08:12:33.179211Z",
+          "updatedAt": "2026-09-22T08:13:04.290362Z"
+        },
+        "timestamp": "2026-09-22T08:13:04.364971Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:05.419Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "FRAME_APPLIED",
+          "executionId": "ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+          "requestId": "71c0e6e1-650b-452f-aeda-e8e4c9d96af8",
+          "sequence": 5,
+          "expiresAt": "2026-09-22T08:13:10.115789Z"
+        },
+        "timestamp": "2026-09-22T08:13:05.388746Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:05.789Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/reports",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "contextVersion": 6,
+          "stateVersion": 3,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790064731424",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T08:13:04.287352Z",
+          "latestFrameSequence": 236,
+          "sceneReady": true,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T08:13:05.705201Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:05.984Z",
+      "method": null,
+      "url": "/api/voice/executions/ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "ad03fa55-17d6-4aee-bc12-f52bf9c9d961",
+          "proposalId": "8cc87607-1b93-41c1-8fd8-ace1a1d38930",
+          "commandId": "6dce183c-8fe7-4a5a-a557-7124300d3173",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "RESUME",
+          "state": "SUCCEEDED",
+          "outcome": "SUCCESS",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "REPORTED_APPLIED",
+          "createdAt": "2026-09-22T08:12:33.179211Z",
+          "updatedAt": "2026-09-22T08:13:05.638447Z"
+        },
+        "timestamp": "2026-09-22T08:13:05.976744Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:06.366Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:13:05.625169Z",
+            "latestFrameSequence": 238,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:13:06.340517Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:06.635Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "SCENE_READY",
+          "executionId": null,
+          "requestId": "b0545745-b730-41dc-999b-f1947128b4df",
+          "sequence": 6,
+          "expiresAt": "2026-09-22T08:13:11.340517Z"
+        },
+        "timestamp": "2026-09-22T08:13:06.628173Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:07.888Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:13:05.625169Z",
+            "latestFrameSequence": 239,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:13:06.738828Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:07.888Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/reports",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "contextVersion": 6,
+          "stateVersion": 3,
+          "runtimeScope": "MISSION_CENTER",
+          "runtimeKind": "STANDALONE_ALGORITHM",
+          "executionBackend": "PYTHON_SIMULATION",
+          "algorithmRunId": "1790064731424",
+          "missionId": null,
+          "missionRunId": null,
+          "state": "RUNNING",
+          "protocolVersion": "algorithm.command.v1",
+          "lastHeartbeatReceivedAt": "2026-09-22T08:13:05.625169Z",
+          "latestFrameSequence": 239,
+          "sceneReady": true,
+          "capabilities": [
+            "START",
+            "PAUSE",
+            "RESUME",
+            "STOP"
+          ]
+        },
+        "timestamp": "2026-09-22T08:13:06.833149Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:08.004Z",
+      "method": null,
+      "url": "/api/voice/commands/proposals",
+      "status": 201,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "2f6b7dc478feb002c08e9c42d2e5a8057cb89bc6ee169e5c8bf4166a92a26f38",
+          "plan": {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "action": "STOP",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T08:13:07.904514Z",
+          "expiresAt": "2026-09-22T08:13:37.904514Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-22T08:13:07.974121Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:08.771Z",
+      "method": null,
+      "url": "/api/voice/commands/376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+          "status": "AWAITING_CONFIRMATION",
+          "planVersion": 1,
+          "planHash": "2f6b7dc478feb002c08e9c42d2e5a8057cb89bc6ee169e5c8bf4166a92a26f38",
+          "plan": {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "action": "STOP",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T08:13:07.904514Z",
+          "expiresAt": "2026-09-22T08:13:37.904514Z",
+          "executionId": null
+        },
+        "timestamp": "2026-09-22T08:13:08.754950Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:08.895Z",
+      "method": null,
+      "url": "/api/voice/commands/376f87b6-0d03-4fe5-9112-1fa3517e1dff/confirm",
+      "status": 202,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposal": {
+            "proposalId": "376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+            "status": "CONFIRMED",
+            "planVersion": 1,
+            "planHash": "2f6b7dc478feb002c08e9c42d2e5a8057cb89bc6ee169e5c8bf4166a92a26f38",
+            "plan": {
+              "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+              "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+              "contextVersion": 6,
+              "stateVersion": 3,
+              "action": "STOP",
+              "explicitDeviceCodes": [
+                "UAV-001",
+                "UAV-002",
+                "UAV-003",
+                "USV-001",
+                "USV-002",
+                "USV-003"
+              ],
+              "policyVersion": "voice-p0.v1"
+            },
+            "requiresConfirmation": true,
+            "createdAt": "2026-09-22T08:13:07.904514Z",
+            "expiresAt": "2026-09-22T08:13:37.904514Z",
+            "executionId": "d1b48b22-c3e8-4ae8-b6c5-b9ee21924c4f"
+          },
+          "execution": {
+            "executionId": "d1b48b22-c3e8-4ae8-b6c5-b9ee21924c4f",
+            "proposalId": "376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+            "commandId": "fce24340-7cc6-4633-a2f3-57bf676174e1",
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "action": "STOP",
+            "state": "QUEUED",
+            "outcome": "UNKNOWN",
+            "errorCode": null,
+            "timedOutAt": null,
+            "presentationStatus": "NOT_REQUIRED",
+            "createdAt": "2026-09-22T08:13:08.813291Z",
+            "updatedAt": "2026-09-22T08:13:08.813291Z"
+          }
+        },
+        "timestamp": "2026-09-22T08:13:08.891075Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:09.632Z",
+      "method": null,
+      "url": "/api/voice/executions/d1b48b22-c3e8-4ae8-b6c5-b9ee21924c4f",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "d1b48b22-c3e8-4ae8-b6c5-b9ee21924c4f",
+          "proposalId": "376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+          "commandId": "fce24340-7cc6-4633-a2f3-57bf676174e1",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "STOP",
+          "state": "QUEUED",
+          "outcome": "UNKNOWN",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "NOT_REQUIRED",
+          "createdAt": "2026-09-22T08:13:08.813291Z",
+          "updatedAt": "2026-09-22T08:13:08.813291Z"
+        },
+        "timestamp": "2026-09-22T08:13:09.578590Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:09.633Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "RUNNING",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:13:08.811281Z",
+            "latestFrameSequence": 247,
+            "sceneReady": true,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:13:09.617094Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:11.527Z",
+      "method": null,
+      "url": "/api/voice/executions/d1b48b22-c3e8-4ae8-b6c5-b9ee21924c4f",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "executionId": "d1b48b22-c3e8-4ae8-b6c5-b9ee21924c4f",
+          "proposalId": "376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+          "commandId": "fce24340-7cc6-4633-a2f3-57bf676174e1",
+          "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "action": "STOP",
+          "state": "SUCCEEDED",
+          "outcome": "SUCCESS",
+          "errorCode": null,
+          "timedOutAt": null,
+          "presentationStatus": "NOT_REQUIRED",
+          "createdAt": "2026-09-22T08:13:08.813291Z",
+          "updatedAt": "2026-09-22T08:13:10.438424Z"
+        },
+        "timestamp": "2026-09-22T08:13:11.413384Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:11.537Z",
+      "method": null,
+      "url": "/api/voice/contexts/4a01060f-515c-49c6-87b6-7e99a4eb3447/presentation/challenges",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+          "bindingId": "e482dd89-69fa-48a0-932f-8c014604c96c",
+          "kind": "SCENE_READY",
+          "executionId": null,
+          "requestId": "d7d94007-9e98-400b-b930-16a0995f81a2",
+          "sequence": 7,
+          "expiresAt": "2026-09-22T08:13:16.464471Z"
+        },
+        "timestamp": "2026-09-22T08:13:11.529218Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:13.334Z",
+      "method": null,
+      "url": "/api/voice/contexts",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": [
+          {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 8,
+            "stateVersion": 4,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064731424",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "STOPPED",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:13:10.132340Z",
+            "latestFrameSequence": 250,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          },
+          {
+            "runtimeRef": "75c6737a-fd40-4a01-bd5e-d51390c2bb0d",
+            "runtimeGeneration": "19937c65-c0a3-4b5a-b54e-d3783c1e6ebb",
+            "contextVersion": 5,
+            "stateVersion": 0,
+            "runtimeScope": "MISSION_CENTER",
+            "runtimeKind": "STANDALONE_ALGORITHM",
+            "executionBackend": "PYTHON_SIMULATION",
+            "algorithmRunId": "1790064726873",
+            "missionId": null,
+            "missionRunId": null,
+            "state": "LOST",
+            "protocolVersion": "algorithm.command.v1",
+            "lastHeartbeatReceivedAt": "2026-09-22T08:12:11.408183Z",
+            "latestFrameSequence": 1,
+            "sceneReady": false,
+            "capabilities": [
+              "START",
+              "PAUSE",
+              "RESUME",
+              "STOP"
+            ]
+          }
+        ],
+        "timestamp": "2026-09-22T08:13:13.317206Z"
+      }
+    },
+    {
+      "at": "2026-09-22T08:13:23.398Z",
+      "method": null,
+      "url": "/api/voice/commands/376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+      "status": 200,
+      "body": {
+        "code": "SUCCESS",
+        "message": "操作成功",
+        "data": {
+          "proposalId": "376f87b6-0d03-4fe5-9112-1fa3517e1dff",
+          "status": "CONFIRMED",
+          "planVersion": 1,
+          "planHash": "2f6b7dc478feb002c08e9c42d2e5a8057cb89bc6ee169e5c8bf4166a92a26f38",
+          "plan": {
+            "runtimeRef": "4a01060f-515c-49c6-87b6-7e99a4eb3447",
+            "runtimeGeneration": "83c7dae7-0630-435a-abd1-7112b3a0557d",
+            "contextVersion": 6,
+            "stateVersion": 3,
+            "action": "STOP",
+            "explicitDeviceCodes": [
+              "UAV-001",
+              "UAV-002",
+              "UAV-003",
+              "USV-001",
+              "USV-002",
+              "USV-003"
+            ],
+            "policyVersion": "voice-p0.v1"
+          },
+          "requiresConfirmation": true,
+          "createdAt": "2026-09-22T08:13:07.904514Z",
+          "expiresAt": "2026-09-22T08:13:37.904514Z",
+          "executionId": "d1b48b22-c3e8-4ae8-b6c5-b9ee21924c4f"
+        },
+        "timestamp": "2026-09-22T08:13:23.062148Z"
+      }
+    }
+  ],
+  "finishedAt": "2026-09-22T08:13:23.435Z",
+  "result": "PASS"
+}

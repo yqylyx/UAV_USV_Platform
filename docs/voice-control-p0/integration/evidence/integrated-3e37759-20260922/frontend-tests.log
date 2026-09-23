@@ -1,0 +1,13 @@
+
+> uav-usv-platform-frontend@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.1 C:/Users/hp-pc/Desktop/Project4/p0-acceptance-3e37759/frontend
+
+
+ Test Files  4 passed (4)
+      Tests  20 passed (20)
+   Start at  19:09:36
+   Duration  3.15s (environment 72%, transform 14%, import 6%, setup 5%, tests 1%)
+

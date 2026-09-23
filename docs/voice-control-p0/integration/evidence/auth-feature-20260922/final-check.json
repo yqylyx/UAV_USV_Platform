@@ -1,0 +1,13 @@
+{
+  "result": "PASS",
+  "coverageCount": 96,
+  "sourcePackageMatchesRunningJar": true,
+  "featureFlagsDisabled": true,
+  "frontendAndBackendReachable": true,
+  "dedicatedPeerAccountRestored": {
+    "role": "ADMIN",
+    "enabled": 0
+  },
+  "finalEvidenceTextFilesScanned": 169,
+  "actualSecretMatches": []
+}

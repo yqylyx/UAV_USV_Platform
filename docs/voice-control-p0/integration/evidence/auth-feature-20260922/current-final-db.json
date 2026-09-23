@@ -1,0 +1,500 @@
+{
+  "voice_runtime_context": [
+    {
+      "_id": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "_owner": 1,
+      "_configHash": "b6b2db1aae1f84ae29235ef3ebc8af31648b191e92dc6ba596f1f22466308efc",
+      "_nextSequence": 4,
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "contextVersion": 8,
+      "stateVersion": 4,
+      "runtimeScope": "MISSION_CENTER",
+      "runtimeKind": "STANDALONE_ALGORITHM",
+      "executionBackend": "PYTHON_SIMULATION",
+      "algorithmRunId": "1790091212343",
+      "missionId": null,
+      "missionRunId": null,
+      "state": "STOPPED",
+      "protocolVersion": "algorithm.command.v1",
+      "lastHeartbeatReceivedAt": "2026-09-22T15:35:14.271411Z",
+      "latestFrameSequence": 594,
+      "sceneReady": false,
+      "capabilities": [
+        "START",
+        "PAUSE",
+        "RESUME",
+        "STOP"
+      ],
+      "_members": [
+        "UAV-001",
+        "UAV-002",
+        "UAV-003",
+        "USV-001",
+        "USV-002",
+        "USV-003"
+      ],
+      "_protocolViolations": 0,
+      "_ready": true,
+      "_heartbeatSequence": 98,
+      "_binding": "94ddd494-595c-4694-a644-1cb1e08faf99",
+      "_sceneSequence": 17,
+      "_challenge": {
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "bindingId": "94ddd494-595c-4694-a644-1cb1e08faf99",
+        "kind": "SCENE_READY",
+        "executionId": null,
+        "requestId": "f533cbec-fea5-42e5-b215-f1bae12f68f5",
+        "sequence": 18,
+        "expiresAt": "2026-09-22T15:35:21.513431Z"
+      },
+      "_challengeUsed": false
+    }
+  ],
+  "voice_proposal": [
+    {
+      "_id": "0a9fb009-b1df-4edf-9c67-542861f5e219",
+      "_owner": 1,
+      "proposalId": "0a9fb009-b1df-4edf-9c67-542861f5e219",
+      "status": "CONFIRMED",
+      "planVersion": 1,
+      "planHash": "6faf57d92ed2262d19e8ea0e92fcf0836b823cae99b034797239916e3dd32558",
+      "plan": {
+        "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "contextVersion": 3,
+        "stateVersion": 0,
+        "action": "START",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "requiresConfirmation": true,
+      "createdAt": "2026-09-22T15:33:39.238119Z",
+      "expiresAt": "2026-09-22T15:34:09.238119Z",
+      "executionId": "2598cb77-8136-4643-899d-64a5df1ae4c1"
+    },
+    {
+      "_id": "3429cd1a-23cf-491e-9e1f-ddfe4f4b0aa6",
+      "_owner": 1,
+      "proposalId": "3429cd1a-23cf-491e-9e1f-ddfe4f4b0aa6",
+      "status": "CONFIRMED",
+      "planVersion": 1,
+      "planHash": "0d5a538379d4fcc9b0f32163f63df6d0eec5ca810048a0529e883de2d86074af",
+      "plan": {
+        "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "contextVersion": 4,
+        "stateVersion": 1,
+        "action": "PAUSE",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "requiresConfirmation": true,
+      "createdAt": "2026-09-22T15:33:51.377996Z",
+      "expiresAt": "2026-09-22T15:34:21.377996Z",
+      "executionId": "0c8a30e7-3c3d-426f-aee6-1d2bb357cccd"
+    },
+    {
+      "_id": "a7f84450-9e59-4e86-abf2-2285555812b0",
+      "_owner": 1,
+      "proposalId": "a7f84450-9e59-4e86-abf2-2285555812b0",
+      "status": "CONFIRMED",
+      "planVersion": 1,
+      "planHash": "03038455035f2bee1bf61241ed2a69e061c3ed4f28f527076bcd55db268843d7",
+      "plan": {
+        "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "contextVersion": 6,
+        "stateVersion": 3,
+        "action": "STOP",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "requiresConfirmation": true,
+      "createdAt": "2026-09-22T15:35:09.132289Z",
+      "expiresAt": "2026-09-22T15:35:39.132289Z",
+      "executionId": "289af601-72fa-4cf8-8684-0763b2ebdf08"
+    },
+    {
+      "_id": "f4ef4f3c-3606-4ecf-9a99-7d9093e341b6",
+      "_owner": 1,
+      "proposalId": "f4ef4f3c-3606-4ecf-9a99-7d9093e341b6",
+      "status": "CONFIRMED",
+      "planVersion": 1,
+      "planHash": "73876d66b5e2e1ed5f4d9294862d6a0315a321a85ae49f482d8296945f33bb44",
+      "plan": {
+        "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "contextVersion": 5,
+        "stateVersion": 2,
+        "action": "RESUME",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "requiresConfirmation": true,
+      "createdAt": "2026-09-22T15:34:22.314989Z",
+      "expiresAt": "2026-09-22T15:34:52.314989Z",
+      "executionId": "394fc790-e7ff-4a03-8063-db438cc5029f"
+    }
+  ],
+  "voice_execution": [
+    {
+      "_id": "0c8a30e7-3c3d-426f-aee6-1d2bb357cccd",
+      "_owner": 1,
+      "_manual": false,
+      "_eventSequence": 2,
+      "_queryCount": 0,
+      "_plan": {
+        "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "contextVersion": 4,
+        "stateVersion": 1,
+        "action": "PAUSE",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "executionId": "0c8a30e7-3c3d-426f-aee6-1d2bb357cccd",
+      "proposalId": "3429cd1a-23cf-491e-9e1f-ddfe4f4b0aa6",
+      "commandId": "29d41e42-0e6b-491b-8af6-8c43ecfe7daf",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "action": "PAUSE",
+      "state": "SUCCEEDED",
+      "outcome": "SUCCESS",
+      "errorCode": null,
+      "timedOutAt": null,
+      "presentationStatus": "NOT_REQUIRED",
+      "createdAt": "2026-09-22T15:33:59.545916Z",
+      "updatedAt": "2026-09-22T15:33:59.870044Z",
+      "_commandSequence": 2,
+      "_sendStartedAt": "2026-09-22T15:33:59.784478Z",
+      "_flushedAt": "2026-09-22T15:33:59.802815Z",
+      "_resultFrame": 157
+    },
+    {
+      "_id": "2598cb77-8136-4643-899d-64a5df1ae4c1",
+      "_owner": 1,
+      "_manual": false,
+      "_eventSequence": 2,
+      "_queryCount": 0,
+      "_plan": {
+        "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "contextVersion": 3,
+        "stateVersion": 0,
+        "action": "START",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "executionId": "2598cb77-8136-4643-899d-64a5df1ae4c1",
+      "proposalId": "0a9fb009-b1df-4edf-9c67-542861f5e219",
+      "commandId": "02d03348-9abf-4c26-a05c-f9a50e86414c",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "action": "START",
+      "state": "SUCCEEDED",
+      "outcome": "SUCCESS",
+      "errorCode": null,
+      "timedOutAt": null,
+      "presentationStatus": "REPORTED_APPLIED",
+      "createdAt": "2026-09-22T15:33:42.656962Z",
+      "updatedAt": "2026-09-22T15:33:44.621611Z",
+      "_commandSequence": 1,
+      "_sendStartedAt": "2026-09-22T15:33:42.746410Z",
+      "_flushedAt": "2026-09-22T15:33:42.776877Z",
+      "_resultFrame": 1,
+      "_presentationStartedAt": "2026-09-22T15:33:42.897124Z",
+      "_presentationDeadlineAt": "2026-09-22T15:34:12.897124Z",
+      "_presentationBinding": "94ddd494-595c-4694-a644-1cb1e08faf99"
+    },
+    {
+      "_id": "289af601-72fa-4cf8-8684-0763b2ebdf08",
+      "_owner": 1,
+      "_manual": false,
+      "_eventSequence": 2,
+      "_queryCount": 0,
+      "_plan": {
+        "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "contextVersion": 6,
+        "stateVersion": 3,
+        "action": "STOP",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "executionId": "289af601-72fa-4cf8-8684-0763b2ebdf08",
+      "proposalId": "a7f84450-9e59-4e86-abf2-2285555812b0",
+      "commandId": "4c390733-0e7d-4afa-9acb-b9c36c61975c",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "action": "STOP",
+      "state": "SUCCEEDED",
+      "outcome": "SUCCESS",
+      "errorCode": null,
+      "timedOutAt": null,
+      "presentationStatus": "NOT_REQUIRED",
+      "createdAt": "2026-09-22T15:35:14.277462Z",
+      "updatedAt": "2026-09-22T15:35:14.602794Z",
+      "_commandSequence": 4,
+      "_sendStartedAt": "2026-09-22T15:35:14.335169Z",
+      "_flushedAt": "2026-09-22T15:35:14.371974Z",
+      "_resultFrame": 594
+    },
+    {
+      "_id": "394fc790-e7ff-4a03-8063-db438cc5029f",
+      "_owner": 1,
+      "_manual": false,
+      "_eventSequence": 2,
+      "_queryCount": 0,
+      "_plan": {
+        "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+        "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+        "contextVersion": 5,
+        "stateVersion": 2,
+        "action": "RESUME",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "executionId": "394fc790-e7ff-4a03-8063-db438cc5029f",
+      "proposalId": "f4ef4f3c-3606-4ecf-9a99-7d9093e341b6",
+      "commandId": "e6a6c0ed-a0f6-4150-884f-e2374ec46c75",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "action": "RESUME",
+      "state": "SUCCEEDED",
+      "outcome": "SUCCESS",
+      "errorCode": null,
+      "timedOutAt": null,
+      "presentationStatus": "REPORTED_APPLIED",
+      "createdAt": "2026-09-22T15:34:26.527813Z",
+      "updatedAt": "2026-09-22T15:35:03.577352Z",
+      "_commandSequence": 3,
+      "_sendStartedAt": "2026-09-22T15:34:26.550827Z",
+      "_flushedAt": "2026-09-22T15:34:26.569322Z",
+      "_resultFrame": 157,
+      "_presentationStartedAt": "2026-09-22T15:34:26.622834Z",
+      "_presentationDeadlineAt": "2026-09-22T15:34:56.622834Z",
+      "_presentationBinding": "94ddd494-595c-4694-a644-1cb1e08faf99"
+    }
+  ],
+  "voice_command_event": [
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "kind": "COMMAND_RESULT",
+      "commandId": "29d41e42-0e6b-491b-8af6-8c43ecfe7daf",
+      "eventSequence": 1,
+      "status": "ACCEPTED",
+      "runtimeState": "RUNNING",
+      "stateVersion": 1,
+      "lastFrameSequence": 157,
+      "errorCode": null,
+      "affectedDeviceCodes": []
+    },
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "kind": "COMMAND_RESULT",
+      "commandId": "29d41e42-0e6b-491b-8af6-8c43ecfe7daf",
+      "eventSequence": 2,
+      "status": "SUCCEEDED",
+      "runtimeState": "PAUSED",
+      "stateVersion": 2,
+      "lastFrameSequence": 157,
+      "errorCode": null,
+      "affectedDeviceCodes": [
+        "UAV-001",
+        "UAV-002",
+        "UAV-003",
+        "USV-001",
+        "USV-002",
+        "USV-003"
+      ]
+    },
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "kind": "COMMAND_RESULT",
+      "commandId": "02d03348-9abf-4c26-a05c-f9a50e86414c",
+      "eventSequence": 1,
+      "status": "ACCEPTED",
+      "runtimeState": "PREPARED",
+      "stateVersion": 0,
+      "lastFrameSequence": 1,
+      "errorCode": null,
+      "affectedDeviceCodes": []
+    },
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "kind": "COMMAND_RESULT",
+      "commandId": "02d03348-9abf-4c26-a05c-f9a50e86414c",
+      "eventSequence": 2,
+      "status": "SUCCEEDED",
+      "runtimeState": "RUNNING",
+      "stateVersion": 1,
+      "lastFrameSequence": 1,
+      "errorCode": null,
+      "affectedDeviceCodes": [
+        "UAV-001",
+        "UAV-002",
+        "UAV-003",
+        "USV-001",
+        "USV-002",
+        "USV-003"
+      ]
+    },
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "kind": "COMMAND_RESULT",
+      "commandId": "4c390733-0e7d-4afa-9acb-b9c36c61975c",
+      "eventSequence": 1,
+      "status": "ACCEPTED",
+      "runtimeState": "RUNNING",
+      "stateVersion": 3,
+      "lastFrameSequence": 594,
+      "errorCode": null,
+      "affectedDeviceCodes": []
+    },
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "kind": "COMMAND_RESULT",
+      "commandId": "4c390733-0e7d-4afa-9acb-b9c36c61975c",
+      "eventSequence": 2,
+      "status": "SUCCEEDED",
+      "runtimeState": "STOPPED",
+      "stateVersion": 4,
+      "lastFrameSequence": 594,
+      "errorCode": null,
+      "affectedDeviceCodes": [
+        "UAV-001",
+        "UAV-002",
+        "UAV-003",
+        "USV-001",
+        "USV-002",
+        "USV-003"
+      ]
+    },
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "kind": "COMMAND_RESULT",
+      "commandId": "e6a6c0ed-a0f6-4150-884f-e2374ec46c75",
+      "eventSequence": 1,
+      "status": "ACCEPTED",
+      "runtimeState": "PAUSED",
+      "stateVersion": 2,
+      "lastFrameSequence": 157,
+      "errorCode": null,
+      "affectedDeviceCodes": []
+    },
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "kind": "COMMAND_RESULT",
+      "commandId": "e6a6c0ed-a0f6-4150-884f-e2374ec46c75",
+      "eventSequence": 2,
+      "status": "SUCCEEDED",
+      "runtimeState": "RUNNING",
+      "stateVersion": 3,
+      "lastFrameSequence": 157,
+      "errorCode": null,
+      "affectedDeviceCodes": [
+        "UAV-001",
+        "UAV-002",
+        "UAV-003",
+        "USV-001",
+        "USV-002",
+        "USV-003"
+      ]
+    }
+  ],
+  "outbox": [
+    {
+      "status": "SENT",
+      "claimedAt": "2026-09-22T15:33:59.783974Z",
+      "executionId": "0c8a30e7-3c3d-426f-aee6-1d2bb357cccd"
+    },
+    {
+      "status": "SENT",
+      "claimedAt": "2026-09-22T15:33:42.739905Z",
+      "executionId": "2598cb77-8136-4643-899d-64a5df1ae4c1"
+    },
+    {
+      "status": "SENT",
+      "claimedAt": "2026-09-22T15:35:14.335169Z",
+      "executionId": "289af601-72fa-4cf8-8684-0763b2ebdf08"
+    },
+    {
+      "status": "SENT",
+      "claimedAt": "2026-09-22T15:34:26.549824Z",
+      "executionId": "394fc790-e7ff-4a03-8063-db438cc5029f"
+    }
+  ]
+}

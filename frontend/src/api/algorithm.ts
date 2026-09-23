@@ -42,6 +42,11 @@ export async function controlAlgorithmRun(runId: number, action: 'start' | 'paus
   return response.data.data
 }
 
+export async function fetchAlgorithmRunStatus(runId: number): Promise<AlgorithmRuntimeStatus> {
+  const response = await http.get<ApiResponse<AlgorithmRuntimeStatus>>(`/algorithm-runs/${runId}/status`)
+  return response.data.data
+}
+
 export async function fetchAlgorithmFrame(runId: number, afterSequence = 0): Promise<AlgorithmRuntimeFrame | null> {
   const response = await http.get<ApiResponse<AlgorithmRuntimeFrame | null>>(`/algorithm-runs/${runId}/frame`, {
     params: { afterSequence }, timeout: 4000,

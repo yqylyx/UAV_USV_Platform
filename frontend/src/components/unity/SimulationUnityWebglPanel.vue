@@ -6,6 +6,7 @@ import type { UnityBridgeMessage } from '@/stores/unityBridge'
 import {
   appendUnityRuntimeParams,
   cloneUnityPayload,
+  createVueConsoleEnvelope,
   parseUnityWindowMessage,
 } from '@/utils/unityWebglProtocol'
 import type { UnityWindowMessage } from '@/utils/unityWebglProtocol'
@@ -179,12 +180,10 @@ function postEnvelope(message: UnityBridgeMessage) {
   }
   bridge.noteOutgoingFor(RUNTIME_SCOPE, envelope)
   emit('unityCommand', envelope)
-  iframeRef.value?.contentWindow?.postMessage({
-    source: 'vue-console',
-    runtimeScope: RUNTIME_SCOPE,
-    runtimeInstanceId: RUNTIME_INSTANCE_ID,
-    message: envelope,
-  }, window.location.origin)
+  iframeRef.value?.contentWindow?.postMessage(
+    createVueConsoleEnvelope(RUNTIME_SCOPE, RUNTIME_INSTANCE_ID, envelope),
+    window.location.origin,
+  )
 }
 
 function flushOutbox() {
@@ -212,7 +211,10 @@ function postToUnity(type: string, payload: Record<string, unknown> = {}) {
 
 function postPresentationEnvelope(message: UnityPresentationOutgoing) {
   if (!ready.value || !iframeRef.value?.contentWindow) return false
-  iframeRef.value.contentWindow.postMessage(message, window.location.origin)
+  iframeRef.value.contentWindow.postMessage(
+    createVueConsoleEnvelope(RUNTIME_SCOPE, RUNTIME_INSTANCE_ID, message),
+    window.location.origin,
+  )
   return true
 }
 

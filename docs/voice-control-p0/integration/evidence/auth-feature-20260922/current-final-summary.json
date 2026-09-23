@@ -1,0 +1,64 @@
+{
+  "result": "PASS",
+  "runtimeRef": "d8f98971-6e39-44fa-8d8e-0bd7bcaf864c",
+  "runId": 1790091212343,
+  "executionCount": 4,
+  "actions": [
+    {
+      "action": "PAUSE",
+      "proposalId": "3429cd1a-23cf-491e-9e1f-ddfe4f4b0aa6",
+      "executionId": "0c8a30e7-3c3d-426f-aee6-1d2bb357cccd",
+      "commandId": "29d41e42-0e6b-491b-8af6-8c43ecfe7daf",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "presentationStatus": "NOT_REQUIRED"
+    },
+    {
+      "action": "START",
+      "proposalId": "0a9fb009-b1df-4edf-9c67-542861f5e219",
+      "executionId": "2598cb77-8136-4643-899d-64a5df1ae4c1",
+      "commandId": "02d03348-9abf-4c26-a05c-f9a50e86414c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "presentationStatus": "REPORTED_APPLIED"
+    },
+    {
+      "action": "STOP",
+      "proposalId": "a7f84450-9e59-4e86-abf2-2285555812b0",
+      "executionId": "289af601-72fa-4cf8-8684-0763b2ebdf08",
+      "commandId": "4c390733-0e7d-4afa-9acb-b9c36c61975c",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "presentationStatus": "NOT_REQUIRED"
+    },
+    {
+      "action": "RESUME",
+      "proposalId": "f4ef4f3c-3606-4ecf-9a99-7d9093e341b6",
+      "executionId": "394fc790-e7ff-4a03-8063-db438cc5029f",
+      "commandId": "e6a6c0ed-a0f6-4150-884f-e2374ec46c75",
+      "runtimeGeneration": "315fb146-9074-4c24-a088-b719714b5aae",
+      "presentationStatus": "REPORTED_APPLIED"
+    }
+  ],
+  "stopPid": 3576,
+  "stopExitCode": 0,
+  "bindingIds": [
+    "94ddd494-595c-4694-a644-1cb1e08faf99"
+  ],
+  "challengeRequestIds": [
+    "07cda2ce-b5df-41bd-a97a-a00382014082",
+    "0a0b27a2-e76b-4a4e-ac2a-dda4b5ba1894",
+    "11b1e6ab-8d0e-49d0-a8d9-0d52a65e467f",
+    "1cdfd182-6dc5-466c-8012-c9609d01e9f9",
+    "26d18c3a-cece-4977-8609-32e67a626ea1",
+    "33b7a72c-cfc2-4cc3-a2d6-5613472b4e00",
+    "4105e0dc-126c-4de3-b972-46fa41702dee",
+    "45048852-7cae-4498-9957-09972a30fa92",
+    "5d163e75-2774-4163-9916-ae416bdfbe9c",
+    "8c2a4702-1f9e-40b1-aa06-1b380dfc7c48",
+    "8ca5a677-b056-484e-b486-504507f3b32d",
+    "8d373279-afc3-4a04-9232-c9fb4fca0e0a",
+    "945814ea-fd80-4dba-9719-cb6680c88a9a",
+    "a81d09c9-3c00-44da-bc26-2797d5f411fd",
+    "bbac9204-3e25-4cad-826d-cb109d344f7d",
+    "e1da47ce-73c3-4331-a626-f60e4b4c666a",
+    "ee224f52-91c5-46dc-b9bf-1b62158ef65b"
+  ]
+}

@@ -6,6 +6,37 @@ export type UnityWindowMessage = {
   raw?: Record<string, unknown>
 }
 
+export type VueConsoleEnvelope<T> = {
+  source: 'vue-console'
+  runtimeScope: string
+  runtimeInstanceId: string
+  message: T
+}
+
+export function createVueConsoleEnvelope<T>(
+  runtimeScope: string,
+  runtimeInstanceId: string,
+  message: T,
+): VueConsoleEnvelope<T> {
+  return {
+    source: 'vue-console',
+    runtimeScope,
+    runtimeInstanceId,
+    message,
+  }
+}
+
+export function unwrapUnityPresentationMessage(message: UnityWindowMessage) {
+  if (!['PRESENTATION_READY', 'PRESENTATION_HEARTBEAT', 'PRESENTATION_REPORT'].includes(message.type)) {
+    return null
+  }
+  return {
+    ...(message.payload ?? {}),
+    type: message.type,
+    requestId: message.requestId ?? message.payload?.requestId,
+  }
+}
+
 export function parseUnityWindowMessage(data: unknown): UnityWindowMessage | null {
   if (!data) return null
   if (typeof data === 'string') {

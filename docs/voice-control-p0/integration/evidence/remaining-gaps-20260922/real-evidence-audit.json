@@ -1,0 +1,22 @@
+{
+  "source": "../p14-unity-fix-20260922/",
+  "files": {
+    "acceptance-unity-disconnect.mjs": true,
+    "browser-disconnect.json": true,
+    "coverage-summary.json": true,
+    "diagnostics.json": true,
+    "identities.json": true,
+    "java.log": true,
+    "p0-real-runner-report.json": true,
+    "python.log": true,
+    "TEST-com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests.xml": true,
+    "TEST-com.uavusv.platform.module.voicecontrol.VoiceRealRunnerTests.xml": true,
+    "test_runner_terminal.py": true,
+    "unity-disconnected.png": true,
+    "repeat\\browser-disconnect.json": true,
+    "repeat\\diagnostics.json": true,
+    "repeat\\unity-disconnected.png": true
+  },
+  "result": "PASS",
+  "scope": "X20 evidence review only; not overall acceptance"
+}

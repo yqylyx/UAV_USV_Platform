@@ -30,6 +30,7 @@ import type {
 
 const activeKeyPrefix = 'voice-p0.active-command.v2:'
 const journalKeyPrefix = 'voice-p0.operation-journal.v1:'
+const presentationJournalKeyPrefix = 'voice-p0.presentation-journal.v1:'
 const terminalStates = new Set(['SUCCEEDED', 'REJECTED', 'FAILED', 'INVALIDATED'])
 
 function executionNeedsPolling(execution: VoiceExecution) {
@@ -39,6 +40,7 @@ function executionNeedsPolling(execution: VoiceExecution) {
 
 interface RecoveryState { proposalId?: string; executionId?: string }
 type JournalKind = 'CREATE_PROPOSAL' | 'CONFIRM' | 'CANCEL' | 'REPLACE_BINDING' | 'PRESENTATION_CHALLENGE' | 'PRESENTATION_REPORT'
+const presentationJournalKinds = new Set<JournalKind>(['REPLACE_BINDING', 'PRESENTATION_CHALLENGE', 'PRESENTATION_REPORT'])
 type JournalBody = VoiceProposalRequest | VoicePlanGuardRequest | VoicePresentationBindingRequest | VoicePresentationChallengeRequest | VoicePresentationReportRequest
 interface OperationJournal {
   userScope: string
@@ -85,14 +87,16 @@ export const useVoiceControlStore = defineStore('voiceControl', {
   actions: {
     userScope() { return useAuthStore().user?.username ?? '' },
     activeKey() { return `${activeKeyPrefix}${this.userScope()}` },
-    journalKey() { return `${journalKeyPrefix}${this.userScope()}` },
+    journalKey(presentation = false) {
+      return `${presentation ? presentationJournalKeyPrefix : journalKeyPrefix}${this.userScope()}`
+    },
     captureError(error: unknown, fallback: string) {
       this.error = error instanceof Error ? error.message : fallback
       this.errorCode = typeof error === 'object' && error && 'code' in error ? String(error.code ?? '') : ''
     },
     saveJournal(journal: OperationJournal) {
       try {
-        localStorage.setItem(this.journalKey(), JSON.stringify(journal))
+        localStorage.setItem(this.journalKey(presentationJournalKinds.has(journal.kind)), JSON.stringify(journal))
         this.recoveryAvailable = true
         return true
       } catch {
@@ -102,16 +106,16 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         return false
       }
     },
-    loadJournal(): OperationJournal | null {
+    loadJournal(presentation = false): OperationJournal | null {
       try {
-        const raw = localStorage.getItem(this.journalKey())
+        const raw = localStorage.getItem(this.journalKey(presentation))
         if (!raw) return null
         const journal = JSON.parse(raw) as OperationJournal
         return journal.userScope === this.userScope() ? journal : null
       } catch { return null }
     },
-    updateJournal(patch: Partial<OperationJournal>) {
-      const journal = this.loadJournal()
+    updateJournal(patch: Partial<OperationJournal>, presentation = false) {
+      const journal = this.loadJournal(presentation)
       if (journal) this.saveJournal({ ...journal, ...patch, updatedAt: new Date().toISOString() })
     },
     persist() {
@@ -128,14 +132,29 @@ export const useVoiceControlStore = defineStore('voiceControl', {
       try {
         localStorage.removeItem(this.activeKey())
         localStorage.removeItem(this.journalKey())
+        localStorage.removeItem(this.journalKey(true))
       } catch { this.recoveryAvailable = false }
+    },
+    clearStalePresentationRecovery() {
+      if (this.execution?.state !== 'SUCCEEDED' || this.execution.presentationStatus !== 'STALE') return false
+      this.presentationChallenge = null
+      try {
+        localStorage.removeItem(this.journalKey(true))
+        return true
+      } catch {
+        this.recoveryAvailable = false
+        this.errorCode = 'LOCAL_RECOVERY_UNAVAILABLE'
+        this.error = '无法清理已过期的展示恢复记录，请刷新页面后重试。'
+        return false
+      }
     },
     async refreshContexts(expectedAlgorithmRunId?: string) {
       expectedAlgorithmRunId ??= this.expectedAlgorithmRunId
+      const requestedBy = this.userScope()
       const requestVersion = ++this.contextRequestVersion
       try {
         const contexts = await fetchVoiceContexts()
-        if (requestVersion !== this.contextRequestVersion || expectedAlgorithmRunId !== this.expectedAlgorithmRunId) return false
+        if (requestedBy !== this.userScope() || requestVersion !== this.contextRequestVersion || expectedAlgorithmRunId !== this.expectedAlgorithmRunId) return false
         this.contexts = contexts
         const matches = contexts.filter(item => item.algorithmRunId === expectedAlgorithmRunId)
         if (matches.length !== 1) {
@@ -151,7 +170,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         this.errorCode = ''
         return true
       } catch (error) {
-        if (requestVersion === this.contextRequestVersion) this.captureError(error, '无法读取语音控制上下文')
+        if (requestedBy === this.userScope() && requestVersion === this.contextRequestVersion) this.captureError(error, '无法读取语音控制上下文')
         return false
       }
     },
@@ -164,13 +183,26 @@ export const useVoiceControlStore = defineStore('voiceControl', {
     },
     async recover() {
       if (!this.userScope()) return
+      // Pinia survives route changes. Clear volatile data before reading the
+      // current user's scoped records so another user's execution can never
+      // remain visible after logout/login in the same browser tab.
+      this.proposal = null
+      this.execution = null
+      this.presentationBinding = null
+      this.presentationChallenge = null
+      this.responseUnknown = false
       try {
         // v1 was not user-scoped and therefore must not be trusted or exposed
         // after upgrading to the v3.0 recovery rules.
         localStorage.removeItem('voice-p0.active-command.v1')
       } catch { this.recoveryAvailable = false }
       await this.refreshContexts()
-      const journal = this.loadJournal()
+      let journal = this.loadJournal()
+      if (journal && presentationJournalKinds.has(journal.kind)) {
+        this.saveJournal(journal)
+        try { localStorage.removeItem(this.journalKey()) } catch { this.recoveryAvailable = false }
+        journal = null
+      }
       if (journal && ['PREPARED', 'RESPONSE_UNKNOWN'].includes(journal.phase)) {
         this.recoveryPending = true
         try {
@@ -181,6 +213,23 @@ export const useVoiceControlStore = defineStore('voiceControl', {
           this.responseUnknown = isUnknownResult(error)
           if (!this.responseUnknown) this.updateJournal({ phase: 'BUSINESS_REJECTED' })
         } finally { this.recoveryPending = false }
+      } else if (journal) {
+        this.responseUnknown = false
+      }
+      let presentationJournal = this.loadJournal(true)
+      if (presentationJournal && (!this.context
+        || presentationJournal.runtimeRef !== this.context.runtimeRef
+        || presentationJournal.runtimeGeneration !== this.context.runtimeGeneration)) {
+        try { localStorage.removeItem(this.journalKey(true)) } catch { this.recoveryAvailable = false }
+        presentationJournal = null
+      }
+      if (presentationJournal && ['PREPARED', 'RESPONSE_UNKNOWN'].includes(presentationJournal.phase)) {
+        try {
+          await this.replayJournal(presentationJournal)
+        } catch {
+          // Presentation recovery remains isolated from operator commands.
+          // Keep its original key for the next recovery attempt.
+        }
       }
       try {
         const raw = localStorage.getItem(this.activeKey())
@@ -191,10 +240,11 @@ export const useVoiceControlStore = defineStore('voiceControl', {
       } catch (error) { this.captureError(error, '恢复上次指令状态失败') }
     },
     async replayJournal(journal: OperationJournal) {
+      const presentation = presentationJournalKinds.has(journal.kind)
       if (journal.kind === 'CREATE_PROPOSAL') {
         this.proposal = await createVoiceProposal(journal.body as VoiceProposalRequest, journal.idempotencyKey)
         this.execution = null
-        this.updateJournal({ resourceId: this.proposal.proposalId, phase: 'RESOURCE_RECEIVED' })
+        this.updateJournal({ resourceId: this.proposal.proposalId, phase: 'RESOURCE_RECEIVED' }, presentation)
       } else if (journal.kind === 'CONFIRM') {
         const known = await fetchVoiceProposal(journal.resourceId ?? '')
         if (known.status === 'CONFIRMED' && known.executionId) {
@@ -205,7 +255,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
           this.proposal = result.proposal
           this.execution = result.execution
         }
-        this.updateJournal({ executionId: this.execution.executionId, phase: 'RESOURCE_RECEIVED' })
+        this.updateJournal({ executionId: this.execution.executionId, phase: 'RESOURCE_RECEIVED' }, presentation)
       } else if (journal.kind === 'CANCEL') {
         const known = await fetchVoiceProposal(journal.resourceId ?? '')
         this.proposal = known.status === 'AWAITING_CONFIRMATION'
@@ -217,14 +267,14 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         if (this.presentationBinding.bindingId === (journal.body as VoicePresentationBindingRequest).expectedBindingId) {
           this.presentationBinding = await replaceVoicePresentationBinding(journal.runtimeRef, journal.body as VoicePresentationBindingRequest, journal.idempotencyKey)
         }
-        this.updateJournal({ resourceId: this.presentationBinding.bindingId, phase: 'RESOURCE_RECEIVED' })
+        this.updateJournal({ resourceId: this.presentationBinding.bindingId, phase: 'RESOURCE_RECEIVED' }, presentation)
       } else if (journal.kind === 'PRESENTATION_CHALLENGE') {
         this.presentationChallenge = await createVoicePresentationChallenge(
           journal.runtimeRef,
           journal.body as VoicePresentationChallengeRequest,
           journal.idempotencyKey,
         )
-        this.updateJournal({ resourceId: this.presentationChallenge.requestId, phase: 'RESOURCE_RECEIVED' })
+        this.updateJournal({ resourceId: this.presentationChallenge.requestId, phase: 'RESOURCE_RECEIVED' }, presentation)
       } else if (journal.kind === 'PRESENTATION_REPORT') {
         const updated = await reportVoicePresentation(
           journal.runtimeRef,
@@ -232,17 +282,26 @@ export const useVoiceControlStore = defineStore('voiceControl', {
           journal.idempotencyKey,
         )
         this.contexts = this.contexts.map(item => item.runtimeRef === updated.runtimeRef ? updated : item)
-        this.updateJournal({ resourceId: (journal.body as VoicePresentationReportRequest).requestId, phase: 'RESOURCE_RECEIVED' })
+        this.updateJournal({ resourceId: (journal.body as VoicePresentationReportRequest).requestId, phase: 'RESOURCE_RECEIVED' }, presentation)
       }
       this.persist()
     },
     beginJournal(kind: JournalKind, path: string, body: JournalBody, resourceId: string | null = null) {
       if (!this.context || !this.userScope()) return null
-      const previous = this.loadJournal()
+      const presentation = presentationJournalKinds.has(kind)
+      let previous = this.loadJournal(presentation)
+      if (presentation && previous
+        && (previous.runtimeRef !== this.context.runtimeRef
+          || previous.runtimeGeneration !== this.context.runtimeGeneration)) {
+        try { localStorage.removeItem(this.journalKey(true)) } catch { this.recoveryAvailable = false }
+        previous = null
+      }
       if (previous && ['PREPARED', 'RESPONSE_UNKNOWN'].includes(previous.phase)) {
-        this.responseUnknown = true
-        this.errorCode = 'RESPONSE_UNKNOWN'
-        this.error = '上一次写请求的结果仍待确认，请先使用原幂等键恢复，不能创建新请求。'
+        if (!presentation) {
+          this.responseUnknown = true
+          this.errorCode = 'RESPONSE_UNKNOWN'
+          this.error = '上一次写请求的结果仍待确认，请先使用原幂等键恢复，不能创建新请求。'
+        }
         return null
       }
       const journal: OperationJournal = {
@@ -322,10 +381,12 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         const journal = this.beginJournal('REPLACE_BINDING', `/api/voice/contexts/${this.context.runtimeRef}/presentation/bindings`, body)
         if (!journal) return
         this.presentationBinding = await replaceVoicePresentationBinding(this.context.runtimeRef, body, journal.idempotencyKey)
-        this.updateJournal({ resourceId: this.presentationBinding.bindingId, phase: 'RESOURCE_RECEIVED' })
+        this.updateJournal({ resourceId: this.presentationBinding.bindingId, phase: 'RESOURCE_RECEIVED' }, true)
+        this.error = ''
+        this.errorCode = ''
       } catch (error) {
-        this.responseUnknown = isUnknownResult(error)
-        this.updateJournal({ phase: this.responseUnknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' })
+        const unknown = isUnknownResult(error)
+        this.updateJournal({ phase: unknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' }, true)
         this.captureError(error, '建立 Unity 展示绑定失败')
       } finally { this.loading = false }
     },
@@ -345,11 +406,13 @@ export const useVoiceControlStore = defineStore('voiceControl', {
       if (!journal) return null
       try {
         this.presentationChallenge = await createVoicePresentationChallenge(this.context.runtimeRef, body, journal.idempotencyKey)
-        this.updateJournal({ resourceId: this.presentationChallenge.requestId, phase: 'RESOURCE_RECEIVED' })
+        this.updateJournal({ resourceId: this.presentationChallenge.requestId, phase: 'RESOURCE_RECEIVED' }, true)
+        this.error = ''
+        this.errorCode = ''
         return this.presentationChallenge
       } catch (error) {
-        this.responseUnknown = isUnknownResult(error)
-        this.updateJournal({ phase: this.responseUnknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' })
+        const unknown = isUnknownResult(error)
+        this.updateJournal({ phase: unknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' }, true)
         this.captureError(error, '申请 Unity 展示挑战失败')
         return null
       }
@@ -367,15 +430,18 @@ export const useVoiceControlStore = defineStore('voiceControl', {
         const updated = await reportVoicePresentation(this.context.runtimeRef, body, journal.idempotencyKey)
         this.contexts = this.contexts.map(item => item.runtimeRef === updated.runtimeRef ? updated : item)
         this.presentationChallenge = null
-        this.updateJournal({ phase: 'RESOURCE_RECEIVED' })
+        this.updateJournal({ phase: 'RESOURCE_RECEIVED' }, true)
+        this.error = ''
+        this.errorCode = ''
         if (body.kind === 'FRAME_APPLIED' && this.execution) {
           this.execution = await fetchVoiceExecution(this.execution.executionId)
+          if (terminalStates.has(this.execution.state)) await this.refreshContexts()
           this.persist()
         }
         return true
       } catch (error) {
-        this.responseUnknown = isUnknownResult(error)
-        this.updateJournal({ phase: this.responseUnknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' })
+        const unknown = isUnknownResult(error)
+        this.updateJournal({ phase: unknown ? 'RESPONSE_UNKNOWN' : 'BUSINESS_REJECTED' }, true)
         this.captureError(error, '提交 Unity 展示报告失败')
         return false
       }
@@ -388,6 +454,7 @@ export const useVoiceControlStore = defineStore('voiceControl', {
           // REPORTED_APPLIED or STALE.
           if (!executionNeedsPolling(this.execution)) return
           this.execution = await fetchVoiceExecution(this.execution.executionId)
+          if (terminalStates.has(this.execution.state)) await this.refreshContexts()
           this.persist()
         } else if (this.proposal?.status === 'AWAITING_CONFIRMATION') {
           this.proposal = await fetchVoiceProposal(this.proposal.proposalId)

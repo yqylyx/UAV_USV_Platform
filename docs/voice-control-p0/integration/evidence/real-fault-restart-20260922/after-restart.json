@@ -1,0 +1,131 @@
+{
+  "voice_runtime_context": [
+    {
+      "_id": "30d0ecdb-c4f3-45ff-8e5c-3efc61737c09",
+      "_owner": 2,
+      "_configHash": "40ecd0920c5846f255b5bb965991262270721a876643351986c3edd6a36b012f",
+      "_nextSequence": 1,
+      "runtimeRef": "30d0ecdb-c4f3-45ff-8e5c-3efc61737c09",
+      "runtimeGeneration": "5cc14cf9-27b1-43af-8f5c-25892b8a0b8e",
+      "contextVersion": 5,
+      "stateVersion": 1,
+      "runtimeScope": "MISSION_CENTER",
+      "runtimeKind": "STANDALONE_ALGORITHM",
+      "executionBackend": "PYTHON_SIMULATION",
+      "algorithmRunId": "1790084722203",
+      "missionId": null,
+      "missionRunId": null,
+      "state": "LOST",
+      "protocolVersion": "algorithm.command.v1",
+      "lastHeartbeatReceivedAt": "2026-09-22T13:45:27.528194Z",
+      "latestFrameSequence": 27,
+      "sceneReady": false,
+      "capabilities": [
+        "START",
+        "PAUSE",
+        "RESUME",
+        "STOP"
+      ],
+      "_members": [
+        "UAV-001",
+        "UAV-002",
+        "UAV-003",
+        "USV-001",
+        "USV-002",
+        "USV-003"
+      ],
+      "_protocolViolations": 0,
+      "_ready": true,
+      "_heartbeatSequence": 4
+    }
+  ],
+  "voice_proposal": [
+    {
+      "_id": "043659c9-913c-426c-9a3e-8844ba10b7ed",
+      "_owner": 2,
+      "proposalId": "043659c9-913c-426c-9a3e-8844ba10b7ed",
+      "status": "CONFIRMED",
+      "planVersion": 1,
+      "planHash": "31b83e5e2f22363db2185e11c72924a3ad811e589498288bd4e45ffb5b5de537",
+      "plan": {
+        "runtimeRef": "30d0ecdb-c4f3-45ff-8e5c-3efc61737c09",
+        "runtimeGeneration": "5cc14cf9-27b1-43af-8f5c-25892b8a0b8e",
+        "contextVersion": 3,
+        "stateVersion": 0,
+        "action": "START",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "requiresConfirmation": true,
+      "createdAt": "2026-09-22T13:45:24.484766Z",
+      "expiresAt": "2026-09-22T13:45:54.484766Z",
+      "executionId": "c674e721-171b-446d-818f-6b434ba20043",
+      "_source": "MANUAL"
+    }
+  ],
+  "voice_execution": [
+    {
+      "_id": "c674e721-171b-446d-818f-6b434ba20043",
+      "_owner": 2,
+      "_manual": true,
+      "_eventSequence": 1,
+      "_queryCount": 0,
+      "_plan": {
+        "runtimeRef": "30d0ecdb-c4f3-45ff-8e5c-3efc61737c09",
+        "runtimeGeneration": "5cc14cf9-27b1-43af-8f5c-25892b8a0b8e",
+        "contextVersion": 3,
+        "stateVersion": 0,
+        "action": "START",
+        "explicitDeviceCodes": [
+          "UAV-001",
+          "UAV-002",
+          "UAV-003",
+          "USV-001",
+          "USV-002",
+          "USV-003"
+        ],
+        "policyVersion": "voice-p0.v1"
+      },
+      "executionId": "c674e721-171b-446d-818f-6b434ba20043",
+      "proposalId": "043659c9-913c-426c-9a3e-8844ba10b7ed",
+      "commandId": "54126dcd-109b-4dd2-8304-df5c62353bff",
+      "runtimeRef": "30d0ecdb-c4f3-45ff-8e5c-3efc61737c09",
+      "runtimeGeneration": "5cc14cf9-27b1-43af-8f5c-25892b8a0b8e",
+      "action": "START",
+      "state": "TIMED_OUT",
+      "outcome": "UNKNOWN",
+      "errorCode": "RUNTIME_UNAVAILABLE",
+      "timedOutAt": "2026-09-22T13:45:36.338811Z",
+      "presentationStatus": "PENDING",
+      "createdAt": "2026-09-22T13:45:24.485953Z",
+      "updatedAt": "2026-09-22T13:45:36.338811Z",
+      "_commandSequence": 1,
+      "_sendStartedAt": "2026-09-22T13:45:24.577079Z",
+      "_flushedAt": "2026-09-22T13:45:24.637131Z",
+      "_resultFrame": 1
+    }
+  ],
+  "voice_command_event": [
+    {
+      "protocolVersion": "algorithm.command.v1",
+      "runtimeRef": "30d0ecdb-c4f3-45ff-8e5c-3efc61737c09",
+      "runtimeGeneration": "5cc14cf9-27b1-43af-8f5c-25892b8a0b8e",
+      "kind": "COMMAND_RESULT",
+      "commandId": "54126dcd-109b-4dd2-8304-df5c62353bff",
+      "eventSequence": 1,
+      "status": "ACCEPTED",
+      "runtimeState": "PREPARED",
+      "stateVersion": 0,
+      "lastFrameSequence": 1,
+      "errorCode": null,
+      "affectedDeviceCodes": []
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "scenario" : "heartbeat",
+  "runtimeRef" : "691bad26-0952-4c43-b1ba-351e04beab3a",
+  "trace" : "C:\\Users\\hp-pc\\Desktop\\Project4\\p0-acceptance-3e37759\\backend\\target\\fault-silence_heartbeat-09f9ce3d-4dbf-41d4-92d2-49e4503de119.jsonl",
+  "context" : {
+    "runtimeRef" : "691bad26-0952-4c43-b1ba-351e04beab3a",
+    "runtimeGeneration" : "7c85a600-5621-4c2d-99eb-d7bec2028527",
+    "contextVersion" : 3,
+    "stateVersion" : 0,
+    "runtimeScope" : "MISSION_CENTER",
+    "runtimeKind" : "STANDALONE_ALGORITHM",
+    "executionBackend" : "PYTHON_SIMULATION",
+    "algorithmRunId" : "990041",
+    "missionId" : null,
+    "missionRunId" : null,
+    "state" : "PREPARED",
+    "protocolVersion" : "algorithm.command.v1",
+    "lastHeartbeatReceivedAt" : "2026-09-19T08:00:00Z",
+    "latestFrameSequence" : 1,
+    "sceneReady" : false,
+    "capabilities" : [ "START", "PAUSE", "RESUME", "STOP" ]
+  },
+  "executions" : [ ]
+}

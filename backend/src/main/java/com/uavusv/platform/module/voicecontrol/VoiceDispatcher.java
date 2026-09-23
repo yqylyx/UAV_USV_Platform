@@ -106,7 +106,9 @@ public class VoiceDispatcher {
                                 if (!e.path("runtimeGeneration")
                                         .equals(c.path("runtimeGeneration")))
                                     throw VoiceFailure.conflict("GENERATION_MISMATCH");
-                                if (!e.path("_plan")
+                                if (!VoiceCommandApplicationService.POLICY_VERSION.equals(
+                                                e.path("_plan").path("policyVersion").asText())
+                                        || !e.path("_plan")
                                                 .path("contextVersion")
                                                 .equals(c.path("contextVersion"))
                                         || !e.path("_plan")

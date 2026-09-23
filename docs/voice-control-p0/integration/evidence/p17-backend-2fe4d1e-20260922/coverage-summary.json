@@ -1,0 +1,17 @@
+{
+  "caseCount": 96,
+  "counts": {
+    "PARTIAL": 52,
+    "PASS": 32,
+    "NOT_VERIFIED": 12,
+    "FAIL": 0
+  },
+  "P17": "PASS",
+  "P13": "PARTIAL",
+  "pythonTests": 8,
+  "initialJavaTests": 9,
+  "strengthenedStopRuns": 4,
+  "allStrengthenedExitCodes": 0,
+  "firstRunExitCode": 1,
+  "firstRunCause": "UNRESOLVED"
+}

@@ -21,10 +21,11 @@ class VoiceProcessTests extends VoiceControlTests {
         alive.set(false);
         r.ended(ref(), gen());
         var catalog = mock(AlgorithmCatalogService.class);
+        var businessRuns = mock(MissionRunRepository.class);
         var manager =
                 new AlgorithmRuntimeManager(
                         new ObjectMapper(),
-                        mock(MissionRunRepository.class),
+                        businessRuns,
                         catalog,
                         System.getenv().getOrDefault("PYTHON_COMMAND", "python"),
                         Path.of("src/test/resources/voicecontrol/contract_runner.py")
@@ -81,6 +82,7 @@ class VoiceProcessTests extends VoiceControlTests {
                                 LockSupport.parkNanos(1_000_000);
                         });
             }
+            verifyNoInteractions(businessRuns);
             assertEquals(before + 4, count("voice_execution"));
             assertEquals(8, count("voice_command_event"));
             var executions =
@@ -149,4 +151,19 @@ class VoiceProcessTests extends VoiceControlTests {
         error("RESOURCE_NOT_FOUND", () -> bridge.statusSnapshot(pending));
     }
 
+    @Test
+    void readyRequiresStateAndDoesNotAcceptRuntimeStateAlias() {
+        var bridge = new VoiceRuntimeBridge(r, app, worker, j);
+        var pending = r.register(991001L, "ready-field-boundary");
+        String ref = pending.path("runtimeRef").asText(), gen = pending.path("runtimeGeneration").asText();
+        r.attach(ref,gen,sent::add,()->true);
+        var ready=j.object().put("protocolVersion",RuntimeContextRegistry.PROTOCOL).put("kind","RUNTIME_READY")
+            .put("runtimeRef",ref).put("runtimeGeneration",gen).put("adapterId","test").put("state","PREPARED").put("stateVersion",0);
+        ready.putArray("capabilities").add("START").add("STOP");
+        var wrong=ready.deepCopy();wrong.remove("state");wrong.put("runtimeState","PREPARED");
+        assertFalse(bridge.ready(pending,wrong));bridge.event(pending,wrong);
+        assertFalse(bridge.statusSnapshot(pending).path("_ready").asBoolean());
+        assertTrue(bridge.ready(pending,ready));bridge.event(pending,ready);
+        assertTrue(bridge.statusSnapshot(pending).path("_ready").asBoolean());
+    }
 }

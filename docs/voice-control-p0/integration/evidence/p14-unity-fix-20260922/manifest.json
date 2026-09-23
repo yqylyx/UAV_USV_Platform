@@ -1,0 +1,17 @@
+{
+  "acceptance-unity-disconnect.mjs": "c34cb3297c0cfe3572c4410ff14875e04b0b9bbe0f3b34e3321f95ae9cadb274",
+  "browser-disconnect.json": "fd305850c3131eb4a8d5d280c0c0a95386ca949be7f699dc200f2c66bfe58822",
+  "coverage-summary.json": "d9414d7d6df33c440dc733eda26f702149f2983e7d6089aff594ff6b0d1e3b69",
+  "diagnostics.json": "4c52c992c2e9cdc7e79fda966d6f779d8e054663e74b72f8eedd10b64721fd55",
+  "identities.json": "939072cb9e4b104b80399b0f7464e70aef3e9244b8326c90549f812b19cfb937",
+  "java.log": "e8675eb649e32fce9443889d3d880ff931618ef60361908150bf0de9ba7a2e24",
+  "p0-real-runner-report.json": "aa56317217ab7d0dd2f63d5d387b630f0f286ad2660ac57e0a75c057070ba908",
+  "python.log": "21da2d9337ea5387c6d380df37199f95887d3d8605119d6805c89ab9aaf96132",
+  "TEST-com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests.xml": "af3e6897e604e8236d0c26b6eb72ce08fd30c55a15cb29474b66fa33f3a64155",
+  "TEST-com.uavusv.platform.module.voicecontrol.VoiceRealRunnerTests.xml": "877a52df052cff5a6fbcd8cdc084776b03d483d992ac28d79a329aa8df2e82c3",
+  "test_runner_terminal.py": "2e938a549823b0d47c0b78694058b9d89fda64434cff6faab52ce47ca7123e4b",
+  "unity-disconnected.png": "da41acacbb31434769ed84208c83c4d4bdf8cdd27b2b0b5cd44098f0823253c9",
+  "repeat\\browser-disconnect.json": "49d1321053ba40042c54680524d990bbb811d09f5eea0a314e634debaea8cf33",
+  "repeat\\diagnostics.json": "2daa49138e6a0144f150ae878420f369eb60b90ff808ece06154a50fb7b1c498",
+  "repeat\\unity-disconnected.png": "1bab08872abaadec49df54496b07470d6cfeec6d20a4e077a8d547cd4a584ef0"
+}

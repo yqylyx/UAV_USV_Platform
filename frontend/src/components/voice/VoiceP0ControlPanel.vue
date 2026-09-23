@@ -18,6 +18,7 @@ import type {
   VoiceMockRuntimeHint,
 } from '@/types/voiceControl'
 import type { UnityWindowMessage } from '@/utils/unityWebglProtocol'
+import { unwrapUnityPresentationMessage } from '@/utils/unityWebglProtocol'
 
 interface UnityPresentationSession {
   connected: boolean
@@ -39,11 +40,20 @@ const dialogOpen = ref(false)
 const chosenMockOutcome = ref<VoiceMockOutcome>('SUCCESS')
 const presentationPendingSince = ref<number | null>(null)
 const presentationBridgeEnabled = import.meta.env.VITE_VOICE_UNITY_PRESENTATION_V1 === 'true'
+const runtimeEnded = computed(() => !!context.value && (
+  ['STOPPED', 'CANCELLED', 'COMPLETED', 'FAILED', 'LOST'].includes(context.value.state)
+  || (execution.value?.runtimeRef === context.value.runtimeRef
+    && execution.value.runtimeGeneration === context.value.runtimeGeneration
+    && execution.value.action === 'STOP' && execution.value.state === 'SUCCEEDED')
+))
 const presentationBridgeReady = ref(false)
 const presentationBridgeStatus = ref(presentationBridgeEnabled ? '等待展示绑定' : 'E03 未启用')
 const helloAttempts = ref(0)
 const lastSceneProbeAt = ref(0)
+const lastAutoBindingKey = ref('')
+let pendingFrameResync = false
 let presentationRequestInFlight = false
+let presentationBindingInFlight = false
 let timer: number | undefined
 let pollTick = 0
 
@@ -68,7 +78,8 @@ const presentationLabels: Record<string, string> = {
 const errorLabels: Record<string, string> = {
   CONTEXT_CHANGED: '运行上下文、设备集合或展示绑定已变化，请刷新后重新发起。',
   GENERATION_MISMATCH: '场景已重新生成，旧代次不能继续使用。',
-  PLAN_MISMATCH: '冻结计划版本或哈希不匹配，请重新创建提案。',
+  INVALID_REQUEST: '请求格式或版本不受支持，请刷新页面后重试。',
+  PLAN_MISMATCH: '提案信息不一致，请重新获取提案。',
   INVALID_STATE: '当前算法状态不接受该动作。',
   HEARTBEAT_STALE: '算法心跳已失效，暂时不能下发动作。',
   RUNTIME_UNAVAILABLE: '算法进程当前不可用。',
@@ -104,7 +115,7 @@ const presentationCanResync = computed(() => execution.value?.state === 'SUCCEED
   && execution.value.presentationStatus === 'STALE')
 const contextSummary = computed(() => context.value
   ? `运行 ${context.value.algorithmRunId} · ${context.value.state} · 帧 ${context.value.latestFrameSequence} · 心跳${heartbeatFresh.value ? '正常' : '失效'}`
-  : '尚未发现可控制的独立算法实例')
+  : '未发现可控制的算法实例，请重新生成场景；若提示运行被占用，请联系管理员清理旧运行。')
 
 function disabledReason(action: VoiceAction) {
   if (recoveryPending.value || responseUnknown.value) return '请先核对上一次写请求的权威结果'
@@ -151,7 +162,7 @@ function presentationIdentityMatches(message: UnityPresentationIncoming) {
 }
 
 function emitHello() {
-  if (!presentationBridgeEnabled || !context.value || !presentationBinding.value?.bindingId
+  if (runtimeEnded.value || !presentationBridgeEnabled || !context.value || !presentationBinding.value?.bindingId
     || !props.unitySession.connected || props.unitySession.sceneRevision < 1) return
   emit('presentationMessage', {
     type: 'PRESENTATION_HELLO', protocolVersion: 'unity.presentation.v1',
@@ -165,7 +176,7 @@ function emitHello() {
 }
 
 async function requestPresentationProbe(forceFrameResync = false) {
-  if (!presentationBridgeEnabled || !presentationBridgeReady.value || presentationRequestInFlight
+  if (runtimeEnded.value || !presentationBridgeEnabled || !presentationBridgeReady.value || presentationRequestInFlight
     || presentationChallenge.value || !context.value || !presentationBinding.value?.bindingId) return
   const frameRequired = execution.value?.state === 'SUCCEEDED'
     && ['START', 'RESUME'].includes(execution.value.action)
@@ -192,6 +203,8 @@ async function requestPresentationProbe(forceFrameResync = false) {
 }
 
 async function resyncPresentation() {
+  pendingFrameResync = true
+  if (presentationRequestInFlight) return
   if (!presentationBridgeEnabled) {
     presentationBridgeStatus.value = '展示桥未启用，无法重新同步画面'
     return
@@ -206,14 +219,16 @@ async function resyncPresentation() {
   }
   // A stale or expired challenge cannot be reused. Explicit recovery always
   // asks the backend for a fresh one-time FRAME_APPLIED challenge.
-  store.presentationChallenge = null
+  if (!store.clearStalePresentationRecovery()) return
   await requestPresentationProbe(true)
+  if (presentationChallenge.value?.kind === 'FRAME_APPLIED') pendingFrameResync = false
 }
 
 async function handleUnityPresentationMessage(message: UnityWindowMessage) {
-  if (!presentationBridgeEnabled || !message.raw) return
-  if (!['PRESENTATION_READY', 'PRESENTATION_HEARTBEAT', 'PRESENTATION_REPORT'].includes(message.type)) return
-  const incoming = message.raw as unknown as UnityPresentationIncoming
+  if (!presentationBridgeEnabled || runtimeEnded.value) return
+  const unwrapped = unwrapUnityPresentationMessage(message)
+  if (!unwrapped) return
+  const incoming = unwrapped as unknown as UnityPresentationIncoming
   if (!presentationIdentityMatches(incoming)) return
   if (incoming.type === 'PRESENTATION_READY' || incoming.type === 'PRESENTATION_HEARTBEAT') {
     presentationBridgeReady.value = true
@@ -242,10 +257,27 @@ async function handleUnityPresentationMessage(message: UnityWindowMessage) {
 }
 
 async function takePresentationBinding() {
-  await store.takePresentationBinding()
-  presentationBridgeReady.value = false
-  helloAttempts.value = 0
-  if (presentationBinding.value?.bindingId) emitHello()
+  lastAutoBindingKey.value = ''
+  await establishPresentationBinding('')
+}
+
+async function establishPresentationBinding(autoBindingKey: string) {
+  if (presentationBindingInFlight) return
+  if (autoBindingKey && autoBindingKey === lastAutoBindingKey.value && presentationBinding.value?.bindingId) {
+    emitHello()
+    return
+  }
+  presentationBindingInFlight = true
+  if (autoBindingKey) lastAutoBindingKey.value = autoBindingKey
+  try {
+    await store.takePresentationBinding()
+    presentationBridgeReady.value = false
+    helloAttempts.value = 0
+    if (presentationBinding.value?.bindingId) emitHello()
+    else if (autoBindingKey === lastAutoBindingKey.value) lastAutoBindingKey.value = ''
+  } finally {
+    presentationBindingInFlight = false
+  }
 }
 
 function setMockOutcome(event: Event) {
@@ -271,8 +303,14 @@ watch(() => [
   presentationBridgeReady.value = false
   helloAttempts.value = 0
   store.presentationChallenge = null
-  if (presentationBridgeEnabled && context.value && props.unitySession.connected && props.unitySession.sceneRevision > 0) {
-    await takePresentationBinding()
+  if (!runtimeEnded.value && presentationBridgeEnabled && context.value && props.unitySession.connected && props.unitySession.sceneRevision > 0) {
+    const autoBindingKey = [
+      context.value.runtimeRef,
+      context.value.runtimeGeneration,
+      props.unitySession.unityInstanceId,
+      props.unitySession.sceneRevision,
+    ].join(':')
+    await establishPresentationBinding(autoBindingKey)
   }
 })
 
@@ -280,6 +318,13 @@ watch(() => [execution.value?.state, execution.value?.presentationStatus], ([sta
   if (state === 'SUCCEEDED' && presentation === 'PENDING') presentationPendingSince.value ??= Date.now()
   else presentationPendingSince.value = null
 }, { immediate: true })
+
+watch(runtimeEnded, ended => {
+  if (!ended) return
+  store.presentationChallenge = null
+  presentationBridgeReady.value = false
+  presentationBridgeStatus.value = '运行已结束，已停止展示探测'
+})
 
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') void store.refreshContexts()
@@ -301,14 +346,15 @@ onMounted(async () => {
       ? pollTick % (timedOutSeconds < 30 ? 2 : 10) === 0
       : true
     if (executionDue) void store.poll()
-    if (presentationBridgeEnabled) {
+    if (presentationBridgeEnabled && !runtimeEnded.value) {
       if (!presentationBridgeReady.value && helloAttempts.value < 30) emitHello()
       else if (!presentationBridgeReady.value && helloAttempts.value >= 30) presentationBridgeStatus.value = 'Unity 展示握手超时，请重新接管'
       else {
         if (presentationChallenge.value && Date.parse(presentationChallenge.value.expiresAt) <= Date.now()) {
           store.presentationChallenge = null
         }
-        void requestPresentationProbe()
+        if (pendingFrameResync) void resyncPresentation()
+        else void requestPresentationProbe()
       }
     }
   }, 1000)

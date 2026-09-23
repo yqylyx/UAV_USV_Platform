@@ -367,6 +367,15 @@
         var type = normalizeCommand(message.type);
         var payload = message.payload || {};
 
+        if (type === 'presentation_hello' || type === 'presentation_probe') {
+          window.uavUsvUnityInstance.SendMessage(
+            'PlatformBridge',
+            'Receive',
+            JSON.stringify(message),
+          );
+          return true;
+        }
+
         if (type === 'initializeplatform') {
           return sendPlatformBridge('InitializePlatform', {
             runId: String(payload.runId || runId || ''),
@@ -738,7 +747,7 @@
           window.requestAnimationFrame(function () {
             window.requestAnimationFrame(function () {
               if (serial !== viewportTransitionSerial || viewportTransitioning) return;
-          if (transitionSnapshot) transitionSnapshot.classList.remove('visible');
+              if (transitionSnapshot) transitionSnapshot.classList.remove('visible');
               postUnityMessage('viewportApplied', {
                 width: window.innerWidth,
                 height: window.innerHeight,
@@ -840,8 +849,14 @@
         document.body.appendChild(script);
       }
 
+      function isTrustedParentMessageEvent(event, expectedOrigin, expectedParent) {
+        return !!event
+          && event.origin === expectedOrigin
+          && event.source === expectedParent;
+      }
+
       window.addEventListener('message', function (event) {
-        if (event.origin !== window.location.origin) return;
+        if (!isTrustedParentMessageEvent(event, window.location.origin, window.parent)) return;
         var data = event.data || {};
         if (data.source !== 'vue-console' || !data.message) return;
         if (data.runtimeScope && data.runtimeScope !== runtimeScope) return;

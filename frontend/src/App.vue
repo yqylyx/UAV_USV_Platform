@@ -82,7 +82,7 @@ watch(visualSubscriptionActive, (active, wasActive) => {
     :layer="95"
   />
   <RouterView v-slot="{ Component }">
-    <KeepAlive include="OverviewWorkspaceView,MissionWorkspaceView">
+    <KeepAlive :key="authStore.user?.username ?? 'anonymous'" include="OverviewWorkspaceView,MissionWorkspaceView">
       <component :is="Component" />
     </KeepAlive>
   </RouterView>

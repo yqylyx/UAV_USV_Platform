@@ -1,0 +1,2177 @@
+[
+  {
+    "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+    "tests": 309,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      {
+        "method": "stateChangedFrameAndHttpReceiptNeverProveSuccess",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "concurrentConfirmDifferentKeysHasOneExecutionAndOneWrite",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "timeoutRemainsUnknownOccupiedAndLateSuccessReconciles",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "concurrentConfirmCancelHasOneWinner",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "staleSceneBlocksResumeButNotStop",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "changedContextInvalidatesFrozenPlan",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "sameKeyDifferentBodyRejectedBeforeAnyExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "threeInvalidEnvelopesMakeChannelReadOnlyWithoutChangingState",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "crossOwnerNotFoundAndServiceRoleRechecked",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "badGenerationCannotSettleExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "boundedLineReaderDrainsOversizedLine",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "mismatchedMembersCannotSettleExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "ordinaryFramesDoNotInvalidatePlan",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationBindingEvidenceExpiresAndReplayCannotRefresh",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unknownQueryReplyIsReadOnly",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unknownFieldAndDuplicateJsonRejected",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "queueExpiryDoesNotSendOrConsumeCommandSequence",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "expiresExactlyAtDeadlineAndPersistsExpiration",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmedReplaySurvivesExpiry",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "ambiguousWriteIsNotRetried",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "heartbeatBoundaryAndPauseDoesNotNeedScene",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "disableStopsNewWritesButDrainsAcceptedExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "pauseDoesNotAcquirePresentationDeadline",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "shutdownAndRecoveryNeverReplayCommand",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "queryUnknownNeverResendsAndMaxThreeQueries",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "workerRechecksRevokedRoleBeforeWriting",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "conflictingDuplicateDoesNotOverwriteSuccessfulResult",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "transactionFailureRollsBackProposalExecutionAndOutbox",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "frozenGoldenHashAndAllSchemaFixtures",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "happyPathAndPublicShapes",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "lateAcceptedNeverRollsBackSuccess",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unsupportedProtocolOrActionNeverWrites(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unsupportedProtocolOrActionNeverWrites(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "staleSceneGatesOnlyStartAndResume(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "staleSceneGatesOnlyStartAndResume(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "staleSceneGatesOnlyStartAndResume(String)[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "staleSceneGatesOnlyStartAndResume(String)[4]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "proposalExpiryAtEachMillisecondBoundary(long)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "proposalExpiryAtEachMillisecondBoundary(long)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "proposalExpiryAtEachMillisecondBoundary(long)[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "dangerousUnknownProposalFieldsAreRejected(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "dangerousUnknownProposalFieldsAreRejected(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "dangerousUnknownProposalFieldsAreRejected(String)[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "dangerousUnknownProposalFieldsAreRejected(String)[4]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[4]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[5]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[6]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[7]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[8]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[9]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[10]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[11]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[12]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[13]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[14]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[15]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[16]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[17]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[18]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[19]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[20]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[21]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[22]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[23]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[24]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[25]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[26]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[27]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[28]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[29]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[30]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[31]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[32]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[33]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[34]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[35]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[36]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[37]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[38]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[39]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[40]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[41]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[42]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[43]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[44]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[45]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[46]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[47]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[48]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[49]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[50]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[51]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[52]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[53]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[54]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[55]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[56]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[57]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[58]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[59]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[60]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[61]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[62]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[63]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[64]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[65]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[66]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[67]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[68]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[69]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[70]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[71]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[72]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[73]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[74]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[75]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[76]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[77]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[78]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[79]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[80]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[81]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[82]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[83]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[84]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[85]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[86]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[87]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[88]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[89]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[90]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[91]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[92]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[93]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[94]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[95]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[96]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[97]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[98]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[99]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmConcurrencyHundredRounds()[100]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "twoWorkersOnlyClaimOneOutbox",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "oldBindingAndGenerationReportsCannotRefreshScene",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "wrongPlanNeverCreatesExecution(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "wrongPlanNeverCreatesExecution(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "restartRecoversEachDispatchStageWithoutReplay(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "restartRecoversEachDispatchStageWithoutReplay(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "restartRecoversEachDispatchStageWithoutReplay(String)[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "restartRecoversEachDispatchStageWithoutReplay(String)[4]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "committedSendingFailureDoesNotRetry(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "committedSendingFailureDoesNotRetry(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationFrameBounds(long)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationFrameBounds(long)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationFrameBounds(long)[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationFrameBounds(long)[4]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "dispatchRechecksChangedIdentityAndMembership(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "dispatchRechecksChangedIdentityAndMembership(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "exactCommandTimeoutBoundary(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "exactCommandTimeoutBoundary(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "revocationRejectsCachedConfirmationAndNewWrites(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "revocationRejectsCachedConfirmationAndNewWrites(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "revocationRejectsCachedConfirmationAndNewWrites(String)[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "receiptPersistenceFailureIsBufferedAndReconciled",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "duplicateCancelAndConfirmedCancelNeverWrite",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unsuccessfulExecutionCannotAcquireFrameChallenge(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unsuccessfulExecutionCannotAcquireFrameChallenge(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unsuccessfulExecutionCannotAcquireFrameChallenge(String)[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unsuccessfulExecutionCannotAcquireFrameChallenge(String)[4]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[4]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[5]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[6]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[7]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[8]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[9]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[10]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[11]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[12]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[13]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[14]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[15]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[16]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[17]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[18]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[19]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[20]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[21]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[22]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[23]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[24]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[25]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[26]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[27]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[28]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[29]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[30]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[31]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[32]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[33]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[34]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[35]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[36]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[37]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[38]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[39]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[40]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[41]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[42]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[43]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[44]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[45]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[46]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[47]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[48]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[49]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[50]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[51]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[52]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[53]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[54]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[55]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[56]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[57]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[58]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[59]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[60]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[61]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[62]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[63]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[64]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[65]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[66]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[67]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[68]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[69]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[70]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[71]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[72]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[73]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[74]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[75]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[76]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[77]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[78]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[79]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[80]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[81]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[82]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[83]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[84]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[85]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[86]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[87]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[88]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[89]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[90]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[91]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[92]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[93]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[94]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[95]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[96]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[97]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[98]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[99]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmCancelHundredRounds()[100]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[3]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[4]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[5]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[6]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[7]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[8]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[9]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[10]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[11]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[12]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[13]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[14]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[15]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[16]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[17]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[18]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[19]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[20]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[21]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[22]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[23]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[24]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[25]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[26]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[27]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[28]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[29]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[30]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[31]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[32]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[33]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[34]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[35]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      },
+      {
+        "method": "actionStateMatrix(String, String)[36]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceCoverageGapTests",
+        "result": "PASS"
+      }
+    ]
+  },
+  {
+    "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+    "tests": 35,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      {
+        "method": "stateChangedFrameAndHttpReceiptNeverProveSuccess",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "concurrentConfirmDifferentKeysHasOneExecutionAndOneWrite",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "timeoutRemainsUnknownOccupiedAndLateSuccessReconciles",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "concurrentConfirmCancelHasOneWinner",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "staleSceneBlocksResumeButNotStop",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "changedContextInvalidatesFrozenPlan",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "sameKeyDifferentBodyRejectedBeforeAnyExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "threeInvalidEnvelopesMakeChannelReadOnlyWithoutChangingState",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "crossOwnerNotFoundAndServiceRoleRechecked",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "badGenerationCannotSettleExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "boundedLineReaderDrainsOversizedLine",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "mismatchedMembersCannotSettleExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "ordinaryFramesDoNotInvalidatePlan",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationBindingEvidenceExpiresAndReplayCannotRefresh",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unknownQueryReplyIsReadOnly",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unknownFieldAndDuplicateJsonRejected",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "queueExpiryDoesNotSendOrConsumeCommandSequence",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "expiresExactlyAtDeadlineAndPersistsExpiration",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmedReplaySurvivesExpiry",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "ambiguousWriteIsNotRetried",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "heartbeatBoundaryAndPauseDoesNotNeedScene",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "disableStopsNewWritesButDrainsAcceptedExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "pauseDoesNotAcquirePresentationDeadline",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "shutdownAndRecoveryNeverReplayCommand",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "queryUnknownNeverResendsAndMaxThreeQueries",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "workerRechecksRevokedRoleBeforeWriting",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "conflictingDuplicateDoesNotOverwriteSuccessfulResult",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "transactionFailureRollsBackProposalExecutionAndOutbox",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "frozenGoldenHashAndAllSchemaFixtures",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "happyPathAndPublicShapes",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "emptySuccessfulReceiptCannotSettleOrAdvanceRuntime",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "canonicalDeviceCodesBecomeTheExactCommandMembership",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      },
+      {
+        "method": "codeOnlyRealFrameRejectsActionWithoutEnqueueing",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceDeviceMembershipTests",
+        "result": "PASS"
+      }
+    ]
+  },
+  {
+    "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      {
+        "method": "malformedAndUnknownFieldsReturn400",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unauthenticatedGetAndPostAre401",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+        "result": "PASS"
+      },
+      {
+        "method": "nonAdminDeniedAtProxiedServiceAndHttp",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+        "result": "PASS"
+      },
+      {
+        "method": "rejectsOversizedStreamAndWrongMediaType",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+        "result": "PASS"
+      },
+      {
+        "method": "authenticatedPostRequiresCsrf",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+        "result": "PASS"
+      },
+      {
+        "method": "allEndpointsDenyAnonymousAndAllPostsRequireCsrf",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+        "result": "PASS"
+      },
+      {
+        "method": "readHasNoStoreAndNoInstancesIsEmpty",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+        "result": "PASS"
+      },
+      {
+        "method": "bothNonAdminRolesDenyEveryCommandWrite",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceHttpTests",
+        "result": "PASS"
+      }
+    ]
+  },
+  {
+    "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+    "tests": 36,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      {
+        "method": "stateChangedFrameAndHttpReceiptNeverProveSuccess",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "concurrentConfirmDifferentKeysHasOneExecutionAndOneWrite",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "timeoutRemainsUnknownOccupiedAndLateSuccessReconciles",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "concurrentConfirmCancelHasOneWinner",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "staleSceneBlocksResumeButNotStop",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "changedContextInvalidatesFrozenPlan",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "sameKeyDifferentBodyRejectedBeforeAnyExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "threeInvalidEnvelopesMakeChannelReadOnlyWithoutChangingState",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "crossOwnerNotFoundAndServiceRoleRechecked",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "badGenerationCannotSettleExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "boundedLineReaderDrainsOversizedLine",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "mismatchedMembersCannotSettleExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "ordinaryFramesDoNotInvalidatePlan",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationBindingEvidenceExpiresAndReplayCannotRefresh",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unknownQueryReplyIsReadOnly",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unknownFieldAndDuplicateJsonRejected",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "queueExpiryDoesNotSendOrConsumeCommandSequence",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "expiresExactlyAtDeadlineAndPersistsExpiration",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmedReplaySurvivesExpiry",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "ambiguousWriteIsNotRetried",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "heartbeatBoundaryAndPauseDoesNotNeedScene",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "disableStopsNewWritesButDrainsAcceptedExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "pauseDoesNotAcquirePresentationDeadline",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "shutdownAndRecoveryNeverReplayCommand",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "queryUnknownNeverResendsAndMaxThreeQueries",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "workerRechecksRevokedRoleBeforeWriting",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "conflictingDuplicateDoesNotOverwriteSuccessfulResult",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "transactionFailureRollsBackProposalExecutionAndOutbox",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "frozenGoldenHashAndAllSchemaFixtures",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "happyPathAndPublicShapes",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "existingManagerNegotiatesPipesAndSerializesFourManualActions",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "failedStartupDoesNotReturnSuccessfulPrepareMetadata",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "prepareExposesOnlyNegotiatedSubsetAndReplacesIdentityWithNewProcess",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      },
+      {
+        "method": "statusSnapshotChecksOwnerAndGenerationAndDoesNotInventNegotiation",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceProcessTests",
+        "result": "PASS"
+      }
+    ]
+  },
+  {
+    "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+    "tests": 38,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      {
+        "method": "stateChangedFrameAndHttpReceiptNeverProveSuccess",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "concurrentConfirmDifferentKeysHasOneExecutionAndOneWrite",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "timeoutRemainsUnknownOccupiedAndLateSuccessReconciles",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "concurrentConfirmCancelHasOneWinner",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "staleSceneBlocksResumeButNotStop",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationDeadlineSurvivesServiceRecreationAndAcceptsLateReport(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "changedContextInvalidatesFrozenPlan",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "sameKeyDifferentBodyRejectedBeforeAnyExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "threeInvalidEnvelopesMakeChannelReadOnlyWithoutChangingState",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "crossOwnerNotFoundAndServiceRoleRechecked",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "badGenerationCannotSettleExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "boundedLineReaderDrainsOversizedLine",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "mismatchedMembersCannotSettleExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "ordinaryFramesDoNotInvalidatePlan",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "presentationBindingEvidenceExpiresAndReplayCannotRefresh",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unknownQueryReplyIsReadOnly",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "unknownFieldAndDuplicateJsonRejected",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "queueExpiryDoesNotSendOrConsumeCommandSequence",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "expiresExactlyAtDeadlineAndPersistsExpiration",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "confirmedReplaySurvivesExpiry",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "ambiguousWriteIsNotRetried",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "heartbeatBoundaryAndPauseDoesNotNeedScene",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "disableStopsNewWritesButDrainsAcceptedExecution",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "pauseDoesNotAcquirePresentationDeadline",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "shutdownAndRecoveryNeverReplayCommand",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "queryUnknownNeverResendsAndMaxThreeQueries",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "workerRechecksRevokedRoleBeforeWriting",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "conflictingDuplicateDoesNotOverwriteSuccessfulResult",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "transactionFailureRollsBackProposalExecutionAndOutbox",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "frozenGoldenHashAndAllSchemaFixtures",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "happyPathAndPublicShapes",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "realStatusQueryRecoversDroppedSuccessWithoutResend",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "restartRejectsOldGenerationCommandAndReceipt",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "missingHeartbeatBlocksCommandsWithoutKillingRunner",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "stopEofCannotFabricateSuccessOrResend(String)[1]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "stopEofCannotFabricateSuccessOrResend(String)[2]",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      },
+      {
+        "method": "crashMarksRuntimeLostAndOutcomeUnknown",
+        "class": "com.uavusv.platform.module.voicecontrol.VoiceRealRunnerFaultTests",
+        "result": "PASS"
+      }
+    ]
+  }
+]

@@ -1,0 +1,37 @@
+[
+  {
+    "name": "ready",
+    "at": "2026-09-22T11:18:30.954Z",
+    "text": "UNITY WEBGL ONLINE\nUnity WebGL 加载中\nUnity 桥已连接，正在初始化系统总览平台\nWAITING FOR PLATFORM\n当前设备\nUAV-01\n离线\n起飞\n悬停\n返航\n降落\n紧急降落\nUAV-USV\n协同仿真平台\n系统总览\n协同态势\n光电视觉\n雷达态势\n设备管理\np0_admin\nADMIN\nUAV-USV 协同仿真平台\n算法仿真\n系统总览\n算法仿真\n独立仿真 WebGL · ONLINE\n场景配置\nV3 PROTOCOL\n算法\n智能粒球仿真护航\nGB-SFLA-CS 协同围捕（模拟）\n\n算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。\n\n1 护航目标 · 1 敌船\n3 UAV · 3 USV · 世界 360×280 m\n规划预览 · 同时来袭 1 艘 · 实时仿真\nUAV 数量\nUSV 数量\nUAV 巡航速度 m/s\n上限 15 m/s\nUSV 巡航速度 m/s\n上限 4 m/s\n生成场景\n重置\n算法仿真\n3 UAV · 3 USV · 1 护航目标 · 1 敌船\nUNITY WEBGL ONLINE\n放大画面\n阶段\n编队护航 · THREAT-001\n综合进度\n0%\n可见目标\n2\n已捕获\n0/1\n仿真时长\n00:00\n开始\n暂停\n停止\n1\n编队护航\n2\n意图识别\n3\n分向守卫\n4\n协同拦截\n5\n追逃压制\n6\n动态围捕\n7\n稳定闭环\n8\n完成\n跟随设备\n全局视角\n语音控制\n任务态势\n协议状态\n运行日志\n语音任务控制\nVOICE / LLM · P0\n真实 API\n\n运行 1790075904910 · PREPARED · 帧 1 · 心跳正常\n\n任务状态\nPREPARED\n场景状态\nREADY\n接入设备\n8 台\n\n当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。\n\n展示绑定已建立。\n\n展示桥：Unity 展示会话已就绪\n\n开始任务\n创建并核对指令提案\n暂停任务\n状态 PREPARED 不允许此动作\n继续任务\n状态 PREPARED 不允许此动作\n停止任务\n创建并核对指令提案\n刷新上下文\n重新接管展示"
+  },
+  {
+    "name": "owner-stopped",
+    "at": "2026-09-22T11:18:35.956Z",
+    "text": "UNITY WEBGL ONLINE\nUnity WebGL 加载中\nUnity 桥已连接，正在初始化系统总览平台\nWAITING FOR PLATFORM\n当前设备\nUAV-01\n离线\n起飞\n悬停\n返航\n降落\n紧急降落\nUAV-USV\n协同仿真平台\n系统总览\n协同态势\n光电视觉\n雷达态势\n设备管理\np0_admin\nADMIN\nUAV-USV 协同仿真平台\n算法仿真\n系统总览\n算法仿真\n独立仿真 WebGL · ONLINE\n场景配置\nV3 PROTOCOL\n算法\n智能粒球仿真护航\nGB-SFLA-CS 协同围捕（模拟）\n\n算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。\n\n1 护航目标 · 1 敌船\n3 UAV · 3 USV · 世界 360×280 m\n规划预览 · 同时来袭 1 艘 · 实时仿真\nUAV 数量\nUSV 数量\nUAV 巡航速度 m/s\n上限 15 m/s\nUSV 巡航速度 m/s\n上限 4 m/s\n生成场景\n重置\n算法仿真\n3 UAV · 3 USV · 1 护航目标 · 1 敌船\nUNITY WEBGL ONLINE\n放大画面\n阶段\n编队护航 · THREAT-001\n综合进度\n0%\n可见目标\n2\n已捕获\n0/1\n仿真时长\n00:00\n开始\n暂停\n停止\n1\n编队护航\n2\n意图识别\n3\n分向守卫\n4\n协同拦截\n5\n追逃压制\n6\n动态围捕\n7\n稳定闭环\n8\n完成\n跟随设备\n全局视角\n语音控制\n任务态势\n协议状态\n运行日志\n语音任务控制\nVOICE / LLM · P0\n真实 API\n\n运行 1790075904910 · STOPPED · 帧 1 · 心跳正常\n\n任务状态\nSTOPPED\n场景状态\nWAITING\n接入设备\n8 台\n\n当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。\n\n展示绑定已建立。\n\n展示桥：运行已结束，已停止展示探测\n\n开始任务\n状态 STOPPED 不允许此动作\n暂停任务\n状态 STOPPED 不允许此动作\n继续任务\n状态 STOPPED 不允许此动作\n停止任务\n状态 STOPPED 不允许此动作\n算法执行成功\n停止任务\n算法结果：SUCCESS · 展示状态：无需 Unity 同步\n刷新上下文\n重新接管展示\n清除本地视图"
+  },
+  {
+    "name": "peer-isolated",
+    "at": "2026-09-22T11:18:59.544Z",
+    "text": "UNITY WEBGL ONLINE\nUnity WebGL 加载中\nUnity 桥已连接，正在初始化系统总览平台\nWAITING FOR PLATFORM\n当前设备\nUAV-01\n离线\n起飞\n悬停\n返航\n降落\n紧急降落\nUAV-USV\n协同仿真平台\n系统总览\n协同态势\n光电视觉\n雷达态势\n设备管理\np0_peer_20260922\nADMIN\nUAV-USV 协同仿真平台\n算法仿真\n系统总览\n算法仿真\n独立仿真 WebGL · ONLINE\n场景配置\nV3 PROTOCOL\n算法\n智能粒球仿真护航\nGB-SFLA-CS 协同围捕（模拟）\n\n算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。\n\n1 护航目标 · 1 敌船\n3 UAV · 3 USV · 世界 360×280 m\n规划预览 · 同时来袭 1 艘 · 实时仿真\nUAV 数量\nUSV 数量\nUAV 巡航速度 m/s\n上限 15 m/s\nUSV 巡航速度 m/s\n上限 4 m/s\n生成场景\n重置\n算法仿真\n3 UAV · 3 USV · 1 护航目标 · 1 敌船\nUNITY WEBGL ONLINE\n放大画面\n阶段\n编队护航 · THREAT-001\n综合进度\n0%\n可见目标\n2\n已捕获\n0/1\n仿真时长\n00:00\n开始\n暂停\n停止\n1\n编队护航\n2\n意图识别\n3\n分向守卫\n4\n协同拦截\n5\n追逃压制\n6\n动态围捕\n7\n稳定闭环\n8\n完成\n跟随设备\n全局视角\n语音控制\n任务态势\n协议状态\n运行日志\n语音任务控制\nVOICE / LLM · P0\n真实 API\n\n运行 1790075931593 · PREPARED · 帧 1 · 心跳正常\n\n任务状态\nPREPARED\n场景状态\nREADY\n接入设备\n8 台\n\n当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。\n\n展示绑定已建立。\n\n展示桥：Unity 展示会话已就绪\n\n开始任务\n创建并核对指令提案\n暂停任务\n状态 PREPARED 不允许此动作\n继续任务\n状态 PREPARED 不允许此动作\n停止任务\n创建并核对指令提案\n刷新上下文\n重新接管展示"
+  },
+  {
+    "name": "peer-stopped",
+    "at": "2026-09-22T11:19:07.537Z",
+    "text": "UNITY WEBGL ONLINE\nUnity WebGL 加载中\nUnity 桥已连接，正在初始化系统总览平台\nWAITING FOR PLATFORM\n当前设备\nUAV-01\n离线\n起飞\n悬停\n返航\n降落\n紧急降落\nUAV-USV\n协同仿真平台\n系统总览\n协同态势\n光电视觉\n雷达态势\n设备管理\np0_peer_20260922\nADMIN\nUAV-USV 协同仿真平台\n算法仿真\n系统总览\n算法仿真\n独立仿真 WebGL · ONLINE\n场景配置\nV3 PROTOCOL\n算法\n智能粒球仿真护航\nGB-SFLA-CS 协同围捕（模拟）\n\n算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。\n\n1 护航目标 · 1 敌船\n3 UAV · 3 USV · 世界 360×280 m\n规划预览 · 同时来袭 1 艘 · 实时仿真\nUAV 数量\nUSV 数量\nUAV 巡航速度 m/s\n上限 15 m/s\nUSV 巡航速度 m/s\n上限 4 m/s\n生成场景\n重置\n算法仿真\n3 UAV · 3 USV · 1 护航目标 · 1 敌船\nUNITY WEBGL ONLINE\n放大画面\n阶段\n编队护航 · THREAT-001\n综合进度\n0%\n可见目标\n2\n已捕获\n0/1\n仿真时长\n00:00\n开始\n暂停\n停止\n1\n编队护航\n2\n意图识别\n3\n分向守卫\n4\n协同拦截\n5\n追逃压制\n6\n动态围捕\n7\n稳定闭环\n8\n完成\n跟随设备\n全局视角\n语音控制\n任务态势\n协议状态\n运行日志\n语音任务控制\nVOICE / LLM · P0\n真实 API\n\n运行 1790075931593 · STOPPED · 帧 1 · 心跳正常\n\n任务状态\nSTOPPED\n场景状态\nWAITING\n接入设备\n8 台\n\n当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。\n\n展示绑定已建立。\n\n展示桥：运行已结束，已停止展示探测\n\n开始任务\n状态 STOPPED 不允许此动作\n暂停任务\n状态 STOPPED 不允许此动作\n继续任务\n状态 STOPPED 不允许此动作\n停止任务\n状态 STOPPED 不允许此动作\n算法执行成功\n停止任务\n算法结果：SUCCESS · 展示状态：无需 Unity 同步\n刷新上下文\n重新接管展示\n清除本地视图"
+  },
+  {
+    "name": "owner-restored-without-peer-data",
+    "at": "2026-09-22T11:19:29.044Z",
+    "text": "UNITY WEBGL ONLINE\nUnity WebGL 加载中\nUnity 桥已连接，正在初始化系统总览平台\nWAITING FOR PLATFORM\n当前设备\nUAV-01\n离线\n起飞\n悬停\n返航\n降落\n紧急降落\nUAV-USV\n协同仿真平台\n系统总览\n协同态势\n光电视觉\n雷达态势\n设备管理\np0_admin\nADMIN\nUAV-USV 协同仿真平台\n算法仿真\n系统总览\n算法仿真\n独立仿真 WebGL · ONLINE\n场景配置\nV3 PROTOCOL\n算法\n智能粒球仿真护航\nGB-SFLA-CS 协同围捕（模拟）\n\n算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。\n\n1 护航目标 · 1 敌船\n3 UAV · 3 USV · 世界 360×280 m\n规划预览 · 同时来袭 1 艘 · 实时仿真\nUAV 数量\nUSV 数量\nUAV 巡航速度 m/s\n上限 15 m/s\nUSV 巡航速度 m/s\n上限 4 m/s\n生成场景\n重置\n算法仿真\n3 UAV · 3 USV · 1 护航目标 · 1 敌船\nUNITY WEBGL ONLINE\n放大画面\n阶段\n编队护航 · THREAT-001\n综合进度\n0%\n可见目标\n2\n已捕获\n0/1\n仿真时长\n00:00\n开始\n暂停\n停止\n1\n编队护航\n2\n意图识别\n3\n分向守卫\n4\n协同拦截\n5\n追逃压制\n6\n动态围捕\n7\n稳定闭环\n8\n完成\n跟随设备\n全局视角\n语音控制\n任务态势\n协议状态\n运行日志\n语音任务控制\nVOICE / LLM · P0\n真实 API\n\n运行 1790075962418 · PREPARED · 帧 1 · 心跳正常\n\n任务状态\nPREPARED\n场景状态\nREADY\n接入设备\n8 台\n\n当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。\n\n展示绑定已建立。\n\n展示桥：Unity 展示会话已就绪\n\n开始任务\n创建并核对指令提案\n暂停任务\n状态 PREPARED 不允许此动作\n继续任务\n状态 PREPARED 不允许此动作\n停止任务\n创建并核对指令提案\n刷新上下文\n重新接管展示"
+  },
+  {
+    "name": "owner-new-scene-stopped",
+    "at": "2026-09-22T11:19:36.256Z",
+    "text": "UNITY WEBGL ONLINE\nUnity WebGL 加载中\nUnity 桥已连接，正在初始化系统总览平台\nWAITING FOR PLATFORM\n当前设备\nUAV-01\n离线\n起飞\n悬停\n返航\n降落\n紧急降落\nUAV-USV\n协同仿真平台\n系统总览\n协同态势\n光电视觉\n雷达态势\n设备管理\np0_admin\nADMIN\nUAV-USV 协同仿真平台\n算法仿真\n系统总览\n算法仿真\n独立仿真 WebGL · ONLINE\n场景配置\nV3 PROTOCOL\n算法\n智能粒球仿真护航\nGB-SFLA-CS 协同围捕（模拟）\n\n算法负责护航编队、意图识别、掩护撤离、协同拦截与动态围控。\n\n1 护航目标 · 1 敌船\n3 UAV · 3 USV · 世界 360×280 m\n规划预览 · 同时来袭 1 艘 · 实时仿真\nUAV 数量\nUSV 数量\nUAV 巡航速度 m/s\n上限 15 m/s\nUSV 巡航速度 m/s\n上限 4 m/s\n生成场景\n重置\n算法仿真\n3 UAV · 3 USV · 1 护航目标 · 1 敌船\nUNITY WEBGL ONLINE\n放大画面\n阶段\n编队护航 · THREAT-001\n综合进度\n0%\n可见目标\n2\n已捕获\n0/1\n仿真时长\n00:00\n开始\n暂停\n停止\n1\n编队护航\n2\n意图识别\n3\n分向守卫\n4\n协同拦截\n5\n追逃压制\n6\n动态围捕\n7\n稳定闭环\n8\n完成\n跟随设备\n全局视角\n语音控制\n任务态势\n协议状态\n运行日志\n语音任务控制\nVOICE / LLM · P0\n真实 API\n\n运行 1790075962418 · STOPPED · 帧 1 · 心跳正常\n\n任务状态\nSTOPPED\n场景状态\nWAITING\n接入设备\n8 台\n\n当前验证整队任务控制链路；麦克风、模型解析和单设备控制将在后续阶段接入。\n\n展示绑定已建立。\n\n展示桥：等待 Unity SCENE_READY 回执\n\n开始任务\n状态 STOPPED 不允许此动作\n暂停任务\n状态 STOPPED 不允许此动作\n继续任务\n状态 STOPPED 不允许此动作\n停止任务\n状态 STOPPED 不允许此动作\n算法执行成功\n停止任务\n算法结果：SUCCESS · 展示状态：无需 Unity 同步\n刷新上下文\n重新接管展示\n清除本地视图"
+  },
+  {
+    "name": "dual-account-complete",
+    "at": "2026-09-22T11:19:48.552Z",
+    "text": "UAV-USV\n协同任务控制平台\n\nMISSION CONTROL\n\n海空协同，智能围捕\n登录后进入任务控制台\n用户名\n密码\n进入控制台"
+  }
+]
