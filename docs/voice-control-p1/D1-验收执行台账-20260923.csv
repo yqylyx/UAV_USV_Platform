@@ -1,10 +1,10 @@
 ﻿case_id,status,evidence_or_gap
-D01,PARTIAL,nly已交付真实ASR及独立页面；待合入并在mxy机浏览器验收
+D01,PARTIAL,真实Java—Python small模型HTTP及重放通过；待mxy机localhost浏览器麦克风验收
 D02,PARTIAL,nly已交付麦克风页面；待mxy机真实拒绝权限验证
-D03,PARTIAL,ASR_NO_SPEECH映射及缓存通过；真实静音待ASR服务
+D03,PARTIAL,真实Python HTTP静音422及Java映射测试通过；待浏览器静音验证
 D04,PARTIAL,503/关闭/不可达适配已测；真实ready/busy待交接
-D05,PARTIAL,后端同键/容量1000/30分钟/活跃不清理通过；前端10分钟与真实调用次数待联调
-D06,PARTIAL,V20墓碑及Java实例重建防重复推理自动化通过；真实进程重启和页面生命周期待联调
+D05,PARTIAL,真实同键重放响应一致且Python只调用一次；容量/30分钟通过，前端10分钟待浏览器联调
+D06,PARTIAL,真实Java重启后旧键409且Python计数不变；退出/换账号和页面生命周期待浏览器联调
 D07,PARTIAL,转写代码无P0调用；真实说停止任务和DB零新增待浏览器
 D08,PASS_BACKEND,真实安全链401/403/CSRF及数据库当前权限测试通过；合并部署后需复核
 D09,PARTIAL,字节/表单限制与响应范围通过；codec/真实时长/尾帧由nly服务和浏览器验证

@@ -1,6 +1,6 @@
 # P1 D1 后端实现与测试
 
-当前范围为本地ASR转写；[公共契约](interface-contract.md)指向D1最终稿，意图解析默认关闭。nly已在f630a74交付真实ASR服务和ASR-only前端，尚待合入本分支并在mxy部署机联合验收。测试适配器不属于真实模型验收。
+当前范围为本地ASR转写；[公共契约](interface-contract.md)指向D1最终稿，意图解析默认关闭。nly的f630a74已合入mxy联调分支；真实Java—Python HTTP、结果重放和Java重启防重已在mxy机通过，真实浏览器麦克风验收仍待执行。测试适配器不属于真实模型验收。
 
 配置见application-d1-asr.yml，启动见start-d1-java.ps1（默认只检查，需先打包）；需环境变量P0_DB_PASSWORD、P0_ADMIN_PASSWORD、P0_INTEGRATION_TOKEN、P0_PYTHON、P0_RUNNER，以及D1_ASR_TOKEN和D1_ASR_MODEL_REVISION。ASR仅127.0.0.1:18082。网页统一localhost，校验现有Cookie及CSRF配置。
 
@@ -14,4 +14,4 @@ V20新增最小受理墓碑，只保存userId、endpoint、requestId、音频指
 
 契约校验：python docs/voice-control-p1/validate_contracts.py
 
-真实服务就绪后：设置D1_TEST_USERNAME/D1_TEST_PASSWORD，再执行python docs/voice-control-p1/verify-d1-http.py --audio <本机授权音频> --mime audio/mpeg --output <本机结果JSON>。该脚本不输出Cookie、密码、原音频和完整文字；仅HTTP及同键重放冒烟，不代替浏览器D01–D12。
+真实服务就绪后：设置D1_TEST_USERNAME/D1_TEST_PASSWORD，再执行python docs/voice-control-p1/verify-d1-http.py --audio <本机授权音频> --mime audio/mpeg --output <本机结果JSON>。Java重启后可增加--request-id <原UUID> --expect-code VOICE_REQUEST_OUTCOME_UNKNOWN验证墓碑。脚本不输出Cookie、密码、原音频和完整文字；仅HTTP及同键重放/重启保护冒烟，不代替浏览器D01–D12。
