@@ -93,3 +93,33 @@
 - `bindingId=b157d4fb-32f3-417a-ad67-fbe63fc47c48`
 
 四个 execution 均记录 `ACCEPTED → SUCCEEDED` 两个有序事件，stateVersion 依次为 `0 → 1 → 2 → 3 → 4`。STOP 后 Runner 进程退出码为 `0`。
+
+## 真实物理麦克风整链路补验
+
+在本机同一隔离环境中完成：
+
+`物理麦克风录音 → 本地 Whisper small 转写 → 原请求恢复 → 文字核对 → 本地规则解析 → START 候选 → 冻结提案 → 人工确认 → Runner SUCCEEDED → Unity REPORTED_APPLIED`
+
+本轮浏览器最初显示转写超时，但 Java 日志确认原请求已由本地 ASR 返回 HTTP 200。按幂等约定点击“使用原请求恢复查询”，没有更换请求 ID，也没有再次调用模型；页面恢复文字“开始任务”后才继续解析。该恢复行为验证了浏览器等待超时与后端已完成结果之间的安全收敛。
+
+| 字段 | 值 |
+| --- | --- |
+| transcriptionRequestId | `812d02f2-69b2-420e-b9d2-ef57d029a99d` |
+| 转写受理 / 完成 | `2026-09-24T01:03:28.909972Z` / `2026-09-24T01:03:57.052Z` |
+| 转写结果 | `开始任务` |
+| interpretationId | `056d2b4b-581c-4131-b144-c35a73a605d2` |
+| 解析结果 | `CANDIDATE / MISSION_START / START` |
+| algorithmRunId | `1790207857879` |
+| runtimeRef | `92fa2089-1a32-4e32-b3f2-1af6a219a8fc` |
+| runtimeGeneration | `c796556b-cb4d-457a-afd5-e6c9811e25b6` |
+| bindingId | `a9bcec81-afdc-4dd4-b7bf-dd36825f4b43` |
+| proposalId | `c9af8b66-5451-4fae-b698-f16398923e9c` |
+| executionId | `87e1e64f-34a3-437d-af5f-919f12fe6c73` |
+| commandId | `1c373432-2be3-4e8f-9257-0682b617e7d7` |
+| 数据库终态 | proposal `CONFIRMED`；execution `SUCCEEDED / SUCCESS / REPORTED_APPLIED` |
+| Runner 事件 | `ACCEPTED (PREPARED, v0) → SUCCEEDED (RUNNING, v1)` |
+| 浏览器终态 | `RUNNING`；算法 `SUCCESS`；`Unity 已应用` |
+
+提案记录保留并校验了 `interpretationId`，证明候选来源与冻结计划已关联。执行记录的展示绑定与当前运行代次一致，六台任务设备与冻结计划一致。录音文件、账号密码、内部令牌和本机配置均未写入证据。
+
+机器可读的脱敏证据见 [d2-physical-microphone-chain-20260924.json](d2-physical-microphone-chain-20260924.json)。
