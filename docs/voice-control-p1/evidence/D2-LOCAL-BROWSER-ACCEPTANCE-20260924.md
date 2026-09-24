@@ -66,3 +66,30 @@
 - 输入后等待超过一次上下文轮询：内容保持，解析按钮仍可用
 - 真实浏览器候选、提案、人工确认、Runner 和 Unity 闭环：PASS
 
+## 四动作连续验收与安全拦截补测
+
+同一真实浏览器会话先验证以下输入，页面均给出预期提示且未生成提案、未调用 Runner：
+
+| 输入 | 页面结果 | 结果 |
+| --- | --- | --- |
+| `不要停止任务` | 检测到否定表达，要求重新明确 | PASS |
+| `暂停然后继续` | 一句话包含多个动作，要求一次说明一个动作 | PASS |
+| `让USV-001停止任务` | 仅支持整队控制，拒绝单设备指令 | PASS |
+| `攻击目标` | 能力未接入，不能生成执行提案 | PASS |
+
+随后新建运行 `1790207557031`，在同一 runtime generation 内依次通过文字解析、候选审阅、提案创建和人工确认执行四个动作：
+
+| 动作 | interpretationId | proposalId | executionId | commandId | 最终结果 | Unity 展示 |
+| --- | --- | --- | --- | --- | --- | --- |
+| START | `5e1150bf-4042-4b16-8355-47cc18441da4` | `297512d0-69e4-4d7e-a5bb-f0a694611747` | `24cdef68-eb45-4050-a8c4-d955a02f5656` | `68262724-4dc0-4762-9d0e-d2e88caa5738` | `RUNNING / SUCCESS` | `REPORTED_APPLIED` |
+| PAUSE | `80a40357-1f15-4cb7-b760-2e346ac08589` | `d65f154d-10d8-4460-afe6-327e1b9add9c` | `e9447844-a668-461e-a296-b8186b25d7a2` | `4c8750cb-be58-4894-b793-a947fea0ffbd` | `PAUSED / SUCCESS` | `NOT_REQUIRED` |
+| RESUME | `8827c043-fdef-4008-aaae-0f7c3afec873` | `12769797-2b15-4dd4-81e1-f0c27ba0a691` | `f509599e-925b-4219-9750-b1bf731c3c1a` | `f2c267f3-9880-4d22-bef9-4292ccad741f` | `RUNNING / SUCCESS` | `REPORTED_APPLIED` |
+| STOP | `5f267f5f-897e-43f7-8ebc-576fd890a54c` | `aaa08f41-2e59-45c7-9396-a2580c1cb8fd` | `4489fe91-9970-4020-9d96-580ba48b3176` | `6a49dfbc-fe15-4d1a-88ef-0d3db53e6c24` | `STOPPED / SUCCESS` | `NOT_REQUIRED` |
+
+本轮公共身份：
+
+- `runtimeRef=21ec7742-b072-4cfd-9019-fdac3df4053b`
+- `runtimeGeneration=318212a9-cb68-4f37-9288-37abb406425a`
+- `bindingId=b157d4fb-32f3-417a-ad67-fbe63fc47c48`
+
+四个 execution 均记录 `ACCEPTED → SUCCEEDED` 两个有序事件，stateVersion 依次为 `0 → 1 → 2 → 3 → 4`。STOP 后 Runner 进程退出码为 `0`。
