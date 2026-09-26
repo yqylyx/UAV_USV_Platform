@@ -22,6 +22,16 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 class VoiceControlTests {
+    static Path repositoryFile(String relativePath) {
+        Path current = Path.of("").toAbsolutePath().normalize();
+        for (int depth = 0; current != null && depth < 5; depth++, current = current.getParent()) {
+            Path candidate = current.resolve(relativePath).normalize();
+            if (Files.isRegularFile(candidate)) return candidate;
+        }
+        throw new IllegalStateException("Could not locate repository file '" + relativePath
+                + "' from working directory " + Path.of("").toAbsolutePath());
+    }
+
     static class TestTime extends VoiceTime {
         Instant now = Instant.parse("2026-09-19T08:00:00Z");
         long ns = 1;
@@ -190,7 +200,7 @@ class VoiceControlTests {
     void frozenGoldenHashAndAllSchemaFixtures() throws Exception {
         var fixtures =
                 j.mapper.readTree(
-                        Files.readString(Path.of("../docs/voice-control-p0/fixtures.json")));
+                        Files.readString(repositoryFile("docs/voice-control-p0/fixtures.json")));
         assertEquals(
                 fixtures.path("goldenPlan").path("sha256").asText(),
                 j.hash(fixtures.path("goldenPlan").path("data")));
@@ -209,7 +219,7 @@ class VoiceControlTests {
                 "{\"text\":\"\\u4e2d\\u6587\\ud83d\\ude00\"}",
                 j.canonical(j.object().put("text", "中文😀")));
         assertArrayEquals(
-                Files.readAllBytes(Path.of("../docs/voice-control-p0/contracts.schema.json")),
+                Files.readAllBytes(repositoryFile("docs/voice-control-p0/contracts.schema.json")),
                 getClass()
                         .getResourceAsStream("/voicecontrol/contracts.schema.json")
                         .readAllBytes());

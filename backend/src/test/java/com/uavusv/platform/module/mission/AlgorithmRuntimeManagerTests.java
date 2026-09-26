@@ -185,7 +185,11 @@ class AlgorithmRuntimeManagerTests {
             MissionRunRepository runRepository,
             AlgorithmCatalogService catalogService
     ) {
-        Path runner = Path.of("..", "algorithm-service", "runner.py").toAbsolutePath().normalize();
+        Path runner = resolveRepositoryFile(
+                "algorithm-service/runner.py",
+                "../algorithm-service/runner.py",
+                "../../algorithm-service/runner.py"
+        );
         return new AlgorithmRuntimeManager(
                 new ObjectMapper(),
                 runRepository,
@@ -193,6 +197,15 @@ class AlgorithmRuntimeManagerTests {
                 resolvePythonExecutable(),
                 runner.toString()
         );
+    }
+
+    private Path resolveRepositoryFile(String... candidates) {
+        for (String candidate : candidates) {
+            Path path = Path.of(candidate).toAbsolutePath().normalize();
+            if (Files.isRegularFile(path)) return path;
+        }
+        throw new IllegalStateException("Could not locate repository file from working directory: "
+                + Path.of("").toAbsolutePath());
     }
 
     private String resolvePythonExecutable() {

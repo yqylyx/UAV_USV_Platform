@@ -1,0 +1,50 @@
+{
+  "scope": "mxy merged D1 integration; no transcript, credential, cookie or audio bytes retained in repository",
+  "commits": {
+    "mxyRestartProtection": "c66872b",
+    "nlyDelivery": "f630a74179e3094554a298cca5d47646aae0e65f",
+    "merge": "680e0f5"
+  },
+  "automated": {
+    "backend": "PASS 67/67",
+    "mysqlFlyway": "PASS V1-V20 on random temporary database",
+    "contracts": "PASS 54/54",
+    "python": "PASS 19/19; invalid deadline repeated 10/10",
+    "frontend": "PASS 88/88 after microphone device error mapping",
+    "frontendBuild": "PASS"
+  },
+  "realModel": {
+    "modelRevision": "536b0662742c02347bc0e980a01041f333bce120",
+    "cpuThreads": 4,
+    "originalWechatMp3": "PASS expected 415 damaged source",
+    "normalizedMp3": "PASS 200",
+    "normalizedWebm": "PASS 200",
+    "silence": "PASS 422 VOICE_NO_SPEECH"
+  },
+  "javaPythonHttp": {
+    "requestId": "df26f8cd-7073-4c99-a35b-910a4ac092c9",
+    "audioSha256": "726bbabb3f5a1d525500f61ca8af1a86b4caa4e06000f0bfaaf284ece101e0b0",
+    "first": "PASS 200 SUCCESS",
+    "durationMs": 5784,
+    "elapsedSeconds": 4.64,
+    "sameKeyReplay": "PASS identical response",
+    "afterJavaRestart": "PASS 409 VOICE_REQUEST_OUTCOME_UNKNOWN",
+    "sameKeyChangedContent": "PASS 409 IDEMPOTENCY_CONFLICT",
+    "pythonCallsBeforeAfterRestartChecks": "1 -> 1"
+  },
+  "environmentBoundary": {
+    "mxyPython": "3.13.15 project .venv",
+    "lockedTarget": "3.13.15",
+    "lockedEnvironmentReproduction": "PASS pip check; Python 19/19; small model preload",
+    "realBrowser": "PASS real localhost/Java/Python; repeatable Edge test-device checks plus user-attested physical microphone recording"
+  },
+  "browserFieldCheck": {
+    "permissionDenied": "PASS; Chinese message and no empty upload",
+    "automaticStop": "PASS at 58081ms; final upload observed",
+    "manualRecovery": "PASS at 5657ms; same request/idempotency key reused within 10 minutes",
+    "logoutAndAccountSwitch": "PASS; switched to p1_switch_admin with transcript and recovery state cleared",
+    "p0ControlIsolation": "PASS; no /api control request observed",
+    "physicalMicrophone": "PASS; user completed real physical microphone recording and verified editable local-model transcript on 2026-09-23",
+    "d1Overall": "PASS D01-D12; E1 remains NOT_RUN"
+  }
+}

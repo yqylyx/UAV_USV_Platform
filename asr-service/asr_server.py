@@ -31,6 +31,13 @@ MODEL_FILES = {
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z')
 
 
+def file_sha256(file_object):
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: file_object.read(1024 * 1024), b''):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 class AsrError(Exception):
     def __init__(self, status, code, message):
         super().__init__(message)
@@ -147,7 +154,7 @@ class LocalEngine:
         model_path = Path(model_path).resolve(strict=True)
         for name, expected in MODEL_FILES.items():
             with (model_path / name).open('rb') as model_file:
-                if hashlib.file_digest(model_file, 'sha256').hexdigest() != expected:
+                if file_sha256(model_file) != expected:
                     raise ValueError('model checksum mismatch')
         self.model = WhisperModel(str(model_path), device='cpu', compute_type='int8', cpu_threads=threads,
                                   num_workers=1, local_files_only=True)
@@ -216,6 +223,24 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, ConnectionError):
             pass
 
+    def discard_request_body(self):
+        lengths = self.headers.get_all('Content-Length', [])
+        if len(lengths) != 1 or not re.fullmatch(r'[0-9]{1,10}', lengths[0]):
+            return
+        remaining = min(int(lengths[0]), MAX_BODY + 1) - getattr(self, 'body_read', 0)
+        if remaining <= 0:
+            return
+        try:
+            self.connection.settimeout(.05)
+            while remaining > 0:
+                chunk = self.rfile.read1(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                self.body_read += len(chunk)
+        except (OSError, ConnectionError, TimeoutError, socket.timeout):
+            pass
+
     def do_GET(self):
         if self.path != '/health/ready':
             self.reply(404, {'requestId': None, 'code': 'ASR_UNAVAILABLE', 'message': '接口不存在'})
@@ -229,6 +254,7 @@ class Handler(BaseHTTPRequestHandler):
         request_id = None
         acquired = False
         future = None
+        self.body_read = 0
         try:
             if self.path != '/internal/asr/transcriptions':
                 raise AsrError(404, 'ASR_UNAVAILABLE', '接口不存在')
@@ -261,6 +287,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not chunk:
                     raise invalid()
                 body.extend(chunk)
+                self.body_read += len(chunk)
             check_deadline(deadline)
             request_id, audio, mime = parse_multipart(self.headers['Content-Type'], body)
             del body
@@ -277,13 +304,17 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, {'requestId': request_id, 'text': text, 'durationMs': duration,
                              'modelRevision': runtime.engine.revision})
         except AsrError as error:
+            self.discard_request_body()
             self.reply(error.status, {'requestId': request_id, 'code': error.code, 'message': error.message},
                        2 if error.code == 'ASR_BUSY' else None)
         except (TimeoutError, socket.timeout):
+            self.discard_request_body()
             self.reply(504, {'requestId': request_id, 'code': 'ASR_TIMEOUT', 'message': '读取音频超时'})
         except (ValueError, UnicodeError):
+            self.discard_request_body()
             self.reply(503, {'requestId': request_id, 'code': 'ASR_UNAVAILABLE', 'message': '内部请求参数无效'})
         except Exception:
+            self.discard_request_body()
             self.reply(503, {'requestId': request_id, 'code': 'ASR_UNAVAILABLE', 'message': '本地识别异常，请检查服务'})
         finally:
             if acquired:

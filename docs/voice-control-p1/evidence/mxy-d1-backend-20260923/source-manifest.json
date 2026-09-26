@@ -29,6 +29,8 @@
   "automated_tests": "PASS: 67 standard + 1 isolated MySQL migration",
   "mysql_flyway": "PASS: fresh random database V1-V20, temporary database deleted",
   "contract_fixtures": "PASS: 54",
-  "nly_delivery": "AVAILABLE: f630a74179e3094554a298cca5d47646aae0e65f; not yet merged",
+  "nly_delivery": "MERGED: f630a74179e3094554a298cca5d47646aae0e65f via 680e0f5",
+  "real_http_integration": "PASS: model recognition, identical replay, restart unknown outcome, changed-content conflict",
+  "python_runtime_boundary": "mxy diagnostic run used existing Python 3.9.13; target 3.13.15 lock reproduction remains pending",
   "real_browser_d1": "NOT_RUN"
 }

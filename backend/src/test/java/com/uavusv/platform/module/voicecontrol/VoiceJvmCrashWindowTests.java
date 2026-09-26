@@ -6,10 +6,12 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.h2.jdbcx.JdbcDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
+@EnabledIfEnvironmentVariable(named="P0_REAL_RUNNER", matches=".+")
 class VoiceJvmCrashWindowTests extends VoiceControlTests {
  String database;
  @Override javax.sql.DataSource dataSource() {
@@ -20,7 +22,7 @@ class VoiceJvmCrashWindowTests extends VoiceControlTests {
   var test=new VoiceJvmCrashWindowTests();test.database=args[1];test.setup();
   String mode=args[0];Path output=Path.of(args[2]);
   test.s.locked(()->{var c=test.s.get("voice_runtime_context",test.ref());c.put("state","PREPARED").put("stateVersion",0);test.s.save("voice_runtime_context",c);return null;});
-  Process runner=new ProcessBuilder(System.getenv("PYTHON_COMMAND"),System.getenv("P0_REAL_RUNNER"),"--algorithm","GB_SFLA_CS","--run-id","990051","--config-base64","eyJzZWVkIjo0Mn0=","--command-protocol","v1","--runtime-ref",test.ref(),"--runtime-generation",test.gen())
+  Process runner=new ProcessBuilder(System.getenv().getOrDefault("PYTHON_COMMAND", "python"),System.getenv("P0_REAL_RUNNER"),"--algorithm","GB_SFLA_CS","--run-id","990051","--config-base64","eyJzZWVkIjo0Mn0=","--command-protocol","v1","--runtime-ref",test.ref(),"--runtime-generation",test.gen())
     .redirectError(output.resolve("runner.stderr.log").toFile()).start();
   Files.writeString(output.resolve("runner.pid"),Long.toString(runner.pid()));
   var reader=runner.inputReader(java.nio.charset.StandardCharsets.UTF_8);

@@ -113,7 +113,7 @@ class VoiceRealRunnerTests extends VoiceControlTests {
     @Test void legacyPrepareAndManualFourActionsRemainAvailableWhenFeatureOff() throws Exception {
         settings.setEnabled(false);
         var businessRuns=mock(MissionRunRepository.class);
-        var manager=new AlgorithmRuntimeManager(j.mapper,businessRuns,mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),System.getenv("P0_REAL_RUNNER"));
+        var manager=new AlgorithmRuntimeManager(j.mapper,businessRuns,mock(AlgorithmCatalogService.class),System.getenv().getOrDefault("PYTHON_COMMAND", "python"),System.getenv("P0_REAL_RUNNER"));
         ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
         try {
             var prepared=manager.prepare(990071L,"GB_SFLA_CS",Map.of("standaloneVirtualSimulation",true,"seed",42));
@@ -133,7 +133,7 @@ class VoiceRealRunnerTests extends VoiceControlTests {
         var runs=mock(MissionRunRepository.class);
         var business=mock(com.uavusv.platform.module.mission.entity.MissionRun.class);
         when(business.getAlgorithmCode()).thenReturn("GB_SFLA_CS");when(runs.findById(990091L)).thenReturn(Optional.of(business));
-        var manager=new AlgorithmRuntimeManager(j.mapper,runs,mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),System.getenv("P0_REAL_RUNNER"));
+        var manager=new AlgorithmRuntimeManager(j.mapper,runs,mock(AlgorithmCatalogService.class),System.getenv().getOrDefault("PYTHON_COMMAND", "python"),System.getenv("P0_REAL_RUNNER"));
         ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
         int contexts=count("voice_runtime_context");
         try {
@@ -146,7 +146,7 @@ class VoiceRealRunnerTests extends VoiceControlTests {
         } finally {manager.close();}
     }
     @Test void cleanupAfterFinalStopAllowsActualRunnerToExitNormally() throws Exception {
-        var manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),Path.of("src/test/resources/voicecontrol/delayed_exit_runner.py").toAbsolutePath().toString());
+        var manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),System.getenv().getOrDefault("PYTHON_COMMAND", "python"),repositoryFile("backend/src/test/resources/voicecontrol/delayed_exit_runner.py").toString());
         ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
         try {
             var prepared=manager.prepare(990092L,"GB_SFLA_CS",Map.of("standaloneVirtualSimulation",true,"seed",42));
@@ -161,7 +161,7 @@ class VoiceRealRunnerTests extends VoiceControlTests {
         } finally {manager.close();}
     }
     @Test void ownerlessLegacyProcessCannotBeClaimedByPrepare() throws Exception {
-        var manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),System.getenv("P0_REAL_RUNNER"));
+        var manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),System.getenv().getOrDefault("PYTHON_COMMAND", "python"),System.getenv("P0_REAL_RUNNER"));
         ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
         try {
             var config=Map.<String,Object>of("standaloneVirtualSimulation",true,"seed",42);

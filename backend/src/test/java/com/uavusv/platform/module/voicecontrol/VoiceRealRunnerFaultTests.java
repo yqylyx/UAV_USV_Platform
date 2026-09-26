@@ -30,7 +30,7 @@ class VoiceRealRunnerFaultTests extends VoiceControlTests {
         Files.createFile(trace);
         manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),
             System.getenv().getOrDefault("PYTHON_COMMAND","python"),
-            Path.of("src/test/resources/voicecontrol/real_runner_fault_proxy.py").toAbsolutePath().toString());
+            repositoryFile("backend/src/test/resources/voicecontrol/real_runner_fault_proxy.py").toString());
         ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
         var prepared=manager.prepare(990041L,"GB_SFLA_CS",Map.<String,Object>of(
             "standaloneVirtualSimulation",true,"seed",42,"faultMode",mode,"faultTrace",trace.toString()));

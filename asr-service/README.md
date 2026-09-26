@@ -6,6 +6,7 @@
 
 - 首轮目标：mxy i5-10500 / 约16GB，Java、Python、浏览器同机。
 - Python：Windows x64 / 3.13.15，独立venv。small / CPU INT8 / 默认4线程；`requirements-lock-win-py313.txt` 为nly已验证环境，mxy需重新安装核验。
+- 服务的模型指纹计算使用分块SHA256，可在mxy现有Python 3.9诊断环境运行；这不表示3.9依赖已锁定。正式部署仍以本目录Python 3.13锁文件为准。
 - 模型：`Systran/faster-whisper-small` revision `536b0662742c02347bc0e980a01041f333bce120`。4个文件SHA256写在 `asr_server.py` 的 `MODEL_FILES`，启动逐一检查；没有模型时不下载，ready保持503。
 - 只监听127.0.0.1；不提供CORS、查询、取消、意图或控制接口。浏览器只访问Java。
 - 模型缓存允许落盘；在线音频只使用内存。无multipart临时文件，日志仅ID/状态/耗时/PID/是否提交worker，不记录音频和文字。
@@ -80,8 +81,8 @@ $candidate | Select-Object ProcessId,ExecutablePath,CommandLine
 
 仅在前端本地环境或部署环境设置 `VITE_VOICE_ASR_ONLY=true`，重启Vite/重新构建。默认false不变。
 
-- 独立入口 `/asr`；导航显示“本地语音识别”。初次直接进入不启动Unity；已加载的P0/Unity会话保留。
-- 仿真页原语音栏可显示相同ASR组件，原P0按钮不改；ASR-only隐藏旧意图输入。
+- 唯一入口位于算法仿真工作区（`/?workspace=simulation`）右侧“语音控制”面板，不增加独立页面或侧边栏导航。旧`/asr`书签仅重定向到该工作区。
+- 进入算法仿真工作区即可录音，不要求生成场景、启动算法实例或等待Unity就绪；原P0手工按钮保持独立。ASR-only隐藏旧意图输入。
 - ASR-only始终调用真实Java转写接口，不受旧P1 Mock开关影响、不自动降级Mock。若Java返回test-fixture，显著标明不可用于真实验收。
 - 58秒软停止，等待尾帧；140秒总等待；手动原键/Blob恢复最多10分钟；账号变化、卸载、退出清理；不存localStorage/Pinia。
 - Chromium录音需要真实麦克风权限及localhost/HTTPS。MP3上传测试不能代替浏览器实录验收。

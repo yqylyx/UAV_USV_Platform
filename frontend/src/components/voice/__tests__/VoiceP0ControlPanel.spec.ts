@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import VoiceP0ControlPanel from '@/components/voice/VoiceP0ControlPanel.vue'
+import VoiceIntelligenceInput from '@/components/voice/VoiceIntelligenceInput.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useVoiceControlStore } from '@/stores/voiceControl'
 import type { VoiceExecution, VoiceRuntimeContext } from '@/types/voiceControl'
@@ -71,6 +72,33 @@ function mountPanel(presentationStatus: VoiceExecution['presentationStatus']) {
 }
 
 describe('VoiceP0ControlPanel presentation recovery UI', () => {
+  it('parses independently of a LOST runtime while keeping proposal submission blocked', async () => {
+    const wrapper = mountPanel('NOT_REQUIRED')
+    const store = useVoiceControlStore()
+    store.contexts = [{ ...context, state: 'LOST', capabilities: [] }]
+    await nextTick()
+
+    const input = wrapper.getComponent(VoiceIntelligenceInput)
+    expect(input.props('runtimeContext')).toBeNull()
+    expect(input.props('allowedActions')).toEqual(['START', 'PAUSE', 'RESUME', 'STOP'])
+    expect(input.props('submissionDisabled')).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('parses independently of a legacy runtime while keeping proposal submission blocked', async () => {
+    const wrapper = mountPanel('NOT_REQUIRED')
+    const store = useVoiceControlStore()
+    store.contexts = [{ ...context, protocolVersion: 'legacy', capabilities: [] }]
+    await nextTick()
+
+    const input = wrapper.getComponent(VoiceIntelligenceInput)
+    expect(input.props('runtimeContext')).toBeNull()
+    expect(input.props('allowedActions')).toEqual(['START', 'PAUSE', 'RESUME', 'STOP'])
+    expect(input.props('submissionDisabled')).toBe(false)
+    expect(input.props('actionDisabledReason')('PAUSE')).toContain('旧协议实例不支持 P0')
+    wrapper.unmount()
+  })
+
   it('explains how to recover when no owned runtime is available', async () => {
     const wrapper = mountPanel('NOT_REQUIRED')
     const store = useVoiceControlStore()
@@ -150,6 +178,7 @@ describe('VoiceP0ControlPanel presentation recovery UI', () => {
   })
   beforeEach(() => {
     vi.useFakeTimers()
+    vi.stubEnv('VITE_VOICE_P1_PREPARATION', 'true')
     setActivePinia(createPinia())
     useAuthStore().user = { username: 'admin', role: 'ADMIN' }
   })

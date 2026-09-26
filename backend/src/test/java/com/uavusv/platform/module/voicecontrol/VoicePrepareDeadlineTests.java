@@ -13,7 +13,7 @@ class VoicePrepareDeadlineTests extends VoiceControlTests {
  void actualPrepareUsesSeparateSixtySecondDeadlines(String scenario) throws Exception { checkScenario(scenario); }
  @org.junit.jupiter.api.Test void initialFrameHasItsOwnDeadline() throws Exception { checkScenario("frame_timeout"); }
  private void checkScenario(String scenario) throws Exception {
-  var manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),System.getenv("PYTHON_COMMAND"),Path.of("src/test/resources/voicecontrol/contract_runner.py").toAbsolutePath().toString());
+  var manager=new AlgorithmRuntimeManager(j.mapper,mock(MissionRunRepository.class),mock(AlgorithmCatalogService.class),System.getenv().getOrDefault("PYTHON_COMMAND", "python"),repositoryFile("backend/src/test/resources/voicecontrol/contract_runner.py").toString());
   ReflectionTestUtils.setField(manager,"voiceBridge",new VoiceRuntimeBridge(r,app,worker,j));
   Map<String,Object> config=new HashMap<>();config.put("standaloneVirtualSimulation",true);
   config.put("testReadyDelaySeconds",scenario.equals("separate_windows")?58:scenario.equals("ready_timeout")?62:0);

@@ -28,9 +28,7 @@ class VoiceProcessTests extends VoiceControlTests {
                         businessRuns,
                         catalog,
                         System.getenv().getOrDefault("PYTHON_COMMAND", "python"),
-                        Path.of("src/test/resources/voicecontrol/contract_runner.py")
-                                .toAbsolutePath()
-                                .toString());
+                        repositoryFile("backend/src/test/resources/voicecontrol/contract_runner.py").toString());
         var bridge = new VoiceRuntimeBridge(r, app, worker, j);
         ReflectionTestUtils.setField(manager, "voiceBridge", bridge);
         try {
@@ -109,7 +107,7 @@ class VoiceProcessTests extends VoiceControlTests {
         r.ended(ref(), gen());
         var manager = new AlgorithmRuntimeManager(new ObjectMapper(), mock(MissionRunRepository.class),
                 mock(AlgorithmCatalogService.class), System.getenv().getOrDefault("PYTHON_COMMAND", "python"),
-                Path.of("src/test/resources/voicecontrol/contract_runner.py").toAbsolutePath().toString());
+                repositoryFile("backend/src/test/resources/voicecontrol/contract_runner.py").toString());
         ReflectionTestUtils.setField(manager, "voiceBridge", new VoiceRuntimeBridge(r, app, worker, j));
         try {
             var config = Map.<String, Object>of("standaloneVirtualSimulation", true,
@@ -129,7 +127,7 @@ class VoiceProcessTests extends VoiceControlTests {
         r.ended(ref(), gen());
         var manager = new AlgorithmRuntimeManager(new ObjectMapper(), mock(MissionRunRepository.class),
                 mock(AlgorithmCatalogService.class), System.getenv().getOrDefault("PYTHON_COMMAND", "python"),
-                Path.of("src/test/resources/voicecontrol/contract_runner.py").toAbsolutePath().toString());
+                repositoryFile("backend/src/test/resources/voicecontrol/contract_runner.py").toString());
         ReflectionTestUtils.setField(manager, "voiceBridge", new VoiceRuntimeBridge(r, app, worker, j));
         try {
             assertThrows(com.uavusv.platform.common.exception.BusinessException.class,

@@ -189,9 +189,15 @@ async function startRecording() {
     if (ticket !== epoch) return
     releaseCapture()
     phase.value = 'idle'
-    message.value = error instanceof DOMException && error.name === 'NotAllowedError'
-      ? '麦克风权限被拒绝，请在浏览器中授权后再试。'
-      : error instanceof Error ? error.message : '无法录音，请检查设备。'
+    if (error instanceof DOMException && error.name === 'NotAllowedError') {
+      message.value = '麦克风权限被拒绝，请在浏览器中授权后再试。'
+    } else if (error instanceof DOMException && error.name === 'NotFoundError') {
+      message.value = '未检测到可用麦克风，请连接设备后重试。'
+    } else if (error instanceof DOMException && error.name === 'NotReadableError') {
+      message.value = '无法读取麦克风，请检查设备是否被其他程序占用。'
+    } else {
+      message.value = error instanceof Error ? error.message : '无法录音，请检查设备。'
+    }
   }
 }
 function pickFile(event: Event) {

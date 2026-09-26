@@ -58,8 +58,10 @@ public class VoiceController {
 
     @PostMapping(value = "/commands/proposals", consumes = "application/json")
     public ResponseEntity<ObjectNode> create(
-            @RequestHeader("Idempotency-Key") String key, @RequestBody String body) {
-        return response(app.createProposal(key, json.read(body)));
+            @RequestHeader("Idempotency-Key") String key,
+            @RequestHeader(value = "X-Voice-Interpretation-ID", required = false) String interpretationId,
+            @RequestBody String body) {
+        return response(app.createProposal(key, interpretationId, json.read(body)));
     }
 
     @PostMapping(value = "/commands/{id}/confirm", consumes = "application/json")

@@ -52,6 +52,7 @@ const runtimeEnded = computed(() => !!context.value && (
     && execution.value.runtimeGeneration === context.value.runtimeGeneration
     && execution.value.action === 'STOP' && execution.value.state === 'SUCCEEDED')
 ))
+const activeVoiceContext = computed(() => context.value && !runtimeEnded.value ? context.value : null)
 const presentationBridgeReady = ref(false)
 const presentationBridgeStatus = ref(presentationBridgeEnabled ? '等待展示绑定' : 'E03 未启用')
 const helloAttempts = ref(0)
@@ -122,16 +123,22 @@ const presentationCanResync = computed(() => execution.value?.state === 'SUCCEED
 const contextSummary = computed(() => context.value
   ? `运行 ${context.value.algorithmRunId} · ${context.value.state} · 帧 ${context.value.latestFrameSequence} · 心跳${heartbeatFresh.value ? '正常' : '失效'}`
   : '未发现可控制的算法实例，请重新生成场景；若提示运行被占用，请联系管理员清理旧运行。')
+// Text parsing can run without a P0-capable runtime. Bind a candidate to a runtime
+// only when the context speaks the frozen command protocol; legacy contexts remain
+// visible to disabledReason() and therefore cannot create or execute a proposal.
+const parserRuntimeContext = computed(() => activeVoiceContext.value?.protocolVersion === 'algorithm.command.v1'
+  ? activeVoiceContext.value
+  : null)
 const allowedIntelligenceActions = computed<VoiceAction[]>(() => {
   const knownActions = actions.map(item => item.action)
-  return context.value
-    ? knownActions.filter(action => context.value?.capabilities.includes(action))
+  return parserRuntimeContext.value
+    ? knownActions.filter(action => parserRuntimeContext.value?.capabilities.includes(action))
     : knownActions
 })
-const intelligenceRuntimeContext = computed(() => context.value ? {
-  runtimeRef: context.value.runtimeRef,
-  runtimeGeneration: context.value.runtimeGeneration,
-  contextVersion: context.value.contextVersion,
+const intelligenceRuntimeContext = computed(() => parserRuntimeContext.value ? {
+  runtimeRef: parserRuntimeContext.value.runtimeRef,
+  runtimeGeneration: parserRuntimeContext.value.runtimeGeneration,
+  contextVersion: parserRuntimeContext.value.contextVersion,
 } : null)
 const operatorScope = computed(() => `${authStore.user?.username ?? ''}:${authStore.user?.role ?? ''}`)
 
@@ -430,7 +437,7 @@ onBeforeUnmount(() => {
       :operator-scope="operatorScope"
       :input-disabled="authStore.user?.role !== 'ADMIN'"
       :allow-mock-submission="voiceP0MockEnabled"
-      :submission-disabled="loading || recoveryPending || responseUnknown || !context"
+      :submission-disabled="loading || recoveryPending || responseUnknown || !activeVoiceContext"
       :action-disabled-reason="disabledReason"
       @candidate="handleVoiceCandidate"
     />

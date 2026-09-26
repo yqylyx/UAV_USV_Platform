@@ -6,7 +6,7 @@ import unittest
 import json
 import io
 
-from asr_server import AsrError, MAX_AUDIO, MAX_BODY, REVISION, Runtime, Server, decode_audio, parse_multipart
+from asr_server import AsrError, MAX_AUDIO, MAX_BODY, REVISION, Runtime, Server, decode_audio, file_sha256, parse_multipart
 
 TOKEN = 'test-only-not-a-deployment-secret-12345678'
 ID = '11111111-1111-4111-8111-111111111111'
@@ -31,6 +31,13 @@ class FakeEngine:
         if self.error:
             raise self.error
         return '停止任务', 1000
+
+
+class HashTests(unittest.TestCase):
+    def test_streaming_sha256_supports_the_deployment_interpreter(self):
+        self.assertEqual(
+            file_sha256(io.BytesIO(b'abc')),
+            'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
 
 
 class HttpTests(unittest.TestCase):

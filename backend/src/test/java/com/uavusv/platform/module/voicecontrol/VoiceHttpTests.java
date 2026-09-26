@@ -255,7 +255,7 @@ class VoiceHttpTests {
         var proposal=service.createProposal(VoiceJson.uuid(),json.object().put("runtimeRef",ref).put("runtimeGeneration",gen).put("expectedContextVersion",1).put("intent","MISSION_PAUSE")).data();
         String id=proposal.path("proposalId").asText();
         var before=store.get("voice_proposal",id).deepCopy();
-        var fixtures=json.mapper.readTree(java.nio.file.Files.readString(java.nio.file.Path.of("../docs/voice-control-p0/i05-http-fixtures.json")));
+        var fixtures=json.mapper.readTree(java.nio.file.Files.readString(VoiceControlTests.repositoryFile("docs/voice-control-p0/i05-http-fixtures.json")));
         com.fasterxml.jackson.databind.JsonNode fixture=null;
         for(var candidate:fixtures.path("cases"))if(candidate.path("id").asText().equals(caseId))fixture=candidate;
         assertNotNull(fixture);

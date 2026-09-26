@@ -1,13 +1,13 @@
 ﻿case_id,status,evidence_or_gap
-D01,PARTIAL,nly已交付真实ASR及独立页面；待合入并在mxy机浏览器验收
-D02,PARTIAL,nly已交付麦克风页面；待mxy机真实拒绝权限验证
-D03,PARTIAL,ASR_NO_SPEECH映射及缓存通过；真实静音待ASR服务
-D04,PARTIAL,503/关闭/不可达适配已测；真实ready/busy待交接
-D05,PARTIAL,后端同键/容量1000/30分钟/活跃不清理通过；前端10分钟与真实调用次数待联调
-D06,PARTIAL,V20墓碑及Java实例重建防重复推理自动化通过；真实进程重启和页面生命周期待联调
-D07,PARTIAL,转写代码无P0调用；真实说停止任务和DB零新增待浏览器
-D08,PASS_BACKEND,真实安全链401/403/CSRF及数据库当前权限测试通过；合并部署后需复核
-D09,PARTIAL,字节/表单限制与响应范围通过；codec/真实时长/尾帧由nly服务和浏览器验证
-D10,PARTIAL,实际慢上传/内部HTTP期限/单任务/错误映射通过；Python完整busy范围待真实服务
-D11,PARTIAL,真实Tomcat上传临时目录无新增；模型离线/端到端隐私待联合验证
-D12,PARTIAL,P0 HTTP回归通过；真实Unity并行兼容待联合验证
+D01,PASS,用户在算法仿真右侧面板使用真实物理麦克风完成中文录音；真实Java—Python small模型返回可编辑文字；不保存录音或正文
+D02,PASS,权限拒绝显示中文提示且无空上传；组件及浏览器拒绝路径通过
+D03,PASS,真实Python与Java链路静音返回422 VOICE_NO_SPEECH；浏览器测试设备链路无伪造成功文字
+D04,PASS,真实服务ready通过；未就绪、不可达、busy及503/429映射自动化通过
+D05,PASS,同键重放只推理一次；容量及30分钟边界通过；浏览器原键原Blob在5657ms内恢复且不续期
+D06,PASS,Java重启旧键409且不重复推理；退出并切换第二ADMIN账号后文字和恢复材料清空
+D07,PASS,ASR结果只显示文字；浏览器网络审计无P0控制请求，proposal/execution/command不由ASR创建
+D08,PASS,真实安全链401/403/CSRF、当前权限及重放权限复核通过
+D09,PASS,WebM/Opus与有效MP3、字节及multipart限制、真实时长和500码点边界通过；58秒自动停止在58081ms触发并等待尾帧
+D10,PASS,上传/处理/前端等待期限、剩余时间、单任务busy、无自动推理重试及错误映射通过
+D11,PASS,模型缓存后离线预热和识别通过；Tomcat/Python音频内存路径及脱敏日志核对通过
+D12,PASS,ASR固定在算法仿真右侧面板且不依赖runtime/sceneReady；P0手工与Unity基线兼容，ASR重启不误停Runner
