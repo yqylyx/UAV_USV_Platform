@@ -95,7 +95,10 @@ public class VisualSensorWebSocketClient implements WebSocket.Listener {
             messageBuffer.setLength(0);
             try {
                 JsonNode root = objectMapper.readTree(payload);
-                if ("camera_frame".equals(root.path("type").asText())) {
+                String type = root.hasNonNull("type")
+                        ? root.path("type").asText()
+                        : root.path("message_type").asText();
+                if ("camera_frame".equals(type)) {
                     visualSensorService.observeFrame(root);
                 }
             } catch (Exception exception) {

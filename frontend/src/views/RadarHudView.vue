@@ -9,7 +9,7 @@ import type { RadarItem, RadarOverview } from '@/types/sensor'
 
 const store=useRadarSensorStore(),experiment=useActiveExperimentStore(),selected=ref<RadarItem|null>(null)
 let timer:number|undefined
-const overview=computed<RadarOverview>(()=>store.overview??({connected:false,onlineCount:0,totalCount:0,updatedAt:0,obstacleCount:0,detectionCount:0,nearestObstacleRange:null,latestTargetId:'',items:[]}))
+const overview=computed<RadarOverview>(()=>store.overview??({connected:false,onlineCount:0,totalCount:0,updatedAt:0,obstacleCount:0,detectionCount:0,nearestObstacleRange:null,latestTargetId:'',items:[],spectrumConnected:false,spectrumVehicleId:'',spectrumSensorId:'',spectrumStreamId:'',spectrumGatewaySequence:null,spectrumSequence:null,spectrumCapturedAt:null,spectrumStartHz:null,spectrumStopHz:null,spectrumBinHz:null,spectrumRbwHz:null,spectrumRefLevelDbm:null,spectrumPeakHz:null,spectrumPeakDbm:null,spectrumTemperatureC:null,spectrumPowersDbm:[]}))
 const freshness=computed(()=>overview.value.updatedAt?Math.max(0,Date.now()-overview.value.updatedAt):null)
 const latestEvents=computed(()=>[...overview.value.items].sort((a,b)=>b.timestampMs-a.timestampMs).slice(0,4))
 const fmt=(v:number|null,d=1)=>v==null?'--':v.toFixed(d)
